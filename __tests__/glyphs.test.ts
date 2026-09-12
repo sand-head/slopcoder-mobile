@@ -13,7 +13,12 @@ import { GLYPHS } from '../src/ui/kit';
 
 const FONT_DIR = path.join(__dirname, '..', 'assets', 'fonts');
 
-/** Minimal TrueType cmap reader — enough to answer "is this codepoint mapped?". */
+/**
+ * Minimal TrueType cmap reader — enough to answer "is this codepoint mapped?".
+ * The format-4 subtable is defined in terms of 16-bit wraparound arithmetic, so
+ * the masking below is the specification, not a shortcut.
+ */
+/* eslint-disable no-bitwise */
 function codepoints(file: string): Set<number> {
   const b = fs.readFileSync(file);
   const numTables = b.readUInt16BE(4);

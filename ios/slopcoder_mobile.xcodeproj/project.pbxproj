@@ -16,6 +16,12 @@
 		065B936216A043788DFAF0FE /* GeistMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D5994DFF8699492196C3898D /* GeistMono-Regular.ttf */; };
 		6D4323AED4224AC1BF22A922 /* GeistMono-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 8614DB0FFB96474A8D55BAC5 /* GeistMono-SemiBold.ttf */; };
 		2A733F30C4D64E7482F2AA6C /* Geist-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 19F95EF5690A434FBDF79E7E /* Geist-Regular.ttf */; };
+		1C8302496EDE47D8A049ECD3 /* Credential.swift in Sources */ = {isa = PBXBuildFile; fileRef = 208682067E3E48C8966482B7 /* Credential.swift */; };
+		29161B4DAD9B4D199702DB8F /* IntentError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 361C68A60D3A4A56A6519D00 /* IntentError.swift */; };
+		D83F33D1FF2D4DD69C2C373A /* SeamClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A22695A24F8C47708D792EB7 /* SeamClient.swift */; };
+		9B3F5C78E67A4A75BC34D01C /* StartSessionIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F4FECA1530F4EDA8A1E466E /* StartSessionIntent.swift */; };
+		46568DCCE85F4090AE16A75E /* RunningSessionsIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 413875123E764D368FE04EBB /* RunningSessionsIntent.swift */; };
+		C77AC4ACB5094576808DBA07 /* SlopcoderShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8345F214FB0B408089BB5987 /* SlopcoderShortcuts.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -34,6 +40,12 @@
 		D5994DFF8699492196C3898D /* GeistMono-Regular.ttf */ = {isa = PBXFileReference; name = "GeistMono-Regular.ttf"; path = "../assets/fonts/GeistMono-Regular.ttf"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
 		8614DB0FFB96474A8D55BAC5 /* GeistMono-SemiBold.ttf */ = {isa = PBXFileReference; name = "GeistMono-SemiBold.ttf"; path = "../assets/fonts/GeistMono-SemiBold.ttf"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
 		19F95EF5690A434FBDF79E7E /* Geist-Regular.ttf */ = {isa = PBXFileReference; name = "Geist-Regular.ttf"; path = "../assets/fonts/Geist-Regular.ttf"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
+		208682067E3E48C8966482B7 /* Credential.swift */ = {isa = PBXFileReference; name = "Credential.swift"; path = "slopcoder_mobile/Intents/Credential.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		361C68A60D3A4A56A6519D00 /* IntentError.swift */ = {isa = PBXFileReference; name = "IntentError.swift"; path = "slopcoder_mobile/Intents/IntentError.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		A22695A24F8C47708D792EB7 /* SeamClient.swift */ = {isa = PBXFileReference; name = "SeamClient.swift"; path = "slopcoder_mobile/Intents/SeamClient.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		3F4FECA1530F4EDA8A1E466E /* StartSessionIntent.swift */ = {isa = PBXFileReference; name = "StartSessionIntent.swift"; path = "slopcoder_mobile/Intents/StartSessionIntent.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		413875123E764D368FE04EBB /* RunningSessionsIntent.swift */ = {isa = PBXFileReference; name = "RunningSessionsIntent.swift"; path = "slopcoder_mobile/Intents/RunningSessionsIntent.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		8345F214FB0B408089BB5987 /* SlopcoderShortcuts.swift */ = {isa = PBXFileReference; name = "SlopcoderShortcuts.swift"; path = "slopcoder_mobile/Intents/SlopcoderShortcuts.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -56,6 +68,7 @@
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
+				9438BBB2698B4349889C2FB8 /* Intents */,
 			);
 			name = slopcoder_mobile;
 			sourceTree = "<group>";
@@ -120,6 +133,19 @@
 			name = Resources;
 			sourceTree = "<group>";
 			path = "";
+		};
+		9438BBB2698B4349889C2FB8 /* Intents */ = {
+			isa = "PBXGroup";
+			children = (
+				208682067E3E48C8966482B7 /* Credential.swift */,
+				361C68A60D3A4A56A6519D00 /* IntentError.swift */,
+				A22695A24F8C47708D792EB7 /* SeamClient.swift */,
+				3F4FECA1530F4EDA8A1E466E /* StartSessionIntent.swift */,
+				413875123E764D368FE04EBB /* RunningSessionsIntent.swift */,
+				8345F214FB0B408089BB5987 /* SlopcoderShortcuts.swift */,
+			);
+			name = Intents;
+			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
@@ -274,6 +300,12 @@
 			buildActionMask = 2147483647;
 			files = (
 				761780ED2CA45674006654EE /* AppDelegate.swift in Sources */,
+				1C8302496EDE47D8A049ECD3 /* Credential.swift in Sources */,
+				29161B4DAD9B4D199702DB8F /* IntentError.swift in Sources */,
+				D83F33D1FF2D4DD69C2C373A /* SeamClient.swift in Sources */,
+				9B3F5C78E67A4A75BC34D01C /* StartSessionIntent.swift in Sources */,
+				46568DCCE85F4090AE16A75E /* RunningSessionsIntent.swift in Sources */,
+				C77AC4ACB5094576808DBA07 /* SlopcoderShortcuts.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

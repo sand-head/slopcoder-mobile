@@ -108,13 +108,33 @@ Required secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_STORE_PASSWORD`, `ANDROID_
 `IOS_PROVISIONING_PROFILE_BASE64`, `APP_STORE_KEY_ID`, `APP_STORE_ISSUER_ID`,
 `APP_STORE_KEY_BASE64`.
 
-## Next
+## Siri
 
-**App Intents**, so Siri can start a session. They are Swift regardless of what the rest of
-the app is written in, and they should call the seam directly from Swift rather than going
-through the JS bridge — Siri can invoke an intent without launching the app, and booting
-the React Native runtime to answer would be slow and fragile. The intent needs only the
-keychain key and an HTTP call.
+Two App Intents, in `ios/slopcoder_mobile/Intents/`:
+
+- **Start a Session** — "Hey Siri, start a slopcoder session." Asks what to work on, and
+  optionally which repository (offered from your recent ones).
+- **Check Running Sessions** — "Hey Siri, what is slopcoder doing?" Says what is running,
+  how far into its context, and whether anything has stopped to ask you something.
+
+Both are registered as App Shortcuts, so they work with no setup. Neither opens the app:
+`openAppWhenRun` is false, because the point is to start or check work without stopping
+what you were doing.
+
+They are **Swift, and they do not go through the React Native bridge**. Siri can invoke an
+intent without launching the app, and booting the JS runtime to make two HTTP calls would
+be slow and would fail in ways that are hard to explain to someone holding a phone. So
+`SeamClient.swift` is a second, deliberately small implementation of the same contract the
+TypeScript client speaks, and `Credential.swift` reads the device key straight out of the
+keychain item the JS side wrote — an intent runs in the app's own process, so no access
+group or entitlement is needed.
+
+There is **no approve-a-tool-call intent**, on purpose. Approving a command by voice is a
+capability worth adding deliberately rather than by default.
+
+Since there is no Swift toolchain on Linux, `__tests__/xcode-project.test.ts` checks that
+every file the target compiles actually exists at the path the project claims — Xcode
+resolves through the whole group chain, and a doubled path fails only on a macOS runner.
 
 Then **native push**. The server already fires a notification when a turn ends or an
 approval blocks, but over Web Push; APNs and FCM need a sender alongside it.
