@@ -79,6 +79,12 @@ struct SeamClient {
         let selection: ModelSelection
     }
 
+    private struct RegisterDeviceRequest: Encodable {
+        let token: String
+        let sandbox: Bool
+        let deviceName: String?
+    }
+
     // MARK: transport
 
     private func request(_ method: String, _ path: String, body: Data? = nil) throws -> URLRequest {
@@ -125,6 +131,13 @@ struct SeamClient {
 
     func state(of id: String) async throws -> SessionState {
         try await get("api/seam/sessions/\(id)", as: SessionState.self)
+    }
+
+    /// Hand APNs' device token to the server. Called on every launch, because
+    /// the token is not stable across reinstalls, restores or OS upgrades.
+    func registerDevice(token: String, sandbox: Bool, deviceName: String?) async throws {
+        let body = RegisterDeviceRequest(token: token, sandbox: sandbox, deviceName: deviceName)
+        _ = try await send(try request("POST", "api/seam/devices", body: try JSONEncoder().encode(body)))
     }
 
     func recentRepos(take: Int = 6) async throws -> [String] {

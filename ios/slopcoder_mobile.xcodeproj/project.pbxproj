@@ -24,6 +24,8 @@
 		C77AC4ACB5094576808DBA07 /* SlopcoderShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8345F214FB0B408089BB5987 /* SlopcoderShortcuts.swift */; };
 		18A6D68E2DE542508940CC86 /* SessionEntity.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF53BBE189114961AB6F85FB /* SessionEntity.swift */; };
 		726A6F356B1F403786728043 /* OpenSessionIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C5172448B444669B48F70DF /* OpenSessionIntent.swift */; };
+		647E0CE2503C419198D7B966 /* PushRegistrar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 458EFDFA055C4652907B39D0 /* PushRegistrar.swift */; };
+		75C31551CCE44E2B981563B6 /* PushRegistrar.m in Sources */ = {isa = PBXBuildFile; fileRef = B0945C64A78D4714BBF1242E /* PushRegistrar.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -50,6 +52,8 @@
 		8345F214FB0B408089BB5987 /* SlopcoderShortcuts.swift */ = {isa = PBXFileReference; name = "SlopcoderShortcuts.swift"; path = "slopcoder_mobile/Intents/SlopcoderShortcuts.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 		EF53BBE189114961AB6F85FB /* SessionEntity.swift */ = {isa = PBXFileReference; name = "SessionEntity.swift"; path = "slopcoder_mobile/Intents/SessionEntity.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 		1C5172448B444669B48F70DF /* OpenSessionIntent.swift */ = {isa = PBXFileReference; name = "OpenSessionIntent.swift"; path = "slopcoder_mobile/Intents/OpenSessionIntent.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		458EFDFA055C4652907B39D0 /* PushRegistrar.swift */ = {isa = PBXFileReference; name = "PushRegistrar.swift"; path = "slopcoder_mobile/Push/PushRegistrar.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		B0945C64A78D4714BBF1242E /* PushRegistrar.m */ = {isa = PBXFileReference; name = "PushRegistrar.m"; path = "slopcoder_mobile/Push/PushRegistrar.m"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -73,6 +77,7 @@
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
 				9438BBB2698B4349889C2FB8 /* Intents */,
+				FDC37371D9F147BE9BB8A04B /* Push */,
 			);
 			name = slopcoder_mobile;
 			sourceTree = "<group>";
@@ -151,6 +156,15 @@
 				1C5172448B444669B48F70DF /* OpenSessionIntent.swift */,
 			);
 			name = Intents;
+			sourceTree = "<group>";
+		};
+		FDC37371D9F147BE9BB8A04B /* Push */ = {
+			isa = "PBXGroup";
+			children = (
+				458EFDFA055C4652907B39D0 /* PushRegistrar.swift */,
+				B0945C64A78D4714BBF1242E /* PushRegistrar.m */,
+			);
+			name = Push;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -314,6 +328,8 @@
 				C77AC4ACB5094576808DBA07 /* SlopcoderShortcuts.swift in Sources */,
 				18A6D68E2DE542508940CC86 /* SessionEntity.swift in Sources */,
 				726A6F356B1F403786728043 /* OpenSessionIntent.swift in Sources */,
+				647E0CE2503C419198D7B966 /* PushRegistrar.swift in Sources */,
+				75C31551CCE44E2B981563B6 /* PushRegistrar.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -347,6 +363,7 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VERSIONING_SYSTEM = "apple-generic";
+				CODE_SIGN_ENTITLEMENTS = slopcoder_mobile/slopcoder_mobile.entitlements;
 			};
 			name = Debug;
 		};
@@ -375,6 +392,7 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VERSIONING_SYSTEM = "apple-generic";
+				CODE_SIGN_ENTITLEMENTS = slopcoder_mobile/slopcoder_mobile.release.entitlements;
 			};
 			name = Release;
 		};

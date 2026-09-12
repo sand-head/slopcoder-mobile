@@ -10,6 +10,7 @@ import * as Keychain from 'react-native-keychain';
 import { create } from 'zustand';
 import { Seam, loginWithPassword, redeemPairingCode } from '../api/seam';
 import type { LoginFailure } from '../api/contracts';
+import { enablePush } from '../push';
 
 const SERVICE = 'town.sand.slopcoder';
 
@@ -79,6 +80,11 @@ async function persist(credential: Credential, set: Setter, get: () => AuthState
     accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
   });
   set({ credential, seam: build(credential, get) });
+
+  // Asked here and nowhere else: the key is in the keychain, so the native side
+  // can post the token the moment iOS hands it over, and the prompt lands when
+  // the reason for it is obvious.
+  enablePush();
 }
 
 function build(credential: Credential, get: () => AuthState): Seam {

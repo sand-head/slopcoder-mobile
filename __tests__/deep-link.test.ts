@@ -47,6 +47,27 @@ describe('the session deep link', () => {
     expect((route?.params as { id?: string })?.id).toBe(id);
   });
 
+  it('is the same scheme the AppDelegate builds for a notification tap', () => {
+    // The server sends `/session/<id>` in the push payload; the AppDelegate
+    // turns that into a URL. If the scheme drifts from the navigator's, a
+    // tapped notification opens the app to nothing.
+    const appDelegate = fs.readFileSync(
+      path.join(__dirname, '..', 'ios', 'slopcoder_mobile', 'AppDelegate.swift'),
+      'utf8',
+    );
+    const scheme = linking.prefixes[0];
+
+    expect(appDelegate).toContain(scheme);
+  });
+
+  it('routes the path the push payload carries', () => {
+    // What PushNotificationService.NotifyAsync sends as `url`, minus its leading
+    // slash — which is exactly what the AppDelegate strips.
+    const state = getStateFromPath('session/abc-123', linking.config as never);
+
+    expect(state?.routes.at(-1)?.name).toBe('Session');
+  });
+
   it('registers the scheme in Info.plist, or iOS never delivers it', () => {
     const plist = fs.readFileSync(
       path.join(__dirname, '..', 'ios', 'slopcoder_mobile', 'Info.plist'),
