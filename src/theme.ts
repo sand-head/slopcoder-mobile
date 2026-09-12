@@ -136,10 +136,19 @@ export const radius = { sm: 6, md: 8, lg: 10, xl: 14, xxl: 18 } as const;
  * Geist for names and prose, Geist Mono for everything else — meta lines,
  * labels, counts, timestamps, tool rows. That split is the strongest visual
  * signature of this UI, so it is a token rather than a per-screen choice.
+ *
+ * One family per weight, rather than one family and `fontWeight`. The upstream
+ * files are variable fonts and React Native honours no weight axis, so these are
+ * static cuts instanced at the two weights this app actually uses; each carries a
+ * PostScript name equal to its filename, which is what lets a single string
+ * resolve on both iOS and Android. Setting `fontWeight` alongside one of these
+ * does nothing — pick the family instead.
  */
 export const font = {
-  sans: 'Geist',
-  mono: 'GeistMono',
+  sans: 'Geist-Regular',
+  sansMedium: 'Geist-Medium',
+  mono: 'GeistMono-Regular',
+  monoSemiBold: 'GeistMono-SemiBold',
   display: 'Baloo2-ExtraBold',
 } as const;
 

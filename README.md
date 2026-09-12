@@ -74,10 +74,20 @@ the seam or the hub changes; the unit tests cannot see any of it.
 
 ### Fonts
 
-Geist, Geist Mono and Baloo 2 ExtraBold come from
-`src/SlopCoder.Web/wwwroot/fonts/` in the slopcoder repo. They are `.woff2` there and need
-converting to `.ttf` for native. Until they are added the app falls back to the system
-font and looks close but not right.
+`assets/fonts/` holds five static cuts, derived from the `.woff2` files in
+`src/SlopCoder.Web/wwwroot/fonts/` in the slopcoder repo.
+
+Geist and Geist Mono ship upstream as *variable* fonts, and React Native honours no weight
+axis — it would render everything at 400 whatever `fontWeight` said. So they are instanced
+with `fontTools` at the two weights this app actually uses, and each cut's PostScript name
+is set equal to its filename, which is what lets one `fontFamily` string resolve on iOS
+(which looks up a PostScript name) and Android (which looks up an asset filename).
+
+Pick a family, never a weight: `font.sans` / `font.sansMedium` / `font.mono` /
+`font.monoSemiBold` / `font.display`. Setting `fontWeight` alongside one does nothing.
+
+To add a weight: instance it, flatten its names the same way, drop it in `assets/fonts/`,
+re-run `npx react-native-asset`, and add it to `font` in `src/theme.ts`.
 
 ## Building
 

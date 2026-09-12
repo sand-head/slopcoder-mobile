@@ -92,7 +92,7 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
           />
         </View>
 
-        <Body style={{ fontSize: 24, fontWeight: '500', marginTop: 4 }}>What’s next?</Body>
+        <Body style={{ fontFamily: font.sansMedium, fontSize: 24, marginTop: 4 }}>What’s next?</Body>
 
         <Button label="Start a session" onPress={() => navigation.navigate('NewSession')} />
 

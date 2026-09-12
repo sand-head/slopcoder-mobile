@@ -125,7 +125,7 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
           </Body>
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Body numberOfLines={1} style={{ fontSize: 14, fontWeight: '500' }}>
+          <Body numberOfLines={1} style={{ fontFamily: font.sansMedium, fontSize: 14 }}>
             {state?.title ?? 'Session'}
           </Body>
           <Mono numberOfLines={1}>{subtitle}</Mono>
@@ -384,7 +384,7 @@ function TranscriptRow({
             <Body style={{ fontFamily: font.mono, color: pending ? status.running : c.mutedForeground }}>
               ◈
             </Body>
-            <Body style={{ flex: 1, fontFamily: font.mono, fontSize: 12.5, fontWeight: '600' }}>
+            <Body style={{ flex: 1, fontFamily: font.monoSemiBold, fontSize: 12.5 }}>
               {item.toolName}
             </Body>
             <Meta style={{ fontSize: 10 }}>
@@ -599,7 +599,7 @@ function Collapsible({
           backgroundColor: pressed ? mix(c.mutedForeground, 10) : 'transparent',
         })}>
         <Body style={{ fontFamily: font.mono, fontSize: 12, color }}>{glyph}</Body>
-        <Body style={{ fontFamily: font.mono, fontSize: 12.5, fontWeight: '600' }}>{name}</Body>
+        <Body style={{ fontFamily: font.monoSemiBold, fontSize: 12.5 }}>{name}</Body>
         <Mono numberOfLines={1} style={{ flex: 1 }}>
           {meta}
         </Mono>

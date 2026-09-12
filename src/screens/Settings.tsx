@@ -7,6 +7,7 @@ import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../state/auth';
 import { Body, Button, Hint, Mono, Screen, SectionLabel } from '../ui/kit';
+import { font } from '../theme';
 
 export function SettingsScreen({ navigation }: { navigation: any }) {
   const credential = useAuth(s => s.credential);
@@ -22,7 +23,7 @@ export function SettingsScreen({ navigation }: { navigation: any }) {
           paddingBottom: insets.bottom + 24,
           gap: 18,
         }}>
-        <Body style={{ fontSize: 22, fontWeight: '500' }}>Settings</Body>
+        <Body style={{ fontFamily: font.sansMedium, fontSize: 22 }}>Settings</Body>
 
         <View>
           <SectionLabel label="account" />

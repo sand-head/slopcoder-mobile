@@ -175,7 +175,7 @@ export function Button({
       {busy ? (
         <ActivityIndicator color={foreground} size="small" />
       ) : (
-        <Text style={{ fontFamily: font.sans, fontSize: 14, fontWeight: '500', color: foreground }}>
+        <Text style={{ fontFamily: font.sansMedium, fontSize: 14, color: foreground }}>
           {label}
         </Text>
       )}

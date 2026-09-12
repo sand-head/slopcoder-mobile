@@ -1,0 +1,25 @@
+{
+  "migIndex": 1,
+  "data": [
+    {
+      "path": "assets/fonts/Baloo2-ExtraBold.ttf",
+      "sha1": "92d26bc2fc4cbff695a47fc0bf761ad733d00826"
+    },
+    {
+      "path": "assets/fonts/Geist-Medium.ttf",
+      "sha1": "13f6fe0aa810ea5b73f4eda7ece63dbce6897016"
+    },
+    {
+      "path": "assets/fonts/Geist-Regular.ttf",
+      "sha1": "37f6cd1d584ca983dfb44b65a8a5bbdd8dfa17df"
+    },
+    {
+      "path": "assets/fonts/GeistMono-Regular.ttf",
+      "sha1": "f1a9020e87834c213b26567269e71a8aa23cc1cd"
+    },
+    {
+      "path": "assets/fonts/GeistMono-SemiBold.ttf",
+      "sha1": "3a0ccc792339e8b2ba9338c2322b74453c2cbfa5"
+    }
+  ]
+}

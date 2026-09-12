@@ -20,7 +20,7 @@ import {
 } from '../api/contracts';
 import { useAuth } from '../state/auth';
 import { Body, Button, Field, Hint, Mono, Screen, SectionLabel } from '../ui/kit';
-import { mix, useTheme } from '../theme';
+import { font, mix, useTheme } from '../theme';
 
 const THINKING: { label: string; value: ThinkingLevel | null }[] = [
   { label: 'auto', value: null },
@@ -136,7 +136,7 @@ export function NewSessionScreen({ navigation }: { navigation: any }) {
             gap: 18,
           }}
           keyboardShouldPersistTaps="handled">
-          <Body style={{ fontSize: 22, fontWeight: '500' }}>New session</Body>
+          <Body style={{ fontFamily: font.sansMedium, fontSize: 22 }}>New session</Body>
 
           <View style={{ gap: 6 }}>
             <SectionLabel label="task" />
