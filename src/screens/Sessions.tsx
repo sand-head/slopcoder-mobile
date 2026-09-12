@@ -13,6 +13,7 @@ import {
   SessionStatus,
   type FacetOption,
   type ModelCandidate,
+  type RemoteNodeSummary,
   type SessionSummary,
 } from '../api/contracts';
 import { useAuth } from '../state/auth';
@@ -31,8 +32,8 @@ import {
   StatusDot,
   stamp,
 } from '../ui/kit';
-import { Composer, type TurnOptions } from '../ui/Composer';
-import { font, mix, radius, useTheme } from '../theme';
+import { Composer, shortRepo, type TurnOptions } from '../ui/Composer';
+import { font, radius, useTheme } from '../theme';
 
 export function SessionsScreen({ navigation }: { navigation: any }) {
   const { c } = useTheme();
@@ -52,7 +53,9 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
   const [models, setModels] = useState<ModelCandidate[]>([]);
   const [facets, setFacets] = useState<FacetOption[]>([]);
   const [repos, setRepos] = useState<string[]>([]);
+  const [nodes, setNodes] = useState<string[]>([]);
   const [recent, setRecent] = useState<string[]>([]);
+  const [allNodes, setAllNodes] = useState<RemoteNodeSummary[]>([]);
   const [options, setOptions] = useState<TurnOptions>({
     selection: { auto: true, connectionId: null, modelId: null },
     thinking: null,
@@ -62,11 +65,14 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
 
   useEffect(() => {
     if (!seam) return;
-    void Promise.all([seam.models(), seam.facets(), seam.recentRepos()]).then(([m, f, r]) => {
-      setModels(m);
-      setFacets(f);
-      setRecent(r);
-    });
+    void Promise.all([seam.models(), seam.facets(), seam.recentRepos(), seam.nodes()]).then(
+      ([m, f, r, n]) => {
+        setModels(m);
+        setFacets(f);
+        setRecent(r);
+        setAllNodes(n);
+      },
+    );
   }, [seam]);
 
   /** The launcher's own two-call start, as on the web: create, then run. */
@@ -83,6 +89,7 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
         repoUrls: repos.length > 0 ? repos : null,
         thinkingLevel: options.thinking,
         facet: options.facet,
+        nodeIds: nodes.length > 0 ? nodes : null,
       });
       if (!id) {
         setError('That model selection is no longer available.');
@@ -96,6 +103,7 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
 
       setPrompt('');
       setRepos([]);
+      setNodes([]);
       navigation.navigate('Session', { id });
     } catch (e) {
       setError(String(e));
@@ -173,6 +181,7 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Brand />
           <View style={{ flex: 1 }} />
+          <Button label="New" variant="ghost" onPress={() => navigation.navigate('NewSession')} />
           <Button
             label="Settings"
             variant="ghost"
@@ -194,16 +203,22 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
           onChangeOptions={setOptions}
           models={models}
           facets={facets}
-          accessory={
-            <RepoChips
-              recent={recent}
-              picked={repos}
-              onToggle={url =>
-                setRepos(repos.includes(url) ? repos.filter(r => r !== url) : [...repos, url])
-              }
-              onMore={() => navigation.navigate('NewSession')}
-            />
-          }
+          attachments={{
+            repos,
+            nodes,
+            recentRepos: recent.map(url => ({ key: url, label: shortRepo(url) })),
+            availableNodes: allNodes
+              .filter(n => n.enabled)
+              .map(n => ({ key: n.id, label: n.name, description: n.host })),
+            searchRepos: async query => {
+              const rows = await seam!.searchRepos(query);
+              return rows.map(r => ({ key: r.cloneUrl, label: r.fullName }));
+            },
+            onChange: next => {
+              setRepos(next.repos);
+              setNodes(next.nodes);
+            },
+          }}
         />
 
         {!connected && credential ? <Mono>Reconnecting to live updates…</Mono> : null}
@@ -279,70 +294,6 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
       </Modal>
     </Screen>
   );
-}
-
-/**
- * The web's `+ add` chip row. Recent repositories are one tap; anything that
- * needs searching — or a node, or a facet picked from a list — is the full
- * screen behind "More".
- */
-function RepoChips({
-  recent,
-  picked,
-  onToggle,
-  onMore,
-}: {
-  recent: string[];
-  picked: string[];
-  onToggle: (url: string) => void;
-  onMore: () => void;
-}) {
-  const { c } = useTheme();
-
-  return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-      {recent.slice(0, 4).map(url => {
-        const on = picked.includes(url);
-        return (
-          <Pressable
-            key={url}
-            onPress={() => onToggle(url)}
-            style={{
-              height: 28,
-              justifyContent: 'center',
-              paddingHorizontal: 10,
-              borderRadius: 9999,
-              borderWidth: 1,
-              borderColor: on ? c.primary : c.border,
-              backgroundColor: on ? mix(c.primary, 10) : 'transparent',
-            }}>
-            <Mono style={{ fontSize: 11.5, color: on ? c.primary : c.mutedForeground }}>
-              {shortRepo(url)}
-            </Mono>
-          </Pressable>
-        );
-      })}
-      <Pressable
-        onPress={onMore}
-        style={{
-          height: 28,
-          justifyContent: 'center',
-          paddingHorizontal: 10,
-          borderRadius: 9999,
-          borderWidth: 1,
-          borderStyle: 'dashed',
-          borderColor: c.border,
-        }}>
-        <Mono style={{ fontSize: 11.5 }}>+ more</Mono>
-      </Pressable>
-    </View>
-  );
-}
-
-/** `https://host/owner/repo.git` reads better as `owner/repo` on a phone. */
-function shortRepo(url: string): string {
-  const parts = url.replace(/\.git$/, '').split('/').filter(Boolean);
-  return parts.slice(-2).join('/') || url;
 }
 
 function SessionCard({

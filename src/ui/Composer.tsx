@@ -14,7 +14,7 @@
  * turn running away with itself — the difference should not be a matter of
  * remembering which icon meant which.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 import {
   ApprovalMode,
@@ -24,8 +24,29 @@ import {
   type ModelSelection,
 } from '../api/contracts';
 import { Body, Button, Dot, Meta, Mono, Sliders } from './kit';
-import { Sheet, SheetGroup } from './Sheet';
+import { Sheet, SheetGroup, SheetMultiGroup } from './Sheet';
+import { Field } from './kit';
 import { font, mix, radius, useTheme } from '../theme';
+
+/** A repository or a node the next turn should have. */
+export interface AttachOption {
+  key: string;
+  label: string;
+  description?: string;
+}
+
+/**
+ * What the web's `+ add` chip offers. Owned by the composer rather than each
+ * screen, so the launcher and the create screen behave identically.
+ */
+export interface Attachments {
+  repos: string[];
+  nodes: string[];
+  recentRepos: AttachOption[];
+  availableNodes: AttachOption[];
+  searchRepos: (query: string) => Promise<AttachOption[]>;
+  onChange: (next: { repos: string[]; nodes: string[] }) => void;
+}
 
 export interface TurnOptions {
   selection: ModelSelection;
@@ -67,7 +88,7 @@ export function Composer({
   onChangeOptions,
   models,
   facets,
-  accessory,
+  attachments,
 }: {
   value: string;
   onChangeValue: (next: string) => void;
@@ -82,11 +103,26 @@ export function Composer({
   onChangeOptions: (next: TurnOptions) => void;
   models: ModelCandidate[];
   facets: FacetOption[];
-  /** The launcher's attachment chips; the cockpit has none yet. */
-  accessory?: React.ReactNode;
+  /** Omitted by the cockpit: a running session's workspace is already set. */
+  attachments?: Attachments;
 }) {
   const { c, status } = useTheme();
-  const [sheet, setSheet] = useState<'model' | 'turn' | null>(null);
+  const [sheet, setSheet] = useState<'model' | 'turn' | 'attach' | null>(null);
+  const [query, setQuery] = useState('');
+  const [found, setFound] = useState<AttachOption[]>([]);
+
+  // Repo search fans out to every connected forge, so it is the one call worth
+  // waiting for the typing to stop.
+  useEffect(() => {
+    if (!attachments || query.trim().length < 2) {
+      setFound([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      void attachments.searchRepos(query.trim()).then(setFound);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [attachments, query]);
 
   const current = models.find(
     m => !options.selection.auto && m.modelId === options.selection.modelId,
@@ -98,7 +134,7 @@ export function Composer({
 
   return (
     <View style={{ gap: 8 }}>
-      {accessory}
+      {attachments ? <AttachChips attachments={attachments} onAdd={() => setSheet('attach')} /> : null}
 
       <View
         style={{
@@ -145,6 +181,13 @@ export function Composer({
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {attachments ? (
+            <IconButton onPress={() => setSheet('attach')} accessibilityLabel="Attach">
+              <Body style={{ fontFamily: font.mono, fontSize: 16, color: c.mutedForeground, lineHeight: 18 }}>
+                +
+              </Body>
+            </IconButton>
+          ) : null}
           <IconButton onPress={() => setSheet('turn')} accessibilityLabel="Turn settings">
             <Sliders color={c.mutedForeground} />
           </IconButton>
@@ -225,8 +268,112 @@ export function Composer({
           />
         ) : null}
       </Sheet>
+
+      {attachments ? (
+        <Sheet visible={sheet === 'attach'} title="Attach" onClose={() => setSheet(null)}>
+          <Field value={query} onChangeText={setQuery} placeholder="Search repositories…" />
+          <SheetMultiGroup
+            label={query.trim().length >= 2 ? 'matches' : 'recent'}
+            options={query.trim().length >= 2 ? found : attachments.recentRepos}
+            selected={attachments.repos}
+            onToggle={key =>
+              attachments.onChange({
+                repos: attachments.repos.includes(key)
+                  ? attachments.repos.filter(r => r !== key)
+                  : [...attachments.repos, key],
+                nodes: attachments.nodes,
+              })
+            }
+            empty={query.trim().length >= 2 ? 'Nothing matched.' : 'No recent repositories.'}
+          />
+          <SheetMultiGroup
+            label="remote nodes"
+            options={attachments.availableNodes}
+            selected={attachments.nodes}
+            onToggle={key =>
+              attachments.onChange({
+                repos: attachments.repos,
+                nodes: attachments.nodes.includes(key)
+                  ? attachments.nodes.filter(n => n !== key)
+                  : [...attachments.nodes, key],
+              })
+            }
+          />
+        </Sheet>
+      ) : null}
     </View>
   );
+}
+
+/** The web's `.pl-attach` row: what is attached, plus the dashed add chip. */
+function AttachChips({ attachments, onAdd }: { attachments: Attachments; onAdd: () => void }) {
+  const { c } = useTheme();
+
+  const picked = [
+    ...attachments.repos.map(url => ({
+      key: url,
+      label: attachments.recentRepos.find(r => r.key === url)?.label ?? shortRepo(url),
+      drop: () =>
+        attachments.onChange({
+          repos: attachments.repos.filter(r => r !== url),
+          nodes: attachments.nodes,
+        }),
+    })),
+    ...attachments.nodes.map(id => ({
+      key: id,
+      label: attachments.availableNodes.find(n => n.key === id)?.label ?? 'node',
+      drop: () =>
+        attachments.onChange({
+          repos: attachments.repos,
+          nodes: attachments.nodes.filter(n => n !== id),
+        }),
+    })),
+  ];
+
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+      {picked.map(chip => (
+        <Pressable
+          key={chip.key}
+          onPress={chip.drop}
+          style={{
+            height: 28,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            paddingHorizontal: 10,
+            borderRadius: 9999,
+            borderWidth: 1,
+            borderColor: c.border,
+            backgroundColor: c.card,
+          }}>
+          <Mono numberOfLines={1} style={{ fontSize: 11.5, color: c.foreground, maxWidth: 160 }}>
+            {chip.label}
+          </Mono>
+          <Mono style={{ fontSize: 12 }}>×</Mono>
+        </Pressable>
+      ))}
+      <Pressable
+        onPress={onAdd}
+        style={{
+          height: 28,
+          justifyContent: 'center',
+          paddingHorizontal: 10,
+          borderRadius: 9999,
+          borderWidth: 1,
+          borderStyle: 'dashed',
+          borderColor: c.border,
+        }}>
+        <Mono style={{ fontSize: 11.5 }}>+ add</Mono>
+      </Pressable>
+    </View>
+  );
+}
+
+/** `https://host/owner/repo.git` reads better as `owner/repo` on a phone. */
+export function shortRepo(url: string): string {
+  const parts = url.replace(/\.git$/, '').split('/').filter(Boolean);
+  return parts.slice(-2).join('/') || url;
 }
 
 function Pill({ label, onPress, muted }: { label: string; onPress?: () => void; muted?: boolean }) {

@@ -1,41 +1,29 @@
 /**
- * Starting a session. Two calls, not one: create is cheap and synchronous,
- * starting the turn is long-running and detached.
+ * Starting a session, shaped like the session it is about to become.
  *
- * `clientWorkspace` is never sent. That omission is the whole mechanism by
- * which the session runs in the server's sandbox — which is the only kind a
- * phone can start, and the same kind the web app makes.
+ * This used to be a form: stacked chip rows for model, repositories, nodes,
+ * facet, thinking and approvals, with Start at the bottom of a long scroll.
+ * Every one of those now lives behind the composer's own controls — the same
+ * ones the cockpit has — so the screen is simply the cockpit with the transcript
+ * not written yet.
+ *
+ * Two calls, as on the web: create is cheap and synchronous, starting the turn is
+ * neither. `clientWorkspace` is never sent, which is what makes the session
+ * server-sandboxed, the only kind a phone can start.
  */
 import React, { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ApprovalMode,
-  ThinkingLevel,
-  autoRoute,
   type FacetOption,
-  type GitRepoRow,
   type ModelCandidate,
   type RemoteNodeSummary,
 } from '../api/contracts';
 import { useAuth } from '../state/auth';
-import { Body, Button, Field, Hint, Mono, Screen, SectionLabel } from '../ui/kit';
-import { font, mix, useTheme } from '../theme';
-
-const THINKING: { label: string; value: ThinkingLevel | null }[] = [
-  { label: 'auto', value: null },
-  { label: 'off', value: ThinkingLevel.Off },
-  { label: 'low', value: ThinkingLevel.Low },
-  { label: 'medium', value: ThinkingLevel.Medium },
-  { label: 'high', value: ThinkingLevel.High },
-  { label: 'max', value: ThinkingLevel.Max },
-];
-
-const APPROVALS: { label: string; value: ApprovalMode }[] = [
-  { label: 'dangerous', value: ApprovalMode.Dangerous },
-  { label: 'auto', value: ApprovalMode.Auto },
-  { label: 'always', value: ApprovalMode.Always },
-];
+import { Composer, shortRepo, type TurnOptions } from '../ui/Composer';
+import { Body, Hint, LogoMark, Mono, Screen } from '../ui/kit';
+import { font, useTheme } from '../theme';
 
 export function NewSessionScreen({ navigation }: { navigation: any }) {
   const { c } = useTheme();
@@ -43,21 +31,22 @@ export function NewSessionScreen({ navigation }: { navigation: any }) {
   const seam = useAuth(s => s.seam);
 
   const [prompt, setPrompt] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   const [models, setModels] = useState<ModelCandidate[]>([]);
   const [facets, setFacets] = useState<FacetOption[]>([]);
   const [recent, setRecent] = useState<string[]>([]);
-  const [repos, setRepos] = useState<GitRepoRow[]>([]);
-  const [nodes, setNodes] = useState<RemoteNodeSummary[]>([]);
-  const [query, setQuery] = useState('');
+  const [allNodes, setAllNodes] = useState<RemoteNodeSummary[]>([]);
 
-  const [model, setModel] = useState<ModelCandidate | null>(null);
-  const [pickedRepos, setPickedRepos] = useState<string[]>([]);
-  const [pickedNodes, setPickedNodes] = useState<string[]>([]);
-  const [facet, setFacet] = useState<string | null>(null);
-  const [thinking, setThinking] = useState<ThinkingLevel | null>(null);
-  const [approval, setApproval] = useState<ApprovalMode>(ApprovalMode.Dangerous);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [repos, setRepos] = useState<string[]>([]);
+  const [nodes, setNodes] = useState<string[]>([]);
+  const [options, setOptions] = useState<TurnOptions>({
+    selection: { auto: true, connectionId: null, modelId: null },
+    thinking: null,
+    approval: ApprovalMode.Dangerous,
+    facet: null,
+  });
 
   useEffect(() => {
     if (!seam) return;
@@ -66,55 +55,40 @@ export function NewSessionScreen({ navigation }: { navigation: any }) {
         setModels(m);
         setFacets(f);
         setRecent(r);
-        setNodes(n);
+        setAllNodes(n);
       },
     );
   }, [seam]);
 
-  // Repo search is the one call worth debouncing — it fans out to every
-  // connected forge.
-  useEffect(() => {
-    if (!seam || query.trim().length < 2) {
-      setRepos([]);
-      return;
-    }
-    const timer = setTimeout(() => {
-      void seam.searchRepos(query.trim()).then(setRepos);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [seam, query]);
-
-  const toggle = (list: string[], value: string) =>
-    list.includes(value) ? list.filter(v => v !== value) : [...list, value];
-
-  const create = async () => {
+  const start = async () => {
     if (!seam) return;
+    const text = prompt.trim();
+    if (!text) return;
+
     setBusy(true);
     setError(null);
     try {
-      const selection = model
-        ? { auto: false, connectionId: model.connectionId, modelId: model.modelId }
-        : autoRoute;
-
       const id = await seam.createSession({
-        selection,
-        initialPrompt: prompt.trim(),
-        repoUrls: pickedRepos.length > 0 ? pickedRepos : null,
-        thinkingLevel: thinking,
-        facet,
-        nodeIds: pickedNodes.length > 0 ? pickedNodes : null,
+        selection: options.selection,
+        initialPrompt: text,
+        repoUrls: repos.length > 0 ? repos : null,
+        thinkingLevel: options.thinking,
+        facet: options.facet,
+        nodeIds: nodes.length > 0 ? nodes : null,
       });
-
       if (!id) {
         setError('That model selection is no longer available.');
         return;
       }
 
-      if (approval !== ApprovalMode.Dangerous) {
-        await seam.setApprovalMode(id, { mode: approval, useClassifier: true });
+      // The one setting with no create-time field.
+      if (options.approval !== ApprovalMode.Dangerous) {
+        await seam.setApprovalMode(id, { mode: options.approval, useClassifier: true });
       }
+      await seam.start(id, { prompt: text, selection: options.selection });
 
-      await seam.start(id, { prompt: prompt.trim(), selection });
+      // Replace, not push: going back from the cockpit should reach the list,
+      // not a form for a session that now exists.
       navigation.replace('Session', { id });
     } catch (e) {
       setError(String(e));
@@ -123,164 +97,84 @@ export function NewSessionScreen({ navigation }: { navigation: any }) {
     }
   };
 
+  const subtitle = repos.length > 0 ? repos.map(shortRepo).join(', ') : 'nothing attached yet';
+
   return (
     <Screen>
+      {/* The cockpit's header: the logo goes back, the title sits over a mono
+          line saying what the session will be made of. */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 10,
+          paddingHorizontal: 16,
+          paddingTop: insets.top + 8,
+          paddingBottom: 8,
+          borderBottomWidth: 1,
+          borderBottomColor: c.border,
+        }}>
+        <Pressable
+          onPress={() => navigation.goBack()}
+          hitSlop={10}
+          style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>
+          <LogoMark size={28} />
+        </Pressable>
+        <View style={{ flex: 1 }}>
+          <Body numberOfLines={1} style={{ fontFamily: font.sansMedium, fontSize: 14 }}>
+            New session
+          </Body>
+          <Mono numberOfLines={1}>{subtitle}</Mono>
+        </View>
+      </View>
+
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={insets.top + 44}
         style={{ flex: 1 }}>
-        <ScrollView
-          contentContainerStyle={{
-            padding: 20,
-            paddingTop: insets.top + 12,
-            paddingBottom: insets.bottom + 24,
-            gap: 18,
-          }}
-          keyboardShouldPersistTaps="handled">
-          <Body style={{ fontFamily: font.sansMedium, fontSize: 22 }}>New session</Body>
-
-          <View style={{ gap: 6 }}>
-            <SectionLabel label="task" />
-            <Field
-              value={prompt}
-              onChangeText={setPrompt}
-              placeholder="Describe a task…"
-              autoCapitalize="sentences"
-              style={{ height: undefined, minHeight: 88, paddingTop: 10 }}
-            />
-          </View>
-
-          <View>
-            <SectionLabel label="model" />
-            <Chips
-              options={[
-                { key: 'auto', label: 'auto' },
-                ...models.map(m => ({ key: m.modelId, label: m.modelDisplayName || m.modelId })),
-              ]}
-              selected={model ? model.modelId : 'auto'}
-              onSelect={key => setModel(models.find(m => m.modelId === key) ?? null)}
-            />
-            {models.length === 0 ? <Hint>No providers connected yet.</Hint> : null}
-          </View>
-
-          <View>
-            <SectionLabel label="repositories" count={pickedRepos.length || undefined} />
-            <Field value={query} onChangeText={setQuery} placeholder="Search repositories…" />
-            <View style={{ height: 8 }} />
-            <Chips
-              multi
-              options={[
-                ...recent.map(url => ({ key: url, label: shortRepo(url) })),
-                ...repos
-                  .filter(r => !recent.includes(r.cloneUrl))
-                  .map(r => ({ key: r.cloneUrl, label: r.fullName })),
-              ]}
-              selectedMany={pickedRepos}
-              onSelect={key => setPickedRepos(toggle(pickedRepos, key))}
-            />
-          </View>
-
-          {nodes.length > 0 ? (
-            <View>
-              <SectionLabel label="remote nodes" count={pickedNodes.length || undefined} />
-              <Chips
-                multi
-                options={nodes.filter(n => n.enabled).map(n => ({ key: n.id, label: n.name }))}
-                selectedMany={pickedNodes}
-                onSelect={key => setPickedNodes(toggle(pickedNodes, key))}
-              />
-            </View>
-          ) : null}
-
-          <View>
-            <SectionLabel label="facet" />
-            <Chips
-              options={[
-                { key: '', label: 'default' },
-                ...facets.map(f => ({ key: f.name, label: f.name })),
-              ]}
-              selected={facet ?? ''}
-              onSelect={key => setFacet(key === '' ? null : key)}
-            />
-          </View>
-
-          <View>
-            <SectionLabel label="thinking" />
-            <Chips
-              options={THINKING.map(t => ({ key: String(t.value), label: t.label }))}
-              selected={String(thinking)}
-              onSelect={key => setThinking(THINKING.find(t => String(t.value) === key)?.value ?? null)}
-            />
-          </View>
-
-          <View>
-            <SectionLabel label="approvals" />
-            <Chips
-              options={APPROVALS.map(a => ({ key: String(a.value), label: a.label }))}
-              selected={String(approval)}
-              onSelect={key => setApproval(Number(key) as ApprovalMode)}
-            />
-            <Hint>
-              {approval === ApprovalMode.Auto
-                ? 'Never asks — nothing will block waiting for you.'
-                : approval === ApprovalMode.Always
-                  ? 'Asks on every tool call.'
-                  : 'Asks only for what the classifier escalates.'}
-            </Hint>
-          </View>
-
+        {/* Where the transcript will be. */}
+        <View
+          style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 }}>
+          <LogoMark size={34} />
+          <Hint>
+            Describe a task below. It runs on the server, so you can close the app and come back
+            to it.
+          </Hint>
           {error ? <Body style={{ color: c.destructive, fontSize: 13 }}>{error}</Body> : null}
+        </View>
 
-          <Button label="Start" onPress={create} busy={busy} disabled={!prompt.trim()} />
-        </ScrollView>
+        <View style={{ paddingHorizontal: 10, paddingBottom: insets.bottom + 10, paddingTop: 4 }}>
+          <Composer
+            value={prompt}
+            onChangeValue={setPrompt}
+            placeholder="Describe a task…"
+            action="Start"
+            onAction={start}
+            busy={busy}
+            disabled={!prompt.trim()}
+            options={options}
+            onChangeOptions={setOptions}
+            models={models}
+            facets={facets}
+            attachments={{
+              repos,
+              nodes,
+              recentRepos: recent.map(url => ({ key: url, label: shortRepo(url) })),
+              availableNodes: allNodes
+                .filter(n => n.enabled)
+                .map(n => ({ key: n.id, label: n.name, description: n.host })),
+              searchRepos: async query => {
+                const rows = (await seam?.searchRepos(query)) ?? [];
+                return rows.map(r => ({ key: r.cloneUrl, label: r.fullName }));
+              },
+              onChange: next => {
+                setRepos(next.repos);
+                setNodes(next.nodes);
+              },
+            }}
+          />
+        </View>
       </KeyboardAvoidingView>
     </Screen>
   );
-}
-
-function Chips({
-  options,
-  selected,
-  selectedMany,
-  onSelect,
-  multi,
-}: {
-  options: { key: string; label: string }[];
-  selected?: string;
-  selectedMany?: string[];
-  onSelect: (key: string) => void;
-  multi?: boolean;
-}) {
-  const { c } = useTheme();
-  return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-      {options.map(option => {
-        const on = multi ? selectedMany?.includes(option.key) : selected === option.key;
-        return (
-          <Pressable
-            key={option.key}
-            onPress={() => onSelect(option.key)}
-            style={{
-              minHeight: 36,
-              justifyContent: 'center',
-              paddingHorizontal: 12,
-              borderRadius: 9999,
-              borderWidth: 1,
-              borderColor: on ? c.primary : c.border,
-              backgroundColor: on ? mix(c.primary, 10) : c.card,
-            }}>
-            <Mono style={{ color: on ? c.primary : c.mutedForeground, fontSize: 12 }}>
-              {option.label}
-            </Mono>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
-/** `https://host/owner/repo.git` reads better as `owner/repo` on a phone. */
-function shortRepo(url: string): string {
-  const trimmed = url.replace(/\.git$/, '');
-  const parts = trimmed.split('/').filter(Boolean);
-  return parts.slice(-2).join('/') || trimmed;
 }

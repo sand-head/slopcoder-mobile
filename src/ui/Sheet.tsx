@@ -88,6 +88,78 @@ export function Sheet({
   );
 }
 
+/**
+ * The same card, but choices that stack rather than replace each other —
+ * repositories and nodes, where picking one does not unpick the last.
+ */
+export function SheetMultiGroup({
+  label,
+  options,
+  selected,
+  onToggle,
+  empty,
+}: {
+  label?: string;
+  options: SheetOption[];
+  selected: string[];
+  onToggle: (key: string) => void;
+  empty?: string;
+}) {
+  const { c } = useTheme();
+
+  if (options.length === 0) {
+    return empty ? (
+      <View style={{ gap: 6 }}>
+        {label ? <Meta>{label}</Meta> : null}
+        <Mono>{empty}</Mono>
+      </View>
+    ) : null;
+  }
+
+  return (
+    <View style={{ gap: 6 }}>
+      {label ? <Meta>{label}</Meta> : null}
+      <View
+        style={{
+          backgroundColor: c.card,
+          borderRadius: radius.lg,
+          borderWidth: 1,
+          borderColor: c.border,
+          overflow: 'hidden',
+        }}>
+        {options.map((option, index) => (
+          <Pressable
+            key={option.key}
+            onPress={() => onToggle(option.key)}
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+              minHeight: 52,
+              paddingHorizontal: 14,
+              paddingVertical: 10,
+              borderTopWidth: index === 0 ? 0 : 1,
+              borderTopColor: c.border,
+              backgroundColor: pressed ? mix(c.mutedForeground, 10) : 'transparent',
+            })}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Body numberOfLines={1} style={{ fontSize: 14.5 }}>
+                {option.label}
+              </Body>
+              {option.description ? (
+                <Mono numberOfLines={1} style={{ fontSize: 11.5 }}>
+                  {option.description}
+                </Mono>
+              ) : null}
+            </View>
+            {selected.includes(option.key) ? <Check color={c.primary} /> : null}
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 /** One grouped card of choices, hairline-separated, with a tick on the current one. */
 export function SheetGroup({
   label,
