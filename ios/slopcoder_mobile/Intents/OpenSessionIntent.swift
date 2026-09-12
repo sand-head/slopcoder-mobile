@@ -31,7 +31,11 @@ struct OpenSessionIntent: OpenIntent {
             throw IntentError.unreachable
         }
 
-        UIApplication.shared.open(url)
+        // `open` resolves to its async overload inside an async context, and it
+        // reports whether the URL was handled. Nothing useful can be done if it
+        // was not — the app is already coming forward — so the result is dropped
+        // deliberately rather than ignored by accident.
+        _ = await UIApplication.shared.open(url)
         return .result()
     }
 }
