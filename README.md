@@ -56,6 +56,11 @@ A missed push is expected, not exceptional: `SessionStream` notices a gap in the
 and pulls scrollback; `LiveAccumulator` notices when it has fallen behind the sender and
 asks for a fresh seed. Backgrounding a phone produces both constantly.
 
+## Requirements
+
+iOS 16 or later. VisionCamera is built on Nitro, which compiles Swift with C++ interop, and
+Swift's `CxxStdlib` requires 16 — React Native's own default of 15.1 does not build.
+
 ## Developing
 
 ```bash

@@ -5,7 +5,11 @@ require Pod::Executable.execute_command('node', ['-p',
     {paths: [process.argv[1]]},
   )', __dir__]).strip
 
-platform :ios, min_ios_version_supported
+# Not min_ios_version_supported (15.1). VisionCamera is built on Nitro, which
+# compiles Swift with C++ interop, and Swift's own CxxStdlib module has a minimum
+# of iOS 16 — building below it fails with "compiling for iOS 15.1, but module
+# 'CxxStdlib' has a minimum deployment target of iOS 16.0".
+platform :ios, '16.0'
 prepare_react_native_project!
 
 linkage = ENV['USE_FRAMEWORKS']
@@ -30,5 +34,14 @@ target 'slopcoder_mobile' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+
+    # The platform line above covers pods that defer to it; this catches the ones
+    # that pin a lower target of their own. One of them linking against CxxStdlib
+    # is enough to fail the build.
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |build_configuration|
+        build_configuration.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
+      end
+    end
   end
 end
