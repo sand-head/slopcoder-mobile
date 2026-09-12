@@ -23,7 +23,22 @@ import { summarize, type Item } from '../api/transcript';
 import { useAuth } from '../state/auth';
 import { useSessionHub } from '../state/hub';
 import { useSession } from '../state/session';
-import { Body, Button, Field, Hint, Meta, Mono, Screen } from '../ui/kit';
+import {
+  Bars,
+  Body,
+  Button,
+  Diamond,
+  Dot,
+  Field,
+  Fork,
+  GLYPHS,
+  HalfDot,
+  Hint,
+  LogoMark,
+  Meta,
+  Mono,
+  Screen,
+} from '../ui/kit';
 import { font, mix, radius, useTheme } from '../theme';
 
 export function SessionDetailScreen({ route, navigation }: { route: any; navigation: any }) {
@@ -112,17 +127,9 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
         }}>
         <Pressable
           onPress={() => navigation.goBack()}
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 8,
-            backgroundColor: c.primary,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-          <Body style={{ color: c.primaryForeground, fontFamily: font.display, fontSize: 15 }}>
-            s
-          </Body>
+          hitSlop={10}
+          style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>
+          <LogoMark size={28} />
         </Pressable>
         <View style={{ flex: 1 }}>
           <Body numberOfLines={1} style={{ fontFamily: font.sansMedium, fontSize: 14 }}>
@@ -145,7 +152,7 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
             ref={listRef}
             data={items as Item[]}
             keyExtractor={item => item.key}
-            contentContainerStyle={{ padding: 16, gap: 4 }}
+            contentContainerStyle={{ padding: 16, paddingBottom: 24, gap: 4 }}
             onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
             ListHeaderComponent={
               canLoadEarlier ? (
@@ -282,8 +289,7 @@ function TranscriptRow({
     case 'think':
       return (
         <Collapsible
-          glyph="∴"
-          color={status.thinking}
+          mark={<Body style={{ fontFamily: font.mono, fontSize: 12, color: status.thinking }}>{GLYPHS.thinking}</Body>}
           name="thinking"
           meta={summarize(item.text)}
           open={open}
@@ -297,8 +303,13 @@ function TranscriptRow({
     case 'tool':
       return (
         <Collapsible
-          glyph={item.running ? '●' : item.isError ? '✗' : '✓'}
-          color={item.running ? status.running : item.isError ? c.destructive : status.ok}
+          mark={
+            item.isError ? (
+              <Body style={{ fontFamily: font.mono, fontSize: 13, color: c.destructive }}>{GLYPHS.error}</Body>
+            ) : (
+              <Dot color={item.running ? status.running : status.ok} size={8} />
+            )
+          }
           name={item.name}
           meta={summarize(item.input)}
           open={open}
@@ -325,27 +336,23 @@ function TranscriptRow({
     case 'plan':
       return (
         <View style={{ gap: 4, paddingVertical: 6 }}>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Body style={{ color: status.plan, fontFamily: font.mono, fontSize: 12 }}>☰</Body>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            <Bars color={status.plan} />
             <Meta>
               plan · {item.steps.filter(s => s.status === 'done').length}/{item.steps.length} done
             </Meta>
           </View>
           {item.steps.map((step, index) => (
-            <View key={index} style={{ flexDirection: 'row', gap: 8, paddingLeft: 20 }}>
-              <Body
-                style={{
-                  fontFamily: font.mono,
-                  fontSize: 12,
-                  color:
-                    step.status === 'done'
-                      ? status.ok
-                      : step.status === 'in_progress'
-                        ? status.running
-                        : c.mutedForeground,
-                }}>
-                {step.status === 'done' ? '●' : step.status === 'in_progress' ? '◐' : '○'}
-              </Body>
+            <View key={index} style={{ flexDirection: 'row', gap: 8, paddingLeft: 20, alignItems: 'center' }}>
+              <View style={{ width: 10, alignItems: 'center' }}>
+                {step.status === 'done' ? (
+                  <Dot color={status.ok} size={8} />
+                ) : step.status === 'in_progress' ? (
+                  <HalfDot color={status.running} size={9} />
+                ) : (
+                  <Dot color={c.mutedForeground} filled={false} size={8} />
+                )}
+              </View>
               <Body
                 style={{
                   flex: 1,
@@ -381,9 +388,7 @@ function TranscriptRow({
             gap: 8,
           }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Body style={{ fontFamily: font.mono, color: pending ? status.running : c.mutedForeground }}>
-              ◈
-            </Body>
+            <Diamond color={pending ? status.running : c.mutedForeground} />
             <Body style={{ flex: 1, fontFamily: font.monoSemiBold, fontSize: 12.5 }}>
               {item.toolName}
             </Body>
@@ -440,7 +445,7 @@ function TranscriptRow({
             gap: 6,
           }}>
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Body style={{ color: c.destructive, fontFamily: font.mono }}>✗</Body>
+            <Body style={{ color: c.destructive, fontFamily: font.mono, fontSize: 14 }}>{GLYPHS.error}</Body>
             <Body style={{ flex: 1, fontSize: 13, color: c.destructive }}>{item.message}</Body>
           </View>
           {item.detail ? (
@@ -454,8 +459,8 @@ function TranscriptRow({
 
     case 'subagent-start':
       return (
-        <View style={{ flexDirection: 'row', gap: 8, paddingVertical: 6 }}>
-          <Body style={{ color: status.subagent, fontFamily: font.mono, fontSize: 12 }}>⑂</Body>
+        <View style={{ flexDirection: 'row', gap: 8, paddingVertical: 6, alignItems: 'center' }}>
+          <Fork color={status.subagent} />
           <Meta style={{ flex: 1 }}>
             subagent #{item.subagentId} · {item.task}
           </Meta>
@@ -473,15 +478,14 @@ function TranscriptRow({
 
     case 'note':
       return (
-        <View style={{ flexDirection: 'row', gap: 8, paddingVertical: 3 }}>
-          <Body
-            style={{
-              fontFamily: font.mono,
-              fontSize: 12,
-              color: item.tone === 'ok' ? status.ok : item.tone === 'warn' ? status.running : c.mutedForeground,
-            }}>
-            {item.glyph}
-          </Body>
+        <View style={{ flexDirection: 'row', gap: 8, paddingVertical: 3, alignItems: 'center' }}>
+          <View style={{ width: 12, alignItems: 'center' }}>
+            <Dot
+              color={item.tone === 'ok' ? status.ok : item.tone === 'warn' ? status.running : c.mutedForeground}
+              filled={item.tone !== 'muted'}
+              size={7}
+            />
+          </View>
           <Mono style={{ fontSize: 12 }}>{item.text}</Mono>
         </View>
       );
@@ -567,16 +571,14 @@ function QuestionCard({
 }
 
 function Collapsible({
-  glyph,
-  color,
+  mark,
   name,
   meta,
   open,
   onToggle,
   children,
 }: {
-  glyph: string;
-  color: string;
+  mark: React.ReactNode;
   name: string;
   meta: string;
   open: boolean;
@@ -598,7 +600,7 @@ function Collapsible({
           minHeight: 36,
           backgroundColor: pressed ? mix(c.mutedForeground, 10) : 'transparent',
         })}>
-        <Body style={{ fontFamily: font.mono, fontSize: 12, color }}>{glyph}</Body>
+        <View style={{ width: 12, alignItems: 'center' }}>{mark}</View>
         <Body style={{ fontFamily: font.monoSemiBold, fontSize: 12.5 }}>{name}</Body>
         <Mono numberOfLines={1} style={{ flex: 1 }}>
           {meta}

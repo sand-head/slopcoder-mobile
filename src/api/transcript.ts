@@ -70,8 +70,8 @@ export interface ToolItem extends BaseItem {
 
 export interface NoteItem extends BaseItem {
   kind: 'note';
-  glyph: string;
   text: string;
+  /** The renderer draws a mark from this; the fold no longer picks a character. */
   tone: 'muted' | 'ok' | 'warn';
 }
 
@@ -365,32 +365,30 @@ export class TranscriptFolder {
         break;
 
       case 'TurnCompleted':
-        this.items.push({ ...base, kind: 'note', glyph: '✓', text: 'done', tone: 'ok' });
+        this.items.push({ ...base, kind: 'note', text: 'done', tone: 'ok' });
         break;
 
       case 'TurnCancelled':
-        this.items.push({ ...base, kind: 'note', glyph: '✗', text: 'stopped (by you)', tone: 'warn' });
+        this.items.push({ ...base, kind: 'note', text: 'stopped (by you)', tone: 'warn' });
         break;
 
       case 'CompletionRetry':
         this.items.push({
           ...base,
           kind: 'note',
-          glyph: '↻',
           text: `retrying (${payload.attempt}/${payload.maxAttempts}) — ${str('reason')}`,
           tone: 'warn',
         });
         break;
 
       case 'SandboxStatus':
-        this.items.push({ ...base, kind: 'note', glyph: '◇', text: str('message'), tone: 'muted' });
+        this.items.push({ ...base, kind: 'note', text: str('message'), tone: 'muted' });
         break;
 
       case 'CheckpointRestored':
         this.items.push({
           ...base,
           kind: 'note',
-          glyph: '⟲',
           text: `rewound to checkpoint ${payload.number}`,
           tone: 'muted',
         });

@@ -6,12 +6,25 @@
  * without you.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { RefreshControl, ScrollView, View } from 'react-native';
+import { Alert, Modal, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SessionStatus, type SessionSummary } from '../api/contracts';
 import { useAuth } from '../state/auth';
 import { useSessionHub } from '../state/hub';
-import { Body, Button, Hint, Meta, Mono, Screen, SectionLabel, StatusDot, stamp } from '../ui/kit';
+import {
+  Body,
+  Brand,
+  Button,
+  Field,
+  GLYPHS,
+  Hint,
+  Meta,
+  Mono,
+  Screen,
+  SectionLabel,
+  StatusDot,
+  stamp,
+} from '../ui/kit';
 import { font, radius, useTheme } from '../theme';
 
 export function SessionsScreen({ navigation }: { navigation: any }) {
@@ -24,6 +37,8 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<SessionSummary | null>(null);
+  const [draftName, setDraftName] = useState('');
 
   const load = useCallback(async () => {
     if (!seam) return;
@@ -43,6 +58,30 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
 
   // The registry push carries no payload by design — it means "re-list".
   useEffect(() => hub?.addRegistryListener(() => void load()), [hub, load]);
+
+  const rename = async () => {
+    if (!seam || !renaming) return;
+    const target = renaming;
+    setRenaming(null);
+    await seam.rename(target.id, draftName.trim());
+    await load();
+  };
+
+  const remove = (session: SessionSummary) => {
+    // A running session must be stopped first — the server answers DeleteResult
+    // Running rather than deleting it out from under a turn.
+    Alert.alert(`Delete “${session.title}”?`, 'This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          await seam?.deleteSession(session.id);
+          await load();
+        },
+      },
+    ]);
+  };
 
   const running = (sessions ?? []).filter(s => s.status === SessionStatus.Running);
   const idle = (sessions ?? []).filter(s => s.status !== SessionStatus.Running);
@@ -68,22 +107,7 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
           />
         }>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <View
-              style={{
-                width: 22,
-                height: 22,
-                borderRadius: 6,
-                backgroundColor: c.primary,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}>
-              <Body style={{ color: c.primaryForeground, fontFamily: font.display, fontSize: 12 }}>
-                s
-              </Body>
-            </View>
-            <Body style={{ fontFamily: font.mono, fontSize: 15 }}>slopcoder</Body>
-          </View>
+          <Brand />
           <View style={{ flex: 1 }} />
           <Button
             label="Settings"
@@ -114,6 +138,11 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
                   key={session.id}
                   session={session}
                   onPress={() => navigation.navigate('Session', { id: session.id })}
+                  onRename={() => {
+                    setDraftName(session.title);
+                    setRenaming(session);
+                  }}
+                  onDelete={() => remove(session)}
                 />
               ))}
             </View>
@@ -129,11 +158,39 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
                 session={session}
                 flush
                 onPress={() => navigation.navigate('Session', { id: session.id })}
+                onRename={() => {
+                  setDraftName(session.title);
+                  setRenaming(session);
+                }}
+                onDelete={() => remove(session)}
               />
             ))}
           </View>
         ) : null}
       </ScrollView>
+
+      <Modal visible={renaming !== null} transparent animationType="fade" onRequestClose={() => setRenaming(null)}>
+        <Pressable
+          onPress={() => setRenaming(null)}
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 24 }}>
+          <Pressable
+            style={{
+              backgroundColor: c.card,
+              borderRadius: radius.lg,
+              borderWidth: 1,
+              borderColor: c.border,
+              padding: 16,
+              gap: 12,
+            }}>
+            <Meta>Rename session</Meta>
+            <Field value={draftName} onChangeText={setDraftName} autoCapitalize="sentences" />
+            <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>
+              <Button label="Cancel" variant="outline" onPress={() => setRenaming(null)} />
+              <Button label="Rename" onPress={rename} disabled={!draftName.trim()} />
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </Screen>
   );
 }
@@ -141,10 +198,14 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
 function SessionCard({
   session,
   onPress,
+  onRename,
+  onDelete,
   flush,
 }: {
   session: SessionSummary;
   onPress: () => void;
+  onRename: () => void;
+  onDelete: () => void;
   flush?: boolean;
 }) {
   const { c } = useTheme();
@@ -168,23 +229,56 @@ function SessionCard({
           flexDirection: 'row',
           alignItems: 'flex-start',
           gap: 10,
-          padding: flush ? 0 : 12,
-          paddingVertical: flush ? 12 : 12,
+          paddingHorizontal: flush ? 0 : 12,
+          paddingVertical: 12,
           minHeight: 44,
         }}>
-        <View style={{ paddingTop: 5 }}>
-          <StatusDot running={running} />
-        </View>
-        <View style={{ flex: 1, gap: 3 }} onTouchEnd={onPress}>
-          <Body numberOfLines={1}>{session.title}</Body>
-          <Mono numberOfLines={1}>
-            {stamp(session.createdAt)} · {session.autoRoute ? 'auto' : session.model}
-          </Mono>
-          {offline ? (
-            <Meta style={{ color: c.destructive }}>workspace offline</Meta>
-          ) : null}
-        </View>
-        <Button label="Open" variant="ghost" onPress={onPress} />
+        {/* The whole row is the link, as on the web — not a row plus a button
+            that does the same thing. */}
+        <Pressable
+          onPress={onPress}
+          style={({ pressed }) => ({
+            flex: 1,
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            gap: 10,
+            opacity: pressed ? 0.6 : 1,
+          })}>
+          <View style={{ paddingTop: 5 }}>
+            <StatusDot running={running} />
+          </View>
+          <View style={{ flex: 1, gap: 3 }}>
+            <Body numberOfLines={1}>{session.title}</Body>
+            <Mono numberOfLines={1}>
+              {stamp(session.createdAt)} · {session.autoRoute ? 'auto' : session.model}
+            </Mono>
+            {offline ? <Meta style={{ color: c.destructive }}>workspace offline</Meta> : null}
+          </View>
+        </Pressable>
+
+        {/* One overflow rather than two icons: a 390pt row has no space for
+            both beside a title, and Geist Mono has no pencil or bin glyph. */}
+        <Pressable
+          onPress={() =>
+            Alert.alert(session.title, undefined, [
+              { text: 'Rename', onPress: onRename },
+              { text: 'Delete', style: 'destructive', onPress: onDelete },
+              { text: 'Cancel', style: 'cancel' },
+            ])
+          }
+          hitSlop={8}
+          style={({ pressed }) => ({
+            width: 32,
+            height: 32,
+            borderRadius: radius.md,
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: pressed ? 0.5 : 1,
+          })}>
+          <Body style={{ fontFamily: font.mono, fontSize: 16, color: c.mutedForeground }}>
+            {GLYPHS.more}
+          </Body>
+        </Pressable>
       </View>
     </View>
   );

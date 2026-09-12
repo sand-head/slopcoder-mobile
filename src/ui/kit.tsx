@@ -12,6 +12,7 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -81,6 +82,160 @@ export function Body({
   );
 }
 
+/**
+ * The real mark, not a letter in a box.
+ *
+ * The web app ships two theme-fixed SVGs — the frame takes the foreground and
+ * the slop takes the primary, and in dark the primary is swapped for the
+ * brighter sidebar-primary because the button green disappears against a dark
+ * ground. Those are rasterized rather than drawn with react-native-svg: the
+ * mark is the only vector in the app, and a whole native module to render one
+ * image is not a trade worth making.
+ */
+export function LogoMark({ size = 18 }: { size?: number }) {
+  const { isDark } = useTheme();
+  return (
+    <Image
+      source={isDark ? require('../../assets/images/logo-dark.png') : require('../../assets/images/logo-light.png')}
+      style={{ width: size, height: size }}
+      resizeMode="contain"
+      accessibilityIgnoresInvertColors
+    />
+  );
+}
+
+/**
+ * The wordmark. "slop" is the one goofy word in the whole product — bigger,
+ * heavier, rounder and tilted, against the light mono "coder" beside it.
+ */
+export function Brand({ size = 15 }: { size?: number }) {
+  const { c } = useTheme();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+      <LogoMark size={size * 1.2} />
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <Text
+          style={{
+            fontFamily: font.display,
+            fontSize: size * 1.15,
+            lineHeight: size * 1.15,
+            color: c.foreground,
+            transform: [{ rotate: '-2deg' }],
+          }}>
+          slop
+        </Text>
+        <Text
+          style={{
+            fontFamily: font.mono,
+            fontSize: size,
+            letterSpacing: -0.375,
+            color: c.foreground,
+          }}>
+          coder
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Transcript marks, drawn rather than typed.
+ *
+ * The web stylesheet says these are "geometry, not emoji" and backs Geist Mono
+ * with a full system stack, so a missing glyph falls through to something
+ * sensible. React Native has no such stack — and Geist Mono turns out to carry
+ * none of ✓ ✗ ◐ ☰ ∴ ⑂ ◈. Typing them would render whatever the OS happened to
+ * substitute, differently on each platform, or tofu.
+ *
+ * So the ones with no glyph are shapes. `glyphCoverage` in the tests pins the
+ * ones that are still characters.
+ */
+export const GLYPHS = {
+  running: '●',
+  done: '●',
+  error: '×',
+  thinking: '…',
+  more: '…',
+} as const;
+
+export function Dot({ color, filled = true, size = 9 }: { color: string; filled?: boolean; size?: number }) {
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: filled ? color : 'transparent',
+        borderWidth: filled ? 0 : 1.5,
+        borderColor: color,
+      }}
+    />
+  );
+}
+
+/** ◐ — a step under way. */
+export function HalfDot({ color, size = 9 }: { color: string; size?: number }) {
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        borderWidth: 1.5,
+        borderColor: color,
+        overflow: 'hidden',
+      }}>
+      <View style={{ width: size / 2, height: size, backgroundColor: color }} />
+    </View>
+  );
+}
+
+/** ◈ — an approval gate. */
+export function Diamond({ color, size = 9 }: { color: string; size?: number }) {
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        backgroundColor: color,
+        transform: [{ rotate: '45deg' }],
+      }}
+    />
+  );
+}
+
+/** ☰ — a plan. */
+export function Bars({ color, size = 10 }: { color: string; size?: number }) {
+  return (
+    <View style={{ width: size, height: size, justifyContent: 'space-between', paddingVertical: 1 }}>
+      {[0, 1, 2].map(i => (
+        <View key={i} style={{ height: 1.5, backgroundColor: color, borderRadius: 1 }} />
+      ))}
+    </View>
+  );
+}
+
+/** ⑂ — a subagent thread branching off the main one. */
+export function Fork({ color, size = 10 }: { color: string; size?: number }) {
+  return (
+    <View style={{ width: size, height: size }}>
+      <View style={{ position: 'absolute', left: 1, top: 0, bottom: 0, width: 1.5, backgroundColor: color }} />
+      <View style={{ position: 'absolute', left: 1, top: size / 2, height: 1.5, width: size - 3, backgroundColor: color }} />
+      <View
+        style={{
+          position: 'absolute',
+          right: 0,
+          top: size / 2 - 2,
+          width: 5,
+          height: 5,
+          borderRadius: 2.5,
+          backgroundColor: color,
+        }}
+      />
+    </View>
+  );
+}
+
 /** 8px; emerald and pulsing when running, a bare ring when idle. */
 export function StatusDot({ running, size = 8 }: { running: boolean; size?: number }) {
   const { c, status } = useTheme();
@@ -123,7 +278,7 @@ export function Card({
   );
 }
 
-type ButtonVariant = 'primary' | 'outline' | 'ghost' | 'destructive';
+type ButtonVariant = 'primary' | 'outline' | 'ghost' | 'destructive' | 'link-destructive';
 
 export function Button({
   label,
@@ -150,7 +305,9 @@ export function Button({
       ? c.primaryForeground
       : variant === 'ghost'
         ? c.mutedForeground
-        : c.foreground;
+        : variant === 'link-destructive'
+          ? c.destructive
+          : c.foreground;
 
   return (
     <Pressable
@@ -169,13 +326,22 @@ export function Button({
           borderWidth: variant === 'outline' ? 1 : 0,
           borderColor: c.border,
           opacity: off ? 0.45 : pressed ? 0.8 : 1,
+          ...(variant === 'link-destructive'
+            ? { minWidth: 0, paddingHorizontal: 0, height: 32, alignItems: 'flex-start' as const }
+            : null),
         },
         style,
       ]}>
       {busy ? (
         <ActivityIndicator color={foreground} size="small" />
       ) : (
-        <Text style={{ fontFamily: font.sansMedium, fontSize: 14, color: foreground }}>
+        <Text
+          style={{
+            fontFamily: variant === 'link-destructive' ? font.mono : font.sansMedium,
+            fontSize: variant === 'link-destructive' ? 13 : 14,
+            color: foreground,
+            textDecorationLine: variant === 'link-destructive' ? 'underline' : 'none',
+          }}>
           {label}
         </Text>
       )}

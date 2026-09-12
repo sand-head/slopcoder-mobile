@@ -3,11 +3,12 @@
  * from the web UI; what belongs here is what is true of *this device*.
  */
 import React from 'react';
-import { ScrollView, View } from 'react-native';
+import { Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../state/auth';
-import { Body, Button, Hint, Mono, Screen, SectionLabel } from '../ui/kit';
-import { font } from '../theme';
+import { Body, Brand, Button, Hint, Meta, Mono, Screen, SectionLabel } from '../ui/kit';
+import { font, useTheme } from '../theme';
+import pkg from '../../package.json';
 
 export function SettingsScreen({ navigation }: { navigation: any }) {
   const credential = useAuth(s => s.credential);
@@ -27,27 +28,72 @@ export function SettingsScreen({ navigation }: { navigation: any }) {
 
         <View>
           <SectionLabel label="account" />
-          <View style={{ gap: 4, paddingVertical: 10 }}>
-            <Body>{credential?.userName ?? '—'}</Body>
-            <Mono>{credential?.server ?? ''}</Mono>
-          </View>
+          <Row label="signed in as" value={credential?.userName ?? '—'} />
+          <Row label="server" value={credential?.server ?? '—'} mono />
+          <Row
+            label="this device"
+            value={Platform.OS === 'ios' ? 'iPhone (slopcoder)' : 'Android (slopcoder)'}
+          />
         </View>
 
-        <View style={{ gap: 10 }}>
+        <View>
+          <SectionLabel label="elsewhere" />
+          <Hint>
+            Everything else — providers, facets, memory, remote nodes, usage — lives on the server.
+            Open slopcoder in a browser to reach it. Code mode and the terminal are there too; they
+            are not in this app on purpose.
+          </Hint>
+        </View>
+
+        <View>
+          <SectionLabel label="session" />
           <Button
             label="Sign out"
-            variant="destructive"
+            variant="link-destructive"
             onPress={async () => {
               await signOut();
               navigation.popToTop();
             }}
           />
           <Hint>
-            Signing out drops this device’s key. It stays listed under Settings → API keys on the
-            server until you revoke it there.
+            Drops this device’s key. It stays listed under Settings → API keys on the server until
+            you revoke it there.
           </Hint>
+        </View>
+
+        <View style={{ marginTop: 'auto', paddingTop: 24, gap: 8, opacity: 0.7 }}>
+          <Brand size={13} />
+          <Meta>version {pkg.version}</Meta>
         </View>
       </ScrollView>
     </Screen>
+  );
+}
+
+function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  const { c } = useTheme();
+  return (
+    <View
+      style={{
+        minHeight: 44,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12,
+        paddingVertical: 12,
+        borderTopWidth: 1,
+        borderTopColor: c.border,
+      }}>
+      <Meta>{label}</Meta>
+      {mono ? (
+        <Mono numberOfLines={1} style={{ flexShrink: 1, fontSize: 12 }}>
+          {value}
+        </Mono>
+      ) : (
+        <Body numberOfLines={1} style={{ flexShrink: 1, fontSize: 14 }}>
+          {value}
+        </Body>
+      )}
+    </View>
   );
 }

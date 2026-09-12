@@ -18,8 +18,8 @@ import {
 } from 'react-native-vision-camera';
 import { parsePairingUri } from '../api/seam';
 import { loginMessage, useAuth } from '../state/auth';
-import { Body, Button, Field, Hint, Meta, Screen } from '../ui/kit';
-import { font, radius, useTheme } from '../theme';
+import { Body, Brand, Button, Field, Hint, Meta, Screen } from '../ui/kit';
+import { radius, useTheme } from '../theme';
 
 export function LoginScreen() {
   const { c } = useTheme();
@@ -80,21 +80,8 @@ export function LoginScreen() {
             gap: 14,
           }}
           keyboardShouldPersistTaps="handled">
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-            <View
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 8,
-                backgroundColor: c.primary,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}>
-              <Body style={{ color: c.primaryForeground, fontFamily: font.display, fontSize: 15 }}>
-                s
-              </Body>
-            </View>
-            <Body style={{ fontFamily: font.mono, fontSize: 15 }}>slopcoder</Body>
+          <View style={{ marginBottom: 8 }}>
+            <Brand size={17} />
           </View>
 
           <Meta>Server</Meta>

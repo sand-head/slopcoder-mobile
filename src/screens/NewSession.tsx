@@ -163,7 +163,7 @@ export function NewSessionScreen({ navigation }: { navigation: any }) {
           </View>
 
           <View>
-            <SectionLabel label="repositories" count={pickedRepos.length} />
+            <SectionLabel label="repositories" count={pickedRepos.length || undefined} />
             <Field value={query} onChangeText={setQuery} placeholder="Search repositories…" />
             <View style={{ height: 8 }} />
             <Chips
@@ -181,7 +181,7 @@ export function NewSessionScreen({ navigation }: { navigation: any }) {
 
           {nodes.length > 0 ? (
             <View>
-              <SectionLabel label="remote nodes" count={pickedNodes.length} />
+              <SectionLabel label="remote nodes" count={pickedNodes.length || undefined} />
               <Chips
                 multi
                 options={nodes.filter(n => n.enabled).map(n => ({ key: n.id, label: n.name }))}
