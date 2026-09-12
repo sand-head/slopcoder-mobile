@@ -477,6 +477,68 @@ export function Button({
   );
 }
 
+/**
+ * The circular send, and the square stop inside it.
+ *
+ * Losing the word costs something: Send and Steer become the same button, and
+ * only the running dot and the placeholder say which one you are pressing. The
+ * shape carries the distinction that actually matters — arrow versus square is
+ * the convention every chat app has trained people on — and the action word
+ * survives as the accessibility label, so it is still spoken aloud.
+ */
+export function SendButton({
+  mode,
+  onPress,
+  disabled,
+  busy,
+  accessibilityLabel,
+}: {
+  mode: 'send' | 'stop';
+  onPress: () => void;
+  disabled?: boolean;
+  busy?: boolean;
+  accessibilityLabel: string;
+}) {
+  const { c } = useTheme();
+  const off = disabled || busy;
+  const foreground = mode === 'stop' ? c.foreground : c.primaryForeground;
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      disabled={off}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        width: 34,
+        height: 34,
+        borderRadius: 17,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: mode === 'stop' ? mix(c.mutedForeground, 22) : c.primary,
+        opacity: off ? 0.4 : pressed ? 0.75 : 1,
+      })}>
+      {busy ? (
+        <ActivityIndicator color={foreground} size="small" />
+      ) : mode === 'stop' ? (
+        // No font here has a filled square, so it is drawn — same reason the
+        // transcript's marks are.
+        <View style={{ width: 11, height: 11, borderRadius: 2.5, backgroundColor: foreground }} />
+      ) : (
+        <Text
+          style={{
+            fontFamily: font.mono,
+            fontSize: 17,
+            lineHeight: 19,
+            color: foreground,
+          }}>
+          ↑
+        </Text>
+      )}
+    </Pressable>
+  );
+}
+
 export function Field({
   value,
   onChangeText,

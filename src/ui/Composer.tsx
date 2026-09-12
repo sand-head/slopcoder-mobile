@@ -23,7 +23,7 @@ import {
   type ModelCandidate,
   type ModelSelection,
 } from '../api/contracts';
-import { Body, Button, Dot, GlassSurface, Meta, Mono, Sliders } from './kit';
+import { Body, Dot, GlassSurface, Meta, Mono, SendButton, Sliders } from './kit';
 import { Sheet, SheetGroup, SheetMultiGroup } from './Sheet';
 import { Field } from './kit';
 import { font, mix, radius, useTheme } from '../theme';
@@ -203,13 +203,12 @@ export function Composer({
           {options.approval !== ApprovalMode.Dangerous ? <Pill label={approvalLabel} muted /> : null}
 
           <View style={{ flex: 1 }} />
-          <Button
-            label={action}
+          <SendButton
+            mode={action === 'Stop' ? 'stop' : 'send'}
             onPress={onAction}
             busy={busy}
             disabled={disabled}
-            variant={action === 'Stop' ? 'outline' : 'primary'}
-            style={{ height: 34, minWidth: 62, paddingHorizontal: 12 }}
+            accessibilityLabel={action}
           />
         </View>
       </GlassSurface>
