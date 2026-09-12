@@ -37,6 +37,7 @@ import {
   Dot,
   Fork,
   GLYPHS,
+  GlassSurface,
   HalfDot,
   Hint,
   LogoMark,
@@ -69,6 +70,12 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
   // many dials are off default, and the transcript has to clear whatever it is.
   const [composerHeight, setComposerHeight] = useState(96);
   const listRef = useRef<FlatList<Item>>(null);
+
+  // Pinned to the bottom until the user scrolls away from it, the same 80px the
+  // web uses. Without this, every push during a streaming turn drags the view
+  // back down while you are trying to read what happened earlier.
+  const [pinned, setPinned] = useState(true);
+  const pinnedRef = useRef(true);
 
   useEffect(() => {
     if (!seam) return;
@@ -213,7 +220,19 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
               paddingBottom: composerHeight + 16,
               gap: 4,
             }}
-            onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+            onScroll={event => {
+              const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+              const fromBottom = contentSize.height - contentOffset.y - layoutMeasurement.height;
+              const next = fromBottom < 80;
+              // A ref as well as state: onContentSizeChange would otherwise
+              // close over whatever `pinned` was when it was last rendered.
+              pinnedRef.current = next;
+              setPinned(next);
+            }}
+            scrollEventThrottle={16}
+            onContentSizeChange={() => {
+              if (pinnedRef.current) listRef.current?.scrollToEnd({ animated: true });
+            }}
             ListHeaderComponent={
               canLoadEarlier ? (
                 <Pressable onPress={loadEarlier} style={{ alignSelf: 'center', paddingVertical: 8 }}>
@@ -248,6 +267,34 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
             }
           />
         )}
+
+        {!pinned ? (
+          <View
+            pointerEvents="box-none"
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: composerHeight + 8,
+              alignItems: 'center',
+            }}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Jump to the latest"
+              onPress={() => {
+                pinnedRef.current = true;
+                setPinned(true);
+                listRef.current?.scrollToEnd({ animated: true });
+              }}
+              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+              <GlassSurface
+                cornerRadius={18}
+                style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}>
+                <Body style={{ fontFamily: font.mono, fontSize: 15, lineHeight: 17 }}>↓</Body>
+              </GlassSurface>
+            </Pressable>
+          </View>
+        ) : null}
 
         <View
           onLayout={event => setComposerHeight(event.nativeEvent.layout.height)}
