@@ -60,6 +60,9 @@ jobs:
           key: pods-${{ hashFiles('ios/Podfile.lock') }}
           restore-keys: pods-
       - uses: ruby/setup-ruby@v1
+        # Version comes from .ruby-version. The Gemfile works on 3.4 too, but
+        # pinning means a runner image bump cannot change the CocoaPods that
+        # generates the Xcode project.
         with:
           bundler-cache: true
       - name: Install pods
