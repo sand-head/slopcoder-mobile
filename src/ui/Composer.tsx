@@ -134,7 +134,7 @@ export function Composer({
 
   return (
     <View style={{ gap: 8 }}>
-      {attachments ? <AttachChips attachments={attachments} onAdd={() => setSheet('attach')} /> : null}
+      {attachments ? <AttachChips attachments={attachments} /> : null}
 
       <View
         style={{
@@ -189,6 +189,19 @@ export function Composer({
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {attachments ? (
+            <IconButton onPress={() => setSheet('attach')} accessibilityLabel="Attach">
+              <Body
+                style={{
+                  fontFamily: font.mono,
+                  fontSize: 17,
+                  lineHeight: 17,
+                  color: c.mutedForeground,
+                }}>
+                +
+              </Body>
+            </IconButton>
+          ) : null}
           <IconButton onPress={() => setSheet('turn')} accessibilityLabel="Turn settings">
             <Sliders color={c.mutedForeground} />
           </IconButton>
@@ -306,8 +319,12 @@ export function Composer({
   );
 }
 
-/** The web's `.pl-attach` row: what is attached, plus the dashed add chip. */
-function AttachChips({ attachments, onAdd }: { attachments: Attachments; onAdd: () => void }) {
+/**
+ * What is attached, and nothing else — adding is the `+` inside the card.
+ * Absent entirely when there is nothing, so an empty composer stays empty
+ * rather than carrying a row that only ever said "add".
+ */
+function AttachChips({ attachments }: { attachments: Attachments }) {
   const { c } = useTheme();
 
   const picked = [
@@ -330,6 +347,8 @@ function AttachChips({ attachments, onAdd }: { attachments: Attachments; onAdd: 
         }),
     })),
   ];
+
+  if (picked.length === 0) return null;
 
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
@@ -354,19 +373,6 @@ function AttachChips({ attachments, onAdd }: { attachments: Attachments; onAdd: 
           <Mono style={{ fontSize: 12 }}>×</Mono>
         </Pressable>
       ))}
-      <Pressable
-        onPress={onAdd}
-        style={{
-          height: 28,
-          justifyContent: 'center',
-          paddingHorizontal: 10,
-          borderRadius: 9999,
-          borderWidth: 1,
-          borderStyle: 'dashed',
-          borderColor: c.border,
-        }}>
-        <Mono style={{ fontSize: 11.5 }}>+ add</Mono>
-      </Pressable>
     </View>
   );
 }
