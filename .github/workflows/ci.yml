@@ -59,9 +59,12 @@ jobs:
           path: ios/Pods
           key: pods-${{ hashFiles('ios/Podfile.lock') }}
           restore-keys: pods-
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
       - name: Install pods
-        working-directory: ios
-        run: bundle install && bundle exec pod install
+        # The Gemfile is at the repo root, not in ios/ — only pod install runs there.
+        run: bundle exec pod install --project-directory=ios
       - name: Build for the simulator
         working-directory: ios
         # No signing, so this needs no secrets and runs on fork PRs too.

@@ -32,8 +32,8 @@ describe('fonts', () => {
   it('ships nothing the theme does not name', () => {
     const shipped = fs
       .readdirSync(FONT_DIR)
-      .filter(f => f.endsWith('.ttf'))
-      .map(f => f.replace(/\.ttf$/, ''));
+      .filter((f: string) => f.endsWith('.ttf'))
+      .map((f: string) => f.replace(/\.ttf$/, ''));
 
     expect([...shipped].sort()).toEqual([...families].sort());
   });

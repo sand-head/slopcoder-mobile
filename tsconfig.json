@@ -1,5 +1,10 @@
 {
   "extends": "@react-native/typescript-config",
+  "compilerOptions": {
+    // The base config narrows `types` to ["jest"], which leaves the Node globals
+    // undeclared. One test reads the bundled fonts off disk and needs them.
+    "types": ["jest", "node"]
+  },
   "include": ["**/*.ts", "**/*.tsx"],
   "exclude": ["**/node_modules", "**/Pods"]
 }

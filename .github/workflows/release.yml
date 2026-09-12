@@ -53,9 +53,12 @@ jobs:
         with:
           xcode-version: '16.2'
       - run: npm ci
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
       - name: Install pods
-        working-directory: ios
-        run: bundle install && bundle exec pod install
+        # The Gemfile is at the repo root, not in ios/ — only pod install runs there.
+        run: bundle exec pod install --project-directory=ios
       - name: Import the signing certificate
         env:
           CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
