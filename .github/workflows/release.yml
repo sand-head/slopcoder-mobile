@@ -1,0 +1,91 @@
+# Signed builds. Runs only on a tag pushed to this repository, never on a pull
+# request — fork PRs must never see these secrets.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - run: npm ci
+      - name: Restore the keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+      - name: Assemble release
+        working-directory: android
+        env:
+          SLOPCODER_STORE_FILE: release.keystore
+          SLOPCODER_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          SLOPCODER_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          SLOPCODER_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease bundleRelease --no-daemon
+      - name: Attach the APK to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/bundle/release/app-release.aab
+
+  ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.2'
+      - run: npm ci
+      - name: Install pods
+        working-directory: ios
+        run: bundle install && bundle exec pod install
+      - name: Import the signing certificate
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          # A throwaway keychain, so nothing outlives the job.
+          security create-keychain -p runner build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p runner build.keychain
+          echo "$CERTIFICATE_BASE64" | base64 -d > certificate.p12
+          security import certificate.p12 -k build.keychain -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k runner build.keychain
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "$PROVISIONING_PROFILE_BASE64" | base64 -d > ~/Library/MobileDevice/Provisioning\ Profiles/slopcoder.mobileprovision
+      - name: Archive and export
+        working-directory: ios
+        run: |
+          xcodebuild -workspace slopcoder_mobile.xcworkspace \
+            -scheme slopcoder_mobile -configuration Release \
+            -archivePath build/slopcoder.xcarchive archive
+          xcodebuild -exportArchive -archivePath build/slopcoder.xcarchive \
+            -exportOptionsPlist ExportOptions.plist -exportPath build/ipa
+      - name: Upload to TestFlight
+        env:
+          APP_STORE_KEY_ID: ${{ secrets.APP_STORE_KEY_ID }}
+          APP_STORE_ISSUER_ID: ${{ secrets.APP_STORE_ISSUER_ID }}
+          APP_STORE_KEY_BASE64: ${{ secrets.APP_STORE_KEY_BASE64 }}
+        run: |
+          mkdir -p ~/private_keys
+          echo "$APP_STORE_KEY_BASE64" | base64 -d > ~/private_keys/AuthKey_$APP_STORE_KEY_ID.p8
+          xcrun altool --upload-app -f ios/build/ipa/*.ipa -t ios \
+            --apiKey "$APP_STORE_KEY_ID" --apiIssuer "$APP_STORE_ISSUER_ID"

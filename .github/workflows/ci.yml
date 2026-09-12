@@ -1,0 +1,76 @@
+# Checks that need no secrets, so a fork's pull request gets real signal.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx eslint . --ext .ts,.tsx
+      - run: npx jest
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - run: npm ci
+      - name: Assemble debug
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+  ios:
+    # Free for public repositories on standard runners. Larger macOS runners are
+    # billed even here, so do not reach for one without a reason.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          # Pinned deliberately: a runner image bump moves the default Xcode and
+          # breaks the build at a time unrelated to any commit here.
+          xcode-version: '16.2'
+      - run: npm ci
+      - uses: actions/cache@v4
+        with:
+          path: ios/Pods
+          key: pods-${{ hashFiles('ios/Podfile.lock') }}
+          restore-keys: pods-
+      - name: Install pods
+        working-directory: ios
+        run: bundle install && bundle exec pod install
+      - name: Build for the simulator
+        working-directory: ios
+        # No signing, so this needs no secrets and runs on fork PRs too.
+        run: |
+          xcodebuild \
+            -workspace slopcoder_mobile.xcworkspace \
+            -scheme slopcoder_mobile \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build

@@ -1,0 +1,676 @@
+/**
+ * The cockpit: a header, the transcript, and one composer whose button changes
+ * meaning with the turn.
+ *
+ * The approval card is the reason this app exists on a phone. When the harness
+ * blocks on a permission, the turn is stopped until someone answers — wherever
+ * they are. Liveness comes from `state.pendingApprovalIds`, **never** from the
+ * transcript: an approval resolved on the laptop is still in the scrollback here.
+ */
+import React, { useMemo, useRef, useState } from 'react';
+import {
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Markdown from '@ronradtke/react-native-markdown-display';
+import { SessionStatus, type UserQuestionAnswer } from '../api/contracts';
+import { summarize, type Item } from '../api/transcript';
+import { useAuth } from '../state/auth';
+import { useSessionHub } from '../state/hub';
+import { useSession } from '../state/session';
+import { Body, Button, Field, Hint, Meta, Mono, Screen } from '../ui/kit';
+import { font, mix, radius, useTheme } from '../theme';
+
+export function SessionDetailScreen({ route, navigation }: { route: any; navigation: any }) {
+  const { c, status, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const id: string = route.params.id;
+
+  const seam = useAuth(s => s.seam);
+  const { hub } = useSessionHub();
+  const { state, items, live, loading, error, canLoadEarlier, loadEarlier } = useSession(
+    seam,
+    hub,
+    id,
+  );
+
+  const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
+  const listRef = useRef<FlatList<Item>>(null);
+
+  const running = state?.status === SessionStatus.Running;
+
+  /**
+   * One button, three meanings — running with an empty box is the only way to
+   * stop, so Enter can never reach Stop by accident.
+   */
+  const action = running ? (draft.trim() ? 'Steer' : 'Stop') : 'Send';
+
+  const send = async () => {
+    if (!seam || !state) return;
+    setSending(true);
+    try {
+      if (action === 'Stop') {
+        await seam.stop(id);
+        return;
+      }
+
+      const prompt = draft.trim();
+      if (!prompt) return;
+      setDraft('');
+
+      // Steering only lands while a turn is in flight; a false means it ended
+      // between the render and the tap, so start a new one instead.
+      if (running && (await seam.steer(id, { prompt }))) return;
+
+      await seam.start(id, {
+        prompt,
+        selection: {
+          auto: state.autoRoute,
+          connectionId: state.connectionId ?? null,
+          modelId: state.selectedModel ?? null,
+        },
+      });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const contextPercent = useMemo(() => {
+    const usage = state?.lastUsage;
+    if (!usage || usage.contextWindowTokens === 0) return null;
+    const prompt =
+      usage.inputTokens + usage.cacheReadInputTokens + usage.cacheCreationInputTokens;
+    return Math.min(100, Math.round((100 * prompt) / usage.contextWindowTokens));
+  }, [state?.lastUsage]);
+
+  const subtitle = [
+    running ? 'running' : 'idle',
+    contextPercent === null ? null : `${contextPercent}%`,
+    state?.usage.estimatedCost == null ? null : `$${state.usage.estimatedCost.toFixed(2)}`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  return (
+    <Screen>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 10,
+          paddingHorizontal: 16,
+          paddingTop: insets.top + 8,
+          paddingBottom: 8,
+          borderBottomWidth: 1,
+          borderBottomColor: c.border,
+        }}>
+        <Pressable
+          onPress={() => navigation.goBack()}
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 8,
+            backgroundColor: c.primary,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+          <Body style={{ color: c.primaryForeground, fontFamily: font.display, fontSize: 15 }}>
+            s
+          </Body>
+        </Pressable>
+        <View style={{ flex: 1 }}>
+          <Body numberOfLines={1} style={{ fontSize: 14, fontWeight: '500' }}>
+            {state?.title ?? 'Session'}
+          </Body>
+          <Mono numberOfLines={1}>{subtitle}</Mono>
+        </View>
+      </View>
+
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={insets.top + 44}
+        style={{ flex: 1 }}>
+        {error ? (
+          <View style={{ padding: 20 }}>
+            <Body style={{ color: c.destructive }}>{error}</Body>
+          </View>
+        ) : (
+          <FlatList
+            ref={listRef}
+            data={items as Item[]}
+            keyExtractor={item => item.key}
+            contentContainerStyle={{ padding: 16, gap: 4 }}
+            onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+            ListHeaderComponent={
+              canLoadEarlier ? (
+                <Pressable onPress={loadEarlier} style={{ alignSelf: 'center', paddingVertical: 8 }}>
+                  <Meta>Load earlier</Meta>
+                </Pressable>
+              ) : loading ? (
+                <Hint>Loading…</Hint>
+              ) : undefined
+            }
+            renderItem={({ item }) => (
+              <TranscriptRow
+                item={item}
+                pendingApprovals={state?.pendingApprovalIds ?? []}
+                pendingQuestions={state?.pendingQuestionIds ?? []}
+                onApprove={(requestId, approved) => void seam?.approve(id, { requestId, approved })}
+                onAnswer={(requestId, answers) => void seam?.answer(id, { requestId, answers })}
+              />
+            )}
+            ListFooterComponent={
+              live ? (
+                <View style={{ gap: 6, paddingTop: 6 }}>
+                  {live.thinking ? (
+                    <Body style={{ fontStyle: 'italic', color: c.mutedForeground, fontSize: 13 }}>
+                      {live.thinking}
+                    </Body>
+                  ) : null}
+                  {live.text ? (
+                    <Markdown style={markdownStyles(c, isDark)}>{live.text}</Markdown>
+                  ) : null}
+                </View>
+              ) : undefined
+            }
+          />
+        )}
+
+        <View
+          style={{
+            padding: 10,
+            paddingBottom: insets.bottom + 10,
+            gap: 8,
+          }}>
+          <View
+            style={{
+              backgroundColor: c.card,
+              borderWidth: 1,
+              borderColor: c.border,
+              borderRadius: radius.lg,
+              padding: 8,
+              gap: 6,
+            }}>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 4 }}>
+              <Body
+                style={{
+                  fontFamily: font.mono,
+                  fontSize: 18,
+                  width: 20,
+                  color: running ? status.running : c.primary,
+                }}>
+                {running ? '●' : '›'}
+              </Body>
+              <Field
+                value={draft}
+                onChangeText={setDraft}
+                placeholder={running ? 'Steer the agent…' : 'Send a message…'}
+                autoCapitalize="sentences"
+                style={{
+                  flex: 1,
+                  height: undefined,
+                  minHeight: 32,
+                  maxHeight: 192,
+                  borderWidth: 0,
+                  backgroundColor: 'transparent',
+                  paddingHorizontal: 0,
+                }}
+              />
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+              <Button
+                label={state?.stopRequested ? 'Stopping…' : action}
+                onPress={send}
+                busy={sending}
+                disabled={state?.stopRequested || (action !== 'Stop' && !draft.trim())}
+                variant={action === 'Stop' ? 'outline' : 'primary'}
+              />
+            </View>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Screen>
+  );
+}
+
+function TranscriptRow({
+  item,
+  pendingApprovals,
+  pendingQuestions,
+  onApprove,
+  onAnswer,
+}: {
+  item: Item;
+  pendingApprovals: string[];
+  pendingQuestions: string[];
+  onApprove: (requestId: string, approved: boolean) => void;
+  onAnswer: (requestId: string, answers: UserQuestionAnswer[] | null) => void;
+}) {
+  const { c, status, isDark } = useTheme();
+  const [open, setOpen] = useState(false);
+
+  switch (item.kind) {
+    case 'user':
+      return (
+        <View
+          style={{
+            marginVertical: 8,
+            borderRadius: radius.lg,
+            borderWidth: 1,
+            borderColor: mix(c.primary, 25),
+            backgroundColor: mix(c.primary, isDark ? 8 : 4),
+            padding: 12,
+            gap: 4,
+          }}>
+          <Meta style={{ color: c.primary, fontSize: 10.5 }}>
+            {item.steering ? 'you · steering' : 'you'}
+          </Meta>
+          <Body style={{ fontSize: 14 }}>{item.text}</Body>
+        </View>
+      );
+
+    case 'text':
+      // No bubble, no border: assistant prose is the page.
+      return <Markdown style={markdownStyles(c, isDark)}>{item.text}</Markdown>;
+
+    case 'think':
+      return (
+        <Collapsible
+          glyph="∴"
+          color={status.thinking}
+          name="thinking"
+          meta={summarize(item.text)}
+          open={open}
+          onToggle={() => setOpen(!open)}>
+          <Body style={{ fontStyle: 'italic', color: c.mutedForeground, fontSize: 12.5 }}>
+            {item.text}
+          </Body>
+        </Collapsible>
+      );
+
+    case 'tool':
+      return (
+        <Collapsible
+          glyph={item.running ? '●' : item.isError ? '✗' : '✓'}
+          color={item.running ? status.running : item.isError ? c.destructive : status.ok}
+          name={item.name}
+          meta={summarize(item.input)}
+          open={open}
+          onToggle={() => setOpen(!open)}>
+          <View style={{ gap: 6 }}>
+            {item.input ? (
+              <>
+                <Meta style={{ fontSize: 10 }}>input</Meta>
+                <Pre text={item.input} />
+              </>
+            ) : null}
+            {item.result !== null ? (
+              <>
+                <Meta style={{ fontSize: 10 }}>{item.isError ? 'error' : 'result'}</Meta>
+                <Pre text={item.result} error={item.isError} />
+              </>
+            ) : (
+              <Meta style={{ fontSize: 10 }}>running…</Meta>
+            )}
+          </View>
+        </Collapsible>
+      );
+
+    case 'plan':
+      return (
+        <View style={{ gap: 4, paddingVertical: 6 }}>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Body style={{ color: status.plan, fontFamily: font.mono, fontSize: 12 }}>☰</Body>
+            <Meta>
+              plan · {item.steps.filter(s => s.status === 'done').length}/{item.steps.length} done
+            </Meta>
+          </View>
+          {item.steps.map((step, index) => (
+            <View key={index} style={{ flexDirection: 'row', gap: 8, paddingLeft: 20 }}>
+              <Body
+                style={{
+                  fontFamily: font.mono,
+                  fontSize: 12,
+                  color:
+                    step.status === 'done'
+                      ? status.ok
+                      : step.status === 'in_progress'
+                        ? status.running
+                        : c.mutedForeground,
+                }}>
+                {step.status === 'done' ? '●' : step.status === 'in_progress' ? '◐' : '○'}
+              </Body>
+              <Body
+                style={{
+                  flex: 1,
+                  fontSize: 12.5,
+                  color: step.status === 'done' ? c.mutedForeground : c.foreground,
+                  textDecorationLine: step.status === 'done' ? 'line-through' : 'none',
+                }}>
+                {step.text}
+              </Body>
+            </View>
+          ))}
+        </View>
+      );
+
+    case 'approval': {
+      // The transcript remembers; only the state knows what is still blocking.
+      const pending = pendingApprovals.includes(item.requestId);
+      const tint = pending
+        ? mix(status.running, 50)
+        : item.approved === false
+          ? mix(c.destructive, 30)
+          : c.border;
+
+      return (
+        <View
+          style={{
+            marginVertical: 8,
+            borderRadius: radius.lg,
+            borderWidth: 1,
+            borderColor: tint,
+            backgroundColor: pending ? mix(status.running, 6) : mix(c.muted, 20),
+            padding: 12,
+            gap: 8,
+          }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Body style={{ fontFamily: font.mono, color: pending ? status.running : c.mutedForeground }}>
+              ◈
+            </Body>
+            <Body style={{ flex: 1, fontFamily: font.mono, fontSize: 12.5, fontWeight: '600' }}>
+              {item.toolName}
+            </Body>
+            <Meta style={{ fontSize: 10 }}>
+              {pending ? 'waiting' : item.approved === null ? 'no longer pending' : item.approved ? 'approved' : 'denied'}
+            </Meta>
+          </View>
+
+          {/* Never truncated: this is the evidence the decision rests on. */}
+          {item.reason ? (
+            <Body style={{ fontSize: 12.5, color: c.mutedForeground }}>{item.reason}</Body>
+          ) : null}
+          {item.input ? <Pre text={item.input} /> : null}
+
+          {pending ? (
+            <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>
+              <Button
+                label={item.refused ? 'Keep refused' : 'Deny'}
+                variant="outline"
+                onPress={() => onApprove(item.requestId, false)}
+              />
+              <Button
+                label={item.refused ? 'Run anyway' : 'Approve'}
+                variant={item.refused ? 'destructive' : 'primary'}
+                onPress={() => onApprove(item.requestId, true)}
+              />
+            </View>
+          ) : null}
+        </View>
+      );
+    }
+
+    case 'question': {
+      const pending = pendingQuestions.includes(item.requestId);
+      return (
+        <QuestionCard
+          item={item}
+          pending={pending}
+          onAnswer={answers => onAnswer(item.requestId, answers)}
+        />
+      );
+    }
+
+    case 'error':
+      return (
+        <View
+          style={{
+            marginVertical: 6,
+            borderRadius: radius.md,
+            borderWidth: 1,
+            borderColor: mix(c.destructive, 30),
+            backgroundColor: mix(c.destructive, 5),
+            padding: 10,
+            gap: 6,
+          }}>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Body style={{ color: c.destructive, fontFamily: font.mono }}>✗</Body>
+            <Body style={{ flex: 1, fontSize: 13, color: c.destructive }}>{item.message}</Body>
+          </View>
+          {item.detail ? (
+            <Pressable onPress={() => setOpen(!open)}>
+              <Meta>{open ? 'hide detail' : 'what the provider said'}</Meta>
+            </Pressable>
+          ) : null}
+          {open && item.detail ? <Pre text={item.detail} error /> : null}
+        </View>
+      );
+
+    case 'subagent-start':
+      return (
+        <View style={{ flexDirection: 'row', gap: 8, paddingVertical: 6 }}>
+          <Body style={{ color: status.subagent, fontFamily: font.mono, fontSize: 12 }}>⑂</Body>
+          <Meta style={{ flex: 1 }}>
+            subagent #{item.subagentId} · {item.task}
+          </Meta>
+        </View>
+      );
+
+    case 'divider':
+      return (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}>
+          <View style={{ flex: 1, height: 1, backgroundColor: c.border }} />
+          <Meta style={{ fontSize: 10 }}>{item.label}</Meta>
+          <View style={{ flex: 1, height: 1, backgroundColor: c.border }} />
+        </View>
+      );
+
+    case 'note':
+      return (
+        <View style={{ flexDirection: 'row', gap: 8, paddingVertical: 3 }}>
+          <Body
+            style={{
+              fontFamily: font.mono,
+              fontSize: 12,
+              color: item.tone === 'ok' ? status.ok : item.tone === 'warn' ? status.running : c.mutedForeground,
+            }}>
+            {item.glyph}
+          </Body>
+          <Mono style={{ fontSize: 12 }}>{item.text}</Mono>
+        </View>
+      );
+
+    default:
+      return null;
+  }
+}
+
+function QuestionCard({
+  item,
+  pending,
+  onAnswer,
+}: {
+  item: Extract<Item, { kind: 'question' }>;
+  pending: boolean;
+  onAnswer: (answers: UserQuestionAnswer[] | null) => void;
+}) {
+  const { c } = useTheme();
+  const [picked, setPicked] = useState<Record<number, string>>({});
+
+  const complete = item.questions.every((_, index) => picked[index]);
+
+  return (
+    <View
+      style={{
+        marginVertical: 8,
+        borderRadius: radius.lg,
+        borderWidth: 1,
+        borderColor: pending ? mix(c.primary, 40) : c.border,
+        padding: 12,
+        gap: 10,
+      }}>
+      <Meta>{pending ? 'question' : 'answered'}</Meta>
+
+      {item.questions.map((question, index) => (
+        <View key={index} style={{ gap: 6 }}>
+          <Body style={{ fontSize: 13.5 }}>{question.text}</Body>
+          {pending ? (
+            <View style={{ gap: 6 }}>
+              {question.options.map(option => (
+                <Pressable
+                  key={option}
+                  onPress={() => setPicked({ ...picked, [index]: option })}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: picked[index] === option ? c.primary : c.border,
+                    backgroundColor: picked[index] === option ? mix(c.primary, 8) : 'transparent',
+                    borderRadius: radius.md,
+                    padding: 10,
+                    minHeight: 44,
+                    justifyContent: 'center',
+                  }}>
+                  <Body style={{ fontSize: 13 }}>{option}</Body>
+                </Pressable>
+              ))}
+            </View>
+          ) : (
+            <Mono>{item.answers?.[index]?.answer ?? 'dismissed'}</Mono>
+          )}
+        </View>
+      ))}
+
+      {pending ? (
+        <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>
+          <Button label="Dismiss" variant="outline" onPress={() => onAnswer(null)} />
+          <Button
+            label="Answer"
+            disabled={!complete}
+            onPress={() =>
+              onAnswer(
+                item.questions.map((question, index) => ({
+                  question: question.text,
+                  answer: picked[index],
+                })),
+              )
+            }
+          />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function Collapsible({
+  glyph,
+  color,
+  name,
+  meta,
+  open,
+  onToggle,
+  children,
+}: {
+  glyph: string;
+  color: string;
+  name: string;
+  meta: string;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  const { c } = useTheme();
+  return (
+    <View>
+      <Pressable
+        onPress={onToggle}
+        style={({ pressed }) => ({
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8,
+          paddingVertical: 6,
+          paddingHorizontal: 6,
+          borderRadius: radius.md,
+          minHeight: 36,
+          backgroundColor: pressed ? mix(c.mutedForeground, 10) : 'transparent',
+        })}>
+        <Body style={{ fontFamily: font.mono, fontSize: 12, color }}>{glyph}</Body>
+        <Body style={{ fontFamily: font.mono, fontSize: 12.5, fontWeight: '600' }}>{name}</Body>
+        <Mono numberOfLines={1} style={{ flex: 1 }}>
+          {meta}
+        </Mono>
+      </Pressable>
+      {open ? (
+        <View style={{ paddingLeft: 24, paddingRight: 4, paddingBottom: 6 }}>{children}</View>
+      ) : null}
+    </View>
+  );
+}
+
+function Pre({ text, error }: { text: string; error?: boolean }) {
+  const { c } = useTheme();
+  return (
+    <ScrollView
+      style={{
+        maxHeight: 260,
+        borderWidth: 1,
+        borderColor: error ? mix(c.destructive, 30) : c.border,
+        backgroundColor: error ? mix(c.destructive, 5) : mix(c.muted, 30),
+        borderRadius: radius.md,
+      }}
+      nestedScrollEnabled>
+      <Body
+        style={{
+          fontFamily: font.mono,
+          fontSize: 11.5,
+          lineHeight: 17,
+          padding: 8,
+          color: error ? c.destructive : c.foreground,
+        }}>
+        {text}
+      </Body>
+    </ScrollView>
+  );
+}
+
+function markdownStyles(c: ReturnType<typeof useTheme>['c'], _isDark: boolean) {
+  return {
+    body: { color: c.foreground, fontFamily: font.sans, fontSize: 14.4, lineHeight: 23 },
+    code_inline: {
+      fontFamily: font.mono,
+      fontSize: 12.5,
+      backgroundColor: mix(c.muted, 60),
+      color: c.foreground,
+    },
+    // Wide code must scroll inside itself, never widen the screen.
+    code_block: {
+      fontFamily: font.mono,
+      fontSize: 12,
+      backgroundColor: mix(c.muted, 40),
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: radius.md,
+      color: c.foreground,
+    },
+    fence: {
+      fontFamily: font.mono,
+      fontSize: 12,
+      backgroundColor: mix(c.muted, 40),
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: radius.md,
+      color: c.foreground,
+    },
+    link: { color: c.primary },
+    blockquote: {
+      backgroundColor: 'transparent',
+      borderLeftWidth: 2,
+      borderLeftColor: c.border,
+      paddingLeft: 10,
+    },
+  };
+}
