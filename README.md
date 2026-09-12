@@ -1,6 +1,6 @@
 # slopcoder-mobile
 
-A React Native client for [slopcoder](https://git.sand.town/sand_head/slopcoder). It
+A React Native client for slopcoder, a self-hosted coding agent. It
 creates sessions and watches them run — and, when the agent stops to ask permission,
 lets you answer from wherever you are.
 
@@ -65,8 +65,7 @@ npm run android           # or: npm run ios   (needs macOS + pods)
 npx tsc --noEmit && npx eslint . --ext .ts,.tsx && npx jest
 ```
 
-Point it at a slopcoder instance and sign in. For a local server see the `verify` skill in
-the slopcoder repo — scratch Postgres, no Docker.
+Point it at a slopcoder instance and sign in.
 
 `scripts/wire-check.cjs` drives the compiled client against a running server and asserts
 the five facts above — most importantly that `Delta` binds four arguments. Run it whenever
@@ -74,8 +73,8 @@ the seam or the hub changes; the unit tests cannot see any of it.
 
 ### Fonts
 
-`assets/fonts/` holds five static cuts, derived from the `.woff2` files in
-`src/SlopCoder.Web/wwwroot/fonts/` in the slopcoder repo.
+`assets/fonts/` holds five static cuts of Geist, Geist Mono and Baloo 2 — all SIL OFL 1.1,
+see `assets/fonts/OFL.txt` and the notes beside them.
 
 Geist and Geist Mono ship upstream as *variable* fonts, and React Native honours no weight
 axis — it would render everything at 400 whatever `fontWeight` said. So they are instanced
