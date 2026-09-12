@@ -8,7 +8,13 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Modal, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { SessionStatus, type SessionSummary } from '../api/contracts';
+import {
+  ApprovalMode,
+  SessionStatus,
+  type FacetOption,
+  type ModelCandidate,
+  type SessionSummary,
+} from '../api/contracts';
 import { useAuth } from '../state/auth';
 import { useSessionHub } from '../state/hub';
 import {
@@ -25,7 +31,8 @@ import {
   StatusDot,
   stamp,
 } from '../ui/kit';
-import { font, radius, useTheme } from '../theme';
+import { Composer, type TurnOptions } from '../ui/Composer';
+import { font, mix, radius, useTheme } from '../theme';
 
 export function SessionsScreen({ navigation }: { navigation: any }) {
   const { c } = useTheme();
@@ -39,6 +46,63 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
   const [error, setError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<SessionSummary | null>(null);
   const [draftName, setDraftName] = useState('');
+
+  const [prompt, setPrompt] = useState('');
+  const [starting, setStarting] = useState(false);
+  const [models, setModels] = useState<ModelCandidate[]>([]);
+  const [facets, setFacets] = useState<FacetOption[]>([]);
+  const [repos, setRepos] = useState<string[]>([]);
+  const [recent, setRecent] = useState<string[]>([]);
+  const [options, setOptions] = useState<TurnOptions>({
+    selection: { auto: true, connectionId: null, modelId: null },
+    thinking: null,
+    approval: ApprovalMode.Dangerous,
+    facet: null,
+  });
+
+  useEffect(() => {
+    if (!seam) return;
+    void Promise.all([seam.models(), seam.facets(), seam.recentRepos()]).then(([m, f, r]) => {
+      setModels(m);
+      setFacets(f);
+      setRecent(r);
+    });
+  }, [seam]);
+
+  /** The launcher's own two-call start, as on the web: create, then run. */
+  const start = async () => {
+    if (!seam) return;
+    const text = prompt.trim();
+    if (!text) return;
+
+    setStarting(true);
+    try {
+      const id = await seam.createSession({
+        selection: options.selection,
+        initialPrompt: text,
+        repoUrls: repos.length > 0 ? repos : null,
+        thinkingLevel: options.thinking,
+        facet: options.facet,
+      });
+      if (!id) {
+        setError('That model selection is no longer available.');
+        return;
+      }
+
+      if (options.approval !== ApprovalMode.Dangerous) {
+        await seam.setApprovalMode(id, { mode: options.approval, useClassifier: true });
+      }
+      await seam.start(id, { prompt: text, selection: options.selection });
+
+      setPrompt('');
+      setRepos([]);
+      navigation.navigate('Session', { id });
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setStarting(false);
+    }
+  };
 
   const load = useCallback(async () => {
     if (!seam) return;
@@ -118,7 +182,29 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
 
         <Body style={{ fontFamily: font.sansMedium, fontSize: 24, marginTop: 4 }}>What’s next?</Body>
 
-        <Button label="Start a session" onPress={() => navigation.navigate('NewSession')} />
+        <Composer
+          value={prompt}
+          onChangeValue={setPrompt}
+          placeholder="Describe a task…"
+          action="Start"
+          onAction={start}
+          busy={starting}
+          disabled={!prompt.trim()}
+          options={options}
+          onChangeOptions={setOptions}
+          models={models}
+          facets={facets}
+          accessory={
+            <RepoChips
+              recent={recent}
+              picked={repos}
+              onToggle={url =>
+                setRepos(repos.includes(url) ? repos.filter(r => r !== url) : [...repos, url])
+              }
+              onMore={() => navigation.navigate('NewSession')}
+            />
+          }
+        />
 
         {!connected && credential ? <Mono>Reconnecting to live updates…</Mono> : null}
         {error ? <Body style={{ color: c.destructive, fontSize: 13 }}>{error}</Body> : null}
@@ -193,6 +279,70 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
       </Modal>
     </Screen>
   );
+}
+
+/**
+ * The web's `+ add` chip row. Recent repositories are one tap; anything that
+ * needs searching — or a node, or a facet picked from a list — is the full
+ * screen behind "More".
+ */
+function RepoChips({
+  recent,
+  picked,
+  onToggle,
+  onMore,
+}: {
+  recent: string[];
+  picked: string[];
+  onToggle: (url: string) => void;
+  onMore: () => void;
+}) {
+  const { c } = useTheme();
+
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+      {recent.slice(0, 4).map(url => {
+        const on = picked.includes(url);
+        return (
+          <Pressable
+            key={url}
+            onPress={() => onToggle(url)}
+            style={{
+              height: 28,
+              justifyContent: 'center',
+              paddingHorizontal: 10,
+              borderRadius: 9999,
+              borderWidth: 1,
+              borderColor: on ? c.primary : c.border,
+              backgroundColor: on ? mix(c.primary, 10) : 'transparent',
+            }}>
+            <Mono style={{ fontSize: 11.5, color: on ? c.primary : c.mutedForeground }}>
+              {shortRepo(url)}
+            </Mono>
+          </Pressable>
+        );
+      })}
+      <Pressable
+        onPress={onMore}
+        style={{
+          height: 28,
+          justifyContent: 'center',
+          paddingHorizontal: 10,
+          borderRadius: 9999,
+          borderWidth: 1,
+          borderStyle: 'dashed',
+          borderColor: c.border,
+        }}>
+        <Mono style={{ fontSize: 11.5 }}>+ more</Mono>
+      </Pressable>
+    </View>
+  );
+}
+
+/** `https://host/owner/repo.git` reads better as `owner/repo` on a phone. */
+function shortRepo(url: string): string {
+  const parts = url.replace(/\.git$/, '').split('/').filter(Boolean);
+  return parts.slice(-2).join('/') || url;
 }
 
 function SessionCard({

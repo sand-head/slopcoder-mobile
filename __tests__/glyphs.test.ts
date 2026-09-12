@@ -12,6 +12,7 @@ import path from 'path';
 import { GLYPHS } from '../src/ui/kit';
 
 const FONT_DIR = path.join(__dirname, '..', 'assets', 'fonts');
+const SRC = path.join(__dirname, '..', 'src');
 
 /**
  * Minimal TrueType cmap reader — enough to answer "is this codepoint mapped?".
@@ -64,8 +65,42 @@ function codepoints(file: string): Set<number> {
   return found;
 }
 
+/** Every non-ASCII character that appears in source we actually render. */
+function charactersInSource(): Map<string, string[]> {
+  const found = new Map<string, string[]>();
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!/\.tsx?$/.test(entry.name)) continue;
+
+      // Comments name the glyphs that are missing — that is what they are for —
+      // so they must not fail the test that exists because those are missing.
+      // Blanked rather than removed, to keep the line numbers honest.
+      const code = fs
+        .readFileSync(full, 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, block => block.replace(/[^\n]/g, ' '))
+        .replace(/\/\/.*$/gm, '');
+
+      code.split('\n').forEach((line, index) => {
+        for (const ch of line) {
+          if (ch.codePointAt(0)! < 128) continue;
+          const at = `${path.relative(SRC, full)}:${index + 1}`;
+          found.set(ch, [...(found.get(ch) ?? []), at]);
+        }
+      });
+    }
+  };
+  walk(SRC);
+  return found;
+}
+
 describe('glyph coverage', () => {
   const mono = codepoints(path.join(FONT_DIR, 'GeistMono-Regular.ttf'));
+  const sans = codepoints(path.join(FONT_DIR, 'Geist-Regular.ttf'));
 
   it.each(Object.entries(GLYPHS))('%s (%s) exists in Geist Mono', (_name, ch) => {
     expect(mono.has(ch.codePointAt(0)!)).toBe(true);
@@ -78,5 +113,19 @@ describe('glyph coverage', () => {
 
   it('finds ordinary characters, so a pass is not a vacuous one', () => {
     for (const ch of 'abcXYZ0189 ·—') expect(mono.has(ch.codePointAt(0)!)).toBe(true);
+  });
+
+  /**
+   * The GLYPHS map above only guards the characters that go through it. Nothing
+   * stopped a literal being typed straight into a component — which is exactly
+   * what happened with a tick in a sheet row, and it would have rendered as
+   * whatever the OS substituted or as nothing at all.
+   */
+  it('has every non-ASCII character used anywhere in src, in both fonts', () => {
+    const missing = [...charactersInSource().entries()]
+      .filter(([ch]) => !mono.has(ch.codePointAt(0)!) || !sans.has(ch.codePointAt(0)!))
+      .map(([ch, where]) => `${ch} (U+${ch.codePointAt(0)!.toString(16).toUpperCase()}) at ${where[0]}`);
+
+    expect(missing).toEqual([]);
   });
 });

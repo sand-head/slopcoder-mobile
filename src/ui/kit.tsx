@@ -204,6 +204,81 @@ export function Diamond({ color, size = 9 }: { color: string; size?: number }) {
   );
 }
 
+/**
+ * The web's sliders icon, which opens the turn's settings. An ellipsis was
+ * standing in for it and read as "more actions" rather than "the dials".
+ */
+export function Sliders({ color, size = 14 }: { color: string; size?: number }) {
+  const rows = [
+    { y: 0.16, knob: 0.62 },
+    { y: 0.5, knob: 0.3 },
+    { y: 0.84, knob: 0.72 },
+  ];
+
+  return (
+    <View style={{ width: size, height: size }}>
+      {rows.map(row => (
+        <React.Fragment key={row.y}>
+          <View
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              top: size * row.y - 0.75,
+              height: 1.5,
+              borderRadius: 1,
+              backgroundColor: color,
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              left: size * row.knob - 2,
+              top: size * row.y - 2.5,
+              width: 5,
+              height: 5,
+              borderRadius: 2.5,
+              backgroundColor: color,
+            }}
+          />
+        </React.Fragment>
+      ))}
+    </View>
+  );
+}
+
+/** A tick. Neither font has one, and a sheet without it shows no selection. */
+export function Check({ color, size = 14 }: { color: string; size?: number }) {
+  return (
+    <View style={{ width: size, height: size }}>
+      <View
+        style={{
+          position: 'absolute',
+          left: size * 0.06,
+          top: size * 0.52,
+          width: size * 0.42,
+          height: 2,
+          borderRadius: 1,
+          backgroundColor: color,
+          transform: [{ rotate: '45deg' }],
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          left: size * 0.3,
+          top: size * 0.42,
+          width: size * 0.72,
+          height: 2,
+          borderRadius: 1,
+          backgroundColor: color,
+          transform: [{ rotate: '-50deg' }],
+        }}
+      />
+    </View>
+  );
+}
+
 /** ☰ — a plan. */
 export function Bars({ color, size = 10 }: { color: string; size?: number }) {
   return (

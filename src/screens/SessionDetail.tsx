@@ -7,7 +7,7 @@
  * they are. Liveness comes from `state.pendingApprovalIds`, **never** from the
  * transcript: an approval resolved on the laptop is still in the scrollback here.
  */
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -18,7 +18,13 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Markdown from '@ronradtke/react-native-markdown-display';
-import { SessionStatus, type UserQuestionAnswer } from '../api/contracts';
+import {
+  ApprovalMode,
+  SessionStatus,
+  type FacetOption,
+  type ModelCandidate,
+  type UserQuestionAnswer,
+} from '../api/contracts';
 import { summarize, type Item } from '../api/transcript';
 import { useAuth } from '../state/auth';
 import { useSessionHub } from '../state/hub';
@@ -29,7 +35,6 @@ import {
   Button,
   Diamond,
   Dot,
-  Field,
   Fork,
   GLYPHS,
   HalfDot,
@@ -39,10 +44,11 @@ import {
   Mono,
   Screen,
 } from '../ui/kit';
+import { Composer, type TurnOptions } from '../ui/Composer';
 import { font, mix, radius, useTheme } from '../theme';
 
 export function SessionDetailScreen({ route, navigation }: { route: any; navigation: any }) {
-  const { c, status, isDark } = useTheme();
+  const { c, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const id: string = route.params.id;
 
@@ -56,7 +62,51 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
 
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [models, setModels] = useState<ModelCandidate[]>([]);
+  const [facets, setFacets] = useState<FacetOption[]>([]);
+  const [options, setOptions] = useState<TurnOptions | null>(null);
   const listRef = useRef<FlatList<Item>>(null);
+
+  useEffect(() => {
+    if (!seam) return;
+    void Promise.all([seam.models(), seam.facets()]).then(([m, f]) => {
+      setModels(m);
+      setFacets(f);
+    });
+  }, [seam]);
+
+  // Seeded from the session, then owned here: the model rides on the next
+  // turn's selection, while thinking, approvals and facet are session state the
+  // server keeps, so changing those writes through immediately.
+  useEffect(() => {
+    if (!state || options !== null) return;
+    setOptions({
+      selection: {
+        auto: state.autoRoute,
+        connectionId: state.connectionId ?? null,
+        modelId: state.selectedModel ?? null,
+      },
+      thinking: state.thinkingLevel ?? null,
+      approval: state.approvalMode,
+      facet: state.facetName ?? null,
+    });
+  }, [state, options]);
+
+  const applyOptions = (next: TurnOptions) => {
+    const previous = options;
+    setOptions(next);
+    if (!seam || !previous) return;
+
+    if (next.thinking !== previous.thinking) {
+      void seam.setThinking(id, { level: next.thinking });
+    }
+    if (next.approval !== previous.approval) {
+      void seam.setApprovalMode(id, { mode: next.approval, useClassifier: true });
+    }
+    if (next.facet !== previous.facet) {
+      void seam.setFacet(id, { facetName: next.facet });
+    }
+  };
 
   const running = state?.status === SessionStatus.Running;
 
@@ -85,7 +135,7 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
 
       await seam.start(id, {
         prompt,
-        selection: {
+        selection: options?.selection ?? {
           auto: state.autoRoute,
           connectionId: state.connectionId ?? null,
           modelId: state.selectedModel ?? null,
@@ -189,57 +239,28 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
           />
         )}
 
-        <View
-          style={{
-            padding: 10,
-            paddingBottom: insets.bottom + 10,
-            gap: 8,
-          }}>
-          <View
-            style={{
-              backgroundColor: c.card,
-              borderWidth: 1,
-              borderColor: c.border,
-              borderRadius: radius.lg,
-              padding: 8,
-              gap: 6,
-            }}>
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 4 }}>
-              <Body
-                style={{
-                  fontFamily: font.mono,
-                  fontSize: 18,
-                  width: 20,
-                  color: running ? status.running : c.primary,
-                }}>
-                {running ? '●' : '›'}
-              </Body>
-              <Field
-                value={draft}
-                onChangeText={setDraft}
-                placeholder={running ? 'Steer the agent…' : 'Send a message…'}
-                autoCapitalize="sentences"
-                style={{
-                  flex: 1,
-                  height: undefined,
-                  minHeight: 32,
-                  maxHeight: 192,
-                  borderWidth: 0,
-                  backgroundColor: 'transparent',
-                  paddingHorizontal: 0,
-                }}
-              />
-            </View>
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-              <Button
-                label={state?.stopRequested ? 'Stopping…' : action}
-                onPress={send}
-                busy={sending}
-                disabled={state?.stopRequested || (action !== 'Stop' && !draft.trim())}
-                variant={action === 'Stop' ? 'outline' : 'primary'}
-              />
-            </View>
-          </View>
+        <View style={{ paddingHorizontal: 10, paddingBottom: insets.bottom + 10, paddingTop: 4 }}>
+          <Composer
+            value={draft}
+            onChangeValue={setDraft}
+            placeholder={running ? 'Steer the agent…' : 'Send a message…'}
+            action={state?.stopRequested ? 'Stopping…' : action}
+            onAction={send}
+            busy={sending}
+            disabled={state?.stopRequested || (action !== 'Stop' && !draft.trim())}
+            running={running}
+            options={
+              options ?? {
+                selection: { auto: true, connectionId: null, modelId: null },
+                thinking: null,
+                approval: ApprovalMode.Dangerous,
+                facet: null,
+              }
+            }
+            onChangeOptions={applyOptions}
+            models={models}
+            facets={facets}
+          />
         </View>
       </KeyboardAvoidingView>
     </Screen>
