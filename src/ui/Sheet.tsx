@@ -9,7 +9,7 @@
 import React from 'react';
 import { Modal, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Body, Check, Meta, Mono } from './kit';
+import { Body, Check, GlassSurface, Meta, Mono } from './kit';
 import { mix, radius, useTheme } from '../theme';
 
 export interface SheetOption {
@@ -39,14 +39,15 @@ export function Sheet({
       <Pressable
         onPress={onClose}
         style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' }}>
-        <Pressable
-          style={{
-            backgroundColor: c.background,
-            borderTopLeftRadius: radius.xxl,
-            borderTopRightRadius: radius.xxl,
-            paddingBottom: insets.bottom + 12,
-            maxHeight: '85%',
-          }}>
+        <Pressable style={{ maxHeight: '85%' }}>
+          <GlassSurface
+            cornerRadius={radius.xxl}
+            style={{
+              // Only the top corners round: the sheet is anchored to the edge.
+              borderBottomLeftRadius: 0,
+              borderBottomRightRadius: 0,
+              paddingBottom: insets.bottom + 12,
+            }}>
           <View style={{ alignItems: 'center', paddingTop: 8, paddingBottom: 4 }}>
             <View
               style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: c.mutedForeground, opacity: 0.4 }}
@@ -79,9 +80,10 @@ export function Sheet({
             <View style={{ width: 32 }} />
           </View>
 
-          <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 4, gap: 14 }}>
-            {children}
-          </ScrollView>
+            <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 4, gap: 14 }}>
+              {children}
+            </ScrollView>
+          </GlassSurface>
         </Pressable>
       </Pressable>
     </Modal>

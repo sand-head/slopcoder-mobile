@@ -65,6 +65,9 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
   const [models, setModels] = useState<ModelCandidate[]>([]);
   const [facets, setFacets] = useState<FacetOption[]>([]);
   const [options, setOptions] = useState<TurnOptions | null>(null);
+  // Measured, not guessed: the composer grows with the text and with however
+  // many dials are off default, and the transcript has to clear whatever it is.
+  const [composerHeight, setComposerHeight] = useState(96);
   const listRef = useRef<FlatList<Item>>(null);
 
   useEffect(() => {
@@ -202,7 +205,14 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
             ref={listRef}
             data={items as Item[]}
             keyExtractor={item => item.key}
-            contentContainerStyle={{ padding: 16, paddingBottom: 24, gap: 4 }}
+            // The composer floats on top, so the transcript scrolls under it
+            // rather than stopping short — which is the whole point of a
+            // material that refracts what is behind it.
+            contentContainerStyle={{
+              padding: 16,
+              paddingBottom: composerHeight + 16,
+              gap: 4,
+            }}
             onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
             ListHeaderComponent={
               canLoadEarlier ? (
@@ -239,7 +249,17 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
           />
         )}
 
-        <View style={{ paddingHorizontal: 10, paddingBottom: insets.bottom + 10, paddingTop: 4 }}>
+        <View
+          onLayout={event => setComposerHeight(event.nativeEvent.layout.height)}
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            paddingHorizontal: 10,
+            paddingBottom: insets.bottom + 10,
+            paddingTop: 4,
+          }}>
           <Composer
             value={draft}
             onChangeValue={setDraft}

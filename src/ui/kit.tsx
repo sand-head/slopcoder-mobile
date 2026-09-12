@@ -22,6 +22,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { LiquidGlassView, isLiquidGlassSupported } from '@callstack/liquid-glass';
 import { mix, radius, font, useTheme } from '../theme';
 
 export function Meta({ children, style }: { children: React.ReactNode; style?: StyleProp<TextStyle> }) {
@@ -325,6 +326,58 @@ export function StatusDot({ running, size = 8 }: { running: boolean; size?: numb
         borderColor: c.border,
       }}
     />
+  );
+}
+
+/**
+ * A surface that is glass where the OS has it, and the card we already had
+ * everywhere else.
+ *
+ * `isLiquidGlassSupported` is false on Android and below iOS 26, and our
+ * deployment target is 16 — so the fallback is not an edge case, it is what most
+ * of the matrix renders. It has to look finished on its own.
+ *
+ * Worth knowing when placing one: glass refracts what is *behind* it. Over a
+ * plain background it reads as a flat tint and is not worth the native view, so
+ * only surfaces that actually float over content use this.
+ */
+export function GlassSurface({
+  children,
+  style,
+  cornerRadius = radius.xl,
+  tint,
+}: {
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+  cornerRadius?: number;
+  tint?: string;
+}) {
+  const { c } = useTheme();
+
+  if (!isLiquidGlassSupported) {
+    return (
+      <View
+        style={[
+          {
+            backgroundColor: c.card,
+            borderWidth: 1,
+            borderColor: c.border,
+            borderRadius: cornerRadius,
+          },
+          style,
+        ]}>
+        {children}
+      </View>
+    );
+  }
+
+  return (
+    <LiquidGlassView
+      effect="regular"
+      tintColor={tint}
+      style={[{ borderRadius: cornerRadius, overflow: 'hidden' }, style]}>
+      {children}
+    </LiquidGlassView>
   );
 }
 

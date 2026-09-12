@@ -23,7 +23,7 @@ import {
   type ModelCandidate,
   type ModelSelection,
 } from '../api/contracts';
-import { Body, Button, Dot, Meta, Mono, Sliders } from './kit';
+import { Body, Button, Dot, GlassSurface, Meta, Mono, Sliders } from './kit';
 import { Sheet, SheetGroup, SheetMultiGroup } from './Sheet';
 import { Field } from './kit';
 import { font, mix, radius, useTheme } from '../theme';
@@ -136,17 +136,9 @@ export function Composer({
     <View style={{ gap: 8 }}>
       {attachments ? <AttachChips attachments={attachments} /> : null}
 
-      <View
-        style={{
-          backgroundColor: c.card,
-          borderWidth: 1,
-          borderColor: c.border,
-          borderRadius: radius.xl,
-          paddingHorizontal: 10,
-          paddingTop: 8,
-          paddingBottom: 8,
-          gap: 8,
-        }}>
+      <GlassSurface
+        cornerRadius={radius.xl}
+        style={{ paddingHorizontal: 10, paddingTop: 8, paddingBottom: 8, gap: 8 }}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
           {/* The web's ›, which becomes a running dot mid-turn. A fixed box the
               height of the input's first line, centring whatever sits in it —
@@ -220,7 +212,7 @@ export function Composer({
             style={{ height: 34, minWidth: 62, paddingHorizontal: 12 }}
           />
         </View>
-      </View>
+      </GlassSurface>
 
       <Sheet visible={sheet === 'model'} title="Select model" onClose={() => setSheet(null)}>
         <SheetGroup

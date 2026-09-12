@@ -76,6 +76,22 @@ Point it at a slopcoder instance and sign in.
 the five facts above — most importantly that `Delta` binds four arguments. Run it whenever
 the seam or the hub changes; the unit tests cannot see any of it.
 
+### Liquid Glass
+
+The composer and the sheets are `GlassSurface`, which is `@callstack/liquid-glass` on iOS 26
+and the card we already had everywhere else. `isLiquidGlassSupported` is false on Android and
+below iOS 26, and the deployment target is 16 — so the fallback is not an edge case, it is
+what most of the matrix renders, and it has to look finished on its own.
+
+Glass refracts what is *behind* it, so it only earns its place on a surface that floats over
+content. That made it a layout change rather than a material swap: in the cockpit the
+composer is now absolutely positioned and the transcript scrolls under it, with the list's
+bottom padding measured from the composer's own `onLayout` — it grows with the text and with
+however many dials are off default.
+
+Only those two surfaces use it. A glass panel over a plain background is a flat tint and not
+worth a native view.
+
 ### Fonts
 
 `assets/fonts/` holds five static cuts of Geist, Geist Mono and Baloo 2 — all SIL OFL 1.1,
