@@ -80,3 +80,9 @@ yarn-error.log
 *.p8
 *.mobileprovision
 ios/ExportOptions.plist
+
+# …except the debug keystore, which is not signing material. Every React Native
+# project ships this exact well-known key with the password "android"; it signs
+# debug builds only and is meant to be committed. Excluding it fails the Android
+# build outright at :app:validateSigningDebug.
+!android/app/debug.keystore
