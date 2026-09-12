@@ -91,6 +91,65 @@ export function Sheet({
 }
 
 /**
+ * A scale, laid out as one. Six full rows for thinking pushed approvals below
+ * the fold and left facet barely on screen — and the options are not unrelated
+ * choices, they are one dial from off to max, which reads better along an axis
+ * than down a list.
+ */
+export function SheetSegments({
+  label,
+  options,
+  selected,
+  onSelect,
+}: {
+  label?: string;
+  options: SheetOption[];
+  selected: string;
+  onSelect: (key: string) => void;
+}) {
+  const { c } = useTheme();
+
+  return (
+    <View style={{ gap: 6 }}>
+      {label ? <Meta>{label}</Meta> : null}
+      <View
+        style={{
+          flexDirection: 'row',
+          backgroundColor: mix(c.mutedForeground, 12),
+          borderRadius: radius.md,
+          padding: 3,
+          gap: 3,
+        }}>
+        {options.map(option => {
+          const on = selected === option.key;
+          return (
+            <Pressable
+              key={option.key}
+              onPress={() => onSelect(option.key)}
+              style={({ pressed }) => ({
+                flex: 1,
+                minHeight: 34,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: radius.sm,
+                backgroundColor: on ? c.card : pressed ? mix(c.mutedForeground, 10) : 'transparent',
+                borderWidth: on ? 1 : 0,
+                borderColor: c.border,
+              })}>
+              <Mono
+                numberOfLines={1}
+                style={{ fontSize: 11.5, color: on ? c.foreground : c.mutedForeground }}>
+                {option.label}
+              </Mono>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+/**
  * The same card, but choices that stack rather than replace each other —
  * repositories and nodes, where picking one does not unpick the last.
  */

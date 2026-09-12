@@ -24,7 +24,7 @@ import {
   type ModelSelection,
 } from '../api/contracts';
 import { Body, Dot, GlassSurface, Meta, Mono, SendButton, Sliders } from './kit';
-import { Sheet, SheetGroup, SheetMultiGroup } from './Sheet';
+import { Sheet, SheetGroup, SheetMultiGroup, SheetSegments } from './Sheet';
 import { Field } from './kit';
 import { font, mix, radius, useTheme } from '../theme';
 
@@ -239,7 +239,7 @@ export function Composer({
       </Sheet>
 
       <Sheet visible={sheet === 'turn'} title="Turn settings" onClose={() => setSheet(null)}>
-        <SheetGroup
+        <SheetSegments
           label="thinking"
           options={THINKING.map(t => ({ key: t.key, label: t.label }))}
           selected={THINKING.find(t => t.value === options.thinking)?.key ?? 'auto'}
