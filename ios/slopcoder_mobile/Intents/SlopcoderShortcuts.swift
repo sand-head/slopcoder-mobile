@@ -27,5 +27,15 @@ struct SlopcoderShortcuts: AppShortcutsProvider {
             shortTitle: "Running Sessions",
             systemImageName: "list.bullet.rectangle"
         )
+
+        AppShortcut(
+            intent: OpenSessionIntent(),
+            phrases: [
+                "Open \(\.$target) in \(.applicationName)",
+                "Show me \(\.$target) in \(.applicationName)",
+            ],
+            shortTitle: "Open a Session",
+            systemImageName: "arrow.up.forward.app"
+        )
     }
 }

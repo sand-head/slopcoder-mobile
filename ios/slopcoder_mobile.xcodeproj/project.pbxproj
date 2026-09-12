@@ -22,6 +22,8 @@
 		9B3F5C78E67A4A75BC34D01C /* StartSessionIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F4FECA1530F4EDA8A1E466E /* StartSessionIntent.swift */; };
 		46568DCCE85F4090AE16A75E /* RunningSessionsIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 413875123E764D368FE04EBB /* RunningSessionsIntent.swift */; };
 		C77AC4ACB5094576808DBA07 /* SlopcoderShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8345F214FB0B408089BB5987 /* SlopcoderShortcuts.swift */; };
+		18A6D68E2DE542508940CC86 /* SessionEntity.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF53BBE189114961AB6F85FB /* SessionEntity.swift */; };
+		726A6F356B1F403786728043 /* OpenSessionIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C5172448B444669B48F70DF /* OpenSessionIntent.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -46,6 +48,8 @@
 		3F4FECA1530F4EDA8A1E466E /* StartSessionIntent.swift */ = {isa = PBXFileReference; name = "StartSessionIntent.swift"; path = "slopcoder_mobile/Intents/StartSessionIntent.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 		413875123E764D368FE04EBB /* RunningSessionsIntent.swift */ = {isa = PBXFileReference; name = "RunningSessionsIntent.swift"; path = "slopcoder_mobile/Intents/RunningSessionsIntent.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 		8345F214FB0B408089BB5987 /* SlopcoderShortcuts.swift */ = {isa = PBXFileReference; name = "SlopcoderShortcuts.swift"; path = "slopcoder_mobile/Intents/SlopcoderShortcuts.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		EF53BBE189114961AB6F85FB /* SessionEntity.swift */ = {isa = PBXFileReference; name = "SessionEntity.swift"; path = "slopcoder_mobile/Intents/SessionEntity.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		1C5172448B444669B48F70DF /* OpenSessionIntent.swift */ = {isa = PBXFileReference; name = "OpenSessionIntent.swift"; path = "slopcoder_mobile/Intents/OpenSessionIntent.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -143,6 +147,8 @@
 				3F4FECA1530F4EDA8A1E466E /* StartSessionIntent.swift */,
 				413875123E764D368FE04EBB /* RunningSessionsIntent.swift */,
 				8345F214FB0B408089BB5987 /* SlopcoderShortcuts.swift */,
+				EF53BBE189114961AB6F85FB /* SessionEntity.swift */,
+				1C5172448B444669B48F70DF /* OpenSessionIntent.swift */,
 			);
 			name = Intents;
 			sourceTree = "<group>";
@@ -306,6 +312,8 @@
 				9B3F5C78E67A4A75BC34D01C /* StartSessionIntent.swift in Sources */,
 				46568DCCE85F4090AE16A75E /* RunningSessionsIntent.swift in Sources */,
 				C77AC4ACB5094576808DBA07 /* SlopcoderShortcuts.swift in Sources */,
+				18A6D68E2DE542508940CC86 /* SessionEntity.swift in Sources */,
+				726A6F356B1F403786728043 /* OpenSessionIntent.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

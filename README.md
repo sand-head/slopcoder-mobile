@@ -110,16 +110,27 @@ Required secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_STORE_PASSWORD`, `ANDROID_
 
 ## Siri
 
-Two App Intents, in `ios/slopcoder_mobile/Intents/`:
+Three App Intents and an entity, in `ios/slopcoder_mobile/Intents/`:
 
 - **Start a Session** — "Hey Siri, start a slopcoder session." Asks what to work on, and
   optionally which repository (offered from your recent ones).
 - **Check Running Sessions** — "Hey Siri, what is slopcoder doing?" Says what is running,
   how far into its context, and whether anything has stopped to ask you something.
+- **Open Session** — "Hey Siri, open the pairing QR session in slopcoder."
+- **`SessionEntity`** — an intent describes what the app *does*; an entity describes what
+  it *knows*. Without the second, sessions are only words in a spoken reply: Siri cannot
+  refer back to one, resolve a spoken title to it, or offer it in Spotlight. Both the other
+  intents return entities, so a follow-up or a downstream Shortcuts action operates on the
+  sessions rather than on the sentence describing them.
 
-Both are registered as App Shortcuts, so they work with no setup. Neither opens the app:
-`openAppWhenRun` is false, because the point is to start or check work without stopping
-what you were doing.
+All three are registered as App Shortcuts, so they work with no setup. Only **Open Session**
+brings the app forward; `openAppWhenRun` is false on the other two, because the point is to
+start or check work without stopping what you were doing.
+
+Note on the layering: App Shortcuts supplies fixed phrases. iOS 27's **App Schemas** are the
+semantic route that needs no phrases at all, but they are typed to Apple's domains — mail,
+photos, books, journal, presentations, spreadsheets, system — and a coding session fits none
+of them. If a developer-tools domain ever appears, conforming is the upgrade.
 
 They are **Swift, and they do not go through the React Native bridge**. Siri can invoke an
 intent without launching the app, and booting the JS runtime to make two HTTP calls would
@@ -131,6 +142,12 @@ group or entitlement is needed.
 
 There is **no approve-a-tool-call intent**, on purpose. Approving a command by voice is a
 capability worth adding deliberately rather than by default.
+
+Opening a session goes through the app's own URL scheme, `slopcoder://session/<id>`: the
+AppDelegate posts the notification React Native's Linking already listens for, and React
+Navigation's `linking` config routes it. That contract spans Swift and TypeScript with
+nothing in between, so `__tests__/deep-link.test.ts` reads the URL out of the Swift, runs it
+through the real router, and checks the scheme is in Info.plist.
 
 Since there is no Swift toolchain on Linux, `__tests__/xcode-project.test.ts` checks that
 every file the target compiles actually exists at the path the project claims — Xcode

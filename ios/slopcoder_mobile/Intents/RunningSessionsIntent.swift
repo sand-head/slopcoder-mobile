@@ -20,34 +20,42 @@ struct RunningSessionsIntent: AppIntent {
     /// handful of simultaneous turns is not a thing you listen to anyway.
     private static let detailLimit = 4
 
-    func perform() async throws -> some IntentResult & ProvidesDialog & ReturnsValue<String> {
+    func perform() async throws -> some IntentResult & ProvidesDialog & ReturnsValue<[SessionEntity]> {
         let client = SeamClient(credential: try CredentialStore.load())
         let running = try await client.sessions().filter { $0.status == 1 }
 
         guard !running.isEmpty else {
-            return .result(value: "Nothing running.", dialog: "Nothing is running.")
+            return .result(value: [], dialog: "Nothing is running.")
         }
 
         var lines: [String] = []
         var blocked: [String] = []
+        var entities: [SessionEntity] = []
 
         for session in running.prefix(Self.detailLimit) {
             // A session that vanishes between the list and the detail is not
             // worth failing the whole answer over.
-            guard let state = try? await client.state(of: session.id) else {
-                lines.append(session.title)
-                continue
-            }
+            let state = try? await client.state(of: session.id)
+            let waiting = !(state?.pendingApprovalIds.isEmpty ?? true)
+                || !(state?.pendingQuestionIds.isEmpty ?? true)
+
+            entities.append(
+                SessionEntity(
+                    id: session.id,
+                    title: session.title,
+                    model: session.autoRoute ? "auto" : session.model,
+                    isRunning: true,
+                    waiting: waiting
+                )
+            )
 
             var detail = session.title
-            if let percent = state.lastUsage?.percentOfContext {
+            if let percent = state?.lastUsage?.percentOfContext {
                 detail += ", \(percent) percent of context"
             }
             lines.append(detail)
 
-            if !state.pendingApprovalIds.isEmpty || !state.pendingQuestionIds.isEmpty {
-                blocked.append(session.title)
-            }
+            if waiting { blocked.append(session.title) }
         }
 
         if running.count > Self.detailLimit {
@@ -66,6 +74,9 @@ struct RunningSessionsIntent: AppIntent {
                 : " \(blocked.count) are waiting for you."
         }
 
-        return .result(value: spoken, dialog: "\(spoken)")
+        // The entities are what makes this composable: a follow-up, or a
+        // Shortcuts action downstream, can act on the sessions themselves
+        // rather than on the sentence describing them.
+        return .result(value: entities, dialog: "\(spoken)")
     }
 }

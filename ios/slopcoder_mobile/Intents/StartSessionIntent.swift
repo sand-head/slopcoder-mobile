@@ -29,20 +29,30 @@ struct StartSessionIntent: AppIntent {
         }
     }
 
-    func perform() async throws -> some IntentResult & ProvidesDialog {
+    func perform() async throws -> some IntentResult & ProvidesDialog & ReturnsValue<SessionEntity> {
         let trimmed = task.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             throw $task.needsValueError("What should it work on?")
         }
 
         let client = SeamClient(credential: try CredentialStore.load())
-        _ = try await client.startSession(
+        let id = try await client.startSession(
             prompt: trimmed,
             repoUrls: repository.map { [$0] }
         )
 
+        // Returned as an entity so "open it" resolves without another lookup.
+        // The title is the prompt until the server names the session.
+        let session = SessionEntity(
+            id: id,
+            title: trimmed,
+            model: "auto",
+            isRunning: true,
+            waiting: false
+        )
+
         // Deliberately not read back as "done" — the turn has only just begun.
-        return .result(dialog: "Started. I'll keep working on it.")
+        return .result(value: session, dialog: "Started. I'll keep working on it.")
     }
 }
 

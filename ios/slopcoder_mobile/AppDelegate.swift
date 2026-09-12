@@ -31,6 +31,29 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     return true
   }
+
+  /// `slopcoder://session/<id>`, opened by OpenSessionIntent.
+  ///
+  /// This is what `RCTLinkingManager.application(_:open:options:)` does — it
+  /// posts `RCTOpenURLNotification` and returns true. Posting it directly keeps
+  /// the AppDelegate free of a React header import, which is one less thing to
+  /// resolve in a Swift target. React Navigation's `linking` config is listening
+  /// on the other side.
+  ///
+  /// A cold launch never reaches here: iOS puts the URL in `launchOptions`,
+  /// where React Native's Linking picks it up as the initial URL.
+  func application(
+    _ app: UIApplication,
+    open url: URL,
+    options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+  ) -> Bool {
+    NotificationCenter.default.post(
+      name: NSNotification.Name("RCTOpenURLNotification"),
+      object: self,
+      userInfo: ["url": url.absoluteString]
+    )
+    return true
+  }
 }
 
 class ReactNativeDelegate: RCTDefaultReactNativeFactoryDelegate {

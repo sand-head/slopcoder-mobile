@@ -17,8 +17,10 @@ import { SessionDetailScreen } from './screens/SessionDetail';
 import { NewSessionScreen } from './screens/NewSession';
 import { SettingsScreen } from './screens/Settings';
 import { useTheme } from './theme';
+import { linking } from './linking';
 
 const Stack = createNativeStackNavigator();
+
 
 export default function App() {
   const scheme = useColorScheme();
@@ -50,7 +52,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <StatusBar barStyle={scheme === 'dark' ? 'light-content' : 'dark-content'} />
-      <NavigationContainer theme={navTheme}>
+      <NavigationContainer theme={navTheme} linking={linking}>
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           {credential ? (
             <>
