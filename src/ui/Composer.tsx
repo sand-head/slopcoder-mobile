@@ -148,12 +148,20 @@ export function Composer({
           gap: 8,
         }}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
-          {/* The web's ›, which turns into a running dot mid-turn. */}
-          <View style={{ width: 16, paddingTop: 6, alignItems: 'center' }}>
+          {/* The web's ›, which becomes a running dot mid-turn. A fixed box the
+              height of the input's first line, centring whatever sits in it —
+              a glyph and a circle do not share a baseline. */}
+          <View style={{ width: 18, height: 30, alignItems: 'center', justifyContent: 'center' }}>
             {running ? (
               <Dot color={status.running} size={9} />
             ) : (
-              <Body style={{ fontFamily: font.mono, fontSize: 17, color: c.primary, lineHeight: 20 }}>
+              <Body
+                style={{
+                  fontFamily: font.mono,
+                  fontSize: 17,
+                  lineHeight: 17,
+                  color: c.primary,
+                }}>
                 ›
               </Body>
             )}
@@ -181,13 +189,6 @@ export function Composer({
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          {attachments ? (
-            <IconButton onPress={() => setSheet('attach')} accessibilityLabel="Attach">
-              <Body style={{ fontFamily: font.mono, fontSize: 16, color: c.mutedForeground, lineHeight: 18 }}>
-                +
-              </Body>
-            </IconButton>
-          ) : null}
           <IconButton onPress={() => setSheet('turn')} accessibilityLabel="Turn settings">
             <Sliders color={c.mutedForeground} />
           </IconButton>
