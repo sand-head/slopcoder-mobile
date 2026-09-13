@@ -49,6 +49,7 @@ import { Composer, type TurnOptions } from '../ui/Composer';
 import { Sheet } from '../ui/Sheet';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 import { ToolCard } from '../ui/ToolCard';
+import { useStickBottom } from '../ui/stickBottom';
 import { newTokens } from '../api/contracts';
 import { font, mix, radius, useTheme } from '../theme';
 
@@ -75,11 +76,10 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
   const [composerHeight, setComposerHeight] = useState(96);
   const listRef = useRef<FlatList<Item>>(null);
 
-  // Pinned to the bottom until the user scrolls away from it, the same 80px the
-  // web uses. Without this, every push during a streaming turn drags the view
-  // back down while you are trying to read what happened earlier.
-  const [pinned, setPinned] = useState(true);
-  const pinnedRef = useRef(true);
+  // Follows the newest line until the reader scrolls away from it. Without this,
+  // every push during a streaming turn drags the view back down while you are
+  // trying to read what happened earlier.
+  const { pinned, toBottom, props: stick } = useStickBottom(listRef);
   const [usageOpen, setUsageOpen] = useState(false);
 
   useEffect(() => {
@@ -226,19 +226,7 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
               paddingBottom: composerHeight + 16,
               gap: 4,
             }}
-            onScroll={event => {
-              const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-              const fromBottom = contentSize.height - contentOffset.y - layoutMeasurement.height;
-              const next = fromBottom < 80;
-              // A ref as well as state: onContentSizeChange would otherwise
-              // close over whatever `pinned` was when it was last rendered.
-              pinnedRef.current = next;
-              setPinned(next);
-            }}
-            scrollEventThrottle={16}
-            onContentSizeChange={() => {
-              if (pinnedRef.current) listRef.current?.scrollToEnd({ animated: true });
-            }}
+            {...stick}
             ListHeaderComponent={
               canLoadEarlier ? (
                 <Pressable onPress={loadEarlier} style={{ alignSelf: 'center', paddingVertical: 8 }}>
@@ -287,11 +275,7 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Jump to the latest"
-              onPress={() => {
-                pinnedRef.current = true;
-                setPinned(true);
-                listRef.current?.scrollToEnd({ animated: true });
-              }}
+              onPress={toBottom}
               style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
               <GlassSurface
                 cornerRadius={18}
