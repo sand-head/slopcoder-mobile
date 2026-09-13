@@ -84,16 +84,17 @@ jobs:
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           echo "$PROVISIONING_PROFILE_BASE64" | base64 -d > profile.mobileprovision
           cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
-          # The profile knows its own name and UUID. Reading them out beats
-          # keeping a secret in step with whatever it was called in the portal.
+          # The profile carries its own name and the team it belongs to. Reading
+          # them out of it beats two more secrets that can drift from the portal
+          # — and a team id is a lookup nobody should have to go hunting for.
           security cms -D -i profile.mobileprovision > profile.plist
           PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' profile.plist)
+          TEAM_ID=$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' profile.plist)
           echo "SLOPCODER_PROFILE=$PROFILE_NAME" >> "$GITHUB_ENV"
-          echo "profile: $PROFILE_NAME"
+          echo "SLOPCODER_TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
+          echo "profile: $PROFILE_NAME, team: $TEAM_ID"
       - name: Archive and export
         working-directory: ios
-        env:
-          SLOPCODER_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           # The tag is the version; the run number is the build. App Store Connect
           # rejects a build number it has already seen, so it must never be the

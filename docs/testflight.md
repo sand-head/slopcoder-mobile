@@ -14,8 +14,11 @@ you the rest.
 
 ## 1. Apple Developer portal
 
-**Team ID** — developer.apple.com → Membership. Ten characters. You will paste
-it into a secret; it is not a password, but it is easier to keep in one place.
+You never create a Team ID — Apple assigns one with your membership, and the
+release job reads it back out of the provisioning profile, so there is nothing
+to look up here. If you want to see it anyway: developer.apple.com/account →
+**Membership details** in the sidebar, or the **App ID Prefix** shown beside the
+App ID once you have made one. Ten characters.
 
 **App ID** — Certificates, IDs & Profiles → Identifiers → **+** → App IDs → App.
 
@@ -65,8 +68,9 @@ what every Apple tool reads. The password you type at the export prompt becomes
 
 **Provisioning profile** — Profiles → **+** → *App Store Connect* → pick the App
 ID and the distribution certificate. Download the `.mobileprovision`. Its name
-does not matter: the workflow reads it back out of the file with
-`security cms -D`, so there is nothing to keep in sync.
+does not matter, and neither does knowing your Team ID: the job decodes the
+profile with `security cms -D` and reads both out of it, so neither can drift
+from what the portal actually issued.
 
 **APNs key** — Keys → **+** → tick *Apple Push Notifications service*. Download
 the `.p8`. No CSR and no OpenSSL here: Apple generates this one and hands you the
@@ -95,7 +99,6 @@ GitHub → Settings → Secrets and variables → Actions. Base64 with
 
 | Secret | From |
 |---|---|
-| `APPLE_TEAM_ID` | Membership page |
 | `IOS_CERTIFICATE_BASE64` | the `.p12`, base64'd |
 | `IOS_CERTIFICATE_PASSWORD` | the password you set exporting it |
 | `IOS_PROVISIONING_PROFILE_BASE64` | the `.mobileprovision`, base64'd |
