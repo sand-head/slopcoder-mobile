@@ -170,11 +170,17 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
 
   return (
     <Screen>
-      <ConnectionBanner onRetry={load} />
+      {/* This screen has no header bar, so the banner would otherwise render
+          under the status bar. The inset is reserved here whether the banner is
+          showing or not, so it appearing does not shove the page down. */}
+      <View style={{ paddingTop: insets.top }}>
+        <ConnectionBanner onRetry={load} />
+      </View>
+
       <ScrollView
         contentContainerStyle={{
           paddingHorizontal: 20,
-          paddingTop: insets.top + 12,
+          paddingTop: 12,
           paddingBottom: insets.bottom + 24,
           gap: 18,
         }}
