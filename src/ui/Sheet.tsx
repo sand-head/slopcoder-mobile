@@ -8,16 +8,18 @@
  *
  * Three things here are not decoration, and all three were broken on a phone:
  *
- * - **The scroll view must be allowed to shrink.** React Native defaults
- *   `flexShrink` to 0, so a `ScrollView` in a capped column lays out at its full
- *   content height and simply overflows the cap — and a `View` does not clip by
- *   default, so the overflow paints off the bottom of the screen instead of
- *   scrolling. The turn-settings sheet lost its last row that way.
  * - **The sheet has to clear the keyboard.** It is anchored to the bottom edge,
  *   which is exactly where the keyboard goes, so a sheet with a search field in
  *   it hid its own results the moment you typed.
  * - **The grip has to do something.** It is the one part of a sheet that says
  *   "you may drag me", and it was a rounded rectangle.
+ *
+ * The scroll view's `flexShrink: 1` is a belt rather than a fix. React Native
+ * defaults `flexShrink` to 0 where the web defaults to 1, which is the usual
+ * reason a `ScrollView` in a capped column lays out at its full content height
+ * and overflows instead of scrolling — but this sheet was scrolling fine, and
+ * the frames I took for a clipped last row were a mid-scroll. Stated explicitly
+ * so the constraint does not depend on which ancestor happens to bound it.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -231,9 +233,8 @@ export function Sheet({
             </View>
 
             <ScrollView
-              // Without the shrink this lays out at its full content height and
-              // paints straight off the bottom of the screen. See the note at
-              // the top of the file.
+              // Explicit, not load-bearing today: see the note at the top of the
+              // file about React Native's `flexShrink` default.
               style={{ flexShrink: 1 }}
               // A tap on a result while the keyboard is up must pick it, not
               // spend itself dismissing the keyboard.

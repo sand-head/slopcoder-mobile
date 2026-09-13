@@ -1,11 +1,10 @@
 /**
- * The bottom sheet: what its grip means, and the three layout facts that were
- * wrong on a phone and right everywhere else.
+ * The bottom sheet: what its grip means, and the layout facts behind it.
  *
  * The layout half is asserted against the rendered tree rather than by eye,
- * because each of these is a single style property whose absence is invisible
- * until you are holding the thing — a scroll view that will not shrink paints
- * its overflow off the bottom of the screen, and nothing anywhere says so.
+ * because each is a single style property whose absence is invisible until you
+ * are holding the thing — a sheet that does not move for the keyboard looks,
+ * from a screenshot, exactly like one that does.
  */
 import React from 'react';
 import { act, create } from 'react-test-renderer';
@@ -86,12 +85,13 @@ describe('the sheet on screen', () => {
     Array.isArray(style) ? Object.assign({}, ...style.filter(Boolean).map(flatten)) : style ?? {};
 
   /**
-   * React Native defaults `flexShrink` to 0, so a `ScrollView` inside a capped
-   * column lays out at its full content height and overflows — and a `View`
-   * does not clip, so the overflow paints off the bottom of the screen rather
-   * than scrolling. The turn-settings sheet lost its last row exactly this way.
+   * React Native defaults `flexShrink` to 0 where the web defaults to 1, which
+   * is the usual reason a `ScrollView` in a capped column lays out at its full
+   * content height and overflows instead of scrolling. This sheet scrolls
+   * either way today — the constraint is written down so that stays true of
+   * whichever ancestor ends up bounding it.
    */
-  it('lets the list shrink, so long content scrolls instead of overflowing', () => {
+  it('lets the list shrink, whatever bounds it', () => {
     const scroll = render().root.findByType(ScrollView);
     expect(flatten(scroll.props.style).flexShrink).toBe(1);
   });
