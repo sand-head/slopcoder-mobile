@@ -212,9 +212,13 @@ describe('signing material', () => {
    */
   it('signs an Android release with the CI keystore, never the committed debug one', () => {
     const gradle = fs.readFileSync(path.join(ROOT, 'android', 'app', 'build.gradle'), 'utf8');
-    const release = gradle.slice(gradle.indexOf('buildTypes'));
+    // Only the release build type. The debug one signs with signingConfigs.debug
+    // and should — that is what makes a laptop build installable.
+    const types = gradle.slice(gradle.indexOf('buildTypes'));
+    const release = types.slice(types.indexOf('release {'));
+
     expect(release).toMatch(/signingConfigs\.release/);
-    expect(release).not.toMatch(/signingConfig\s+signingConfigs\.debug/);
+    expect(release).not.toMatch(/signingConfig\s+signingConfigs\.debug\s*$/m);
     expect(gradle).toMatch(/SLOPCODER_STORE_FILE/);
   });
 
