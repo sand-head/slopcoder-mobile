@@ -19,6 +19,16 @@
  *
  * What is left here is the content: a header row and a list, which is all this
  * ever wanted to be.
+ *
+ * **Nothing below configures the sheet itself.** The first pass at this still
+ * set four props the component already had opinions about, and one of them was
+ * a real fault: `detents={['auto', 1]}` puts a *content-measured* detent at
+ * rest, so the sheet settled, sat for a fifth of a second, then stepped 65px
+ * when the list re-measured — and with a long list `auto` clamps to the
+ * container, which is where `1` already is, leaving two detents at the same
+ * height and nothing to drag between. The others were merely redundant:
+ * `grabber` defaults to true, and `cornerRadius` and `backgroundColor` default
+ * to the system's. A prop here has to earn itself.
  */
 import React, { useEffect, useRef } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
@@ -57,16 +67,9 @@ export function Sheet({
   return (
     <TrueSheet
       ref={sheet}
-      // `auto` first, so a short sheet is exactly its content and only a sheet
-      // with more to show has a second detent to grow into. Deciding that from
-      // a measurement was two of the five releases.
-      detents={['auto', 1]}
-      cornerRadius={radius.xxl}
-      backgroundColor={c.card}
-      grabber
-      // Pins the list inside the sheet, below the header — and makes a pull
-      // anywhere in the body expand the sheet rather than scroll it, which is
-      // what a native sheet does.
+      // The two props here describe our content, not the sheet. `scrollable`
+      // pins the list inside it, below the header, and is what makes a pull
+      // anywhere in the body expand the sheet rather than scroll it.
       scrollable
       // Fires for a swipe down as well as for `dismiss()`, so the parent's
       // state clears however the sheet went away.

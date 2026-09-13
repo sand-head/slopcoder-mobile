@@ -30,23 +30,38 @@ const sheetOf = (tree: ReturnType<typeof create>) => tree.root.findByType(TrueSh
 
 describe('the sheet', () => {
   /**
-   * `auto` first, so a short sheet is exactly as tall as its content and only a
-   * sheet with something below the fold has a second detent to grow into.
-   * Deciding that from a measurement, rather than letting the platform do it,
-   * was two of the five releases.
+   * The sheet configures itself. Every prop this file used to pass was either
+   * redundant — `grabber` already defaults to true, `cornerRadius` and
+   * `backgroundColor` to the system's — or a fault: `detents={['auto', 1]}`
+   * puts a *content-measured* detent at rest, so the sheet settled, sat for a
+   * fifth of a second and then stepped 65px when the list re-measured. With a
+   * long list `auto` clamps to the container, which is where `1` already is,
+   * so the two detents were the same height and there was nothing to drag
+   * between.
    */
-  it('sizes itself to its content, and grows to full', () => {
-    expect(sheetOf(mount(true)).props.detents).toEqual(['auto', 1]);
-  });
-
-  /** The affordance the whole saga was about, now the system's own. */
-  it('shows a grabber and lets the body expand the sheet', () => {
+  it('leaves the sheet to decide how a sheet behaves', () => {
     const props = sheetOf(mount(true)).props;
 
-    expect(props.grabber).toBe(true);
-    // `scrollable` is what pins the list inside the sheet and makes a pull in
+    for (const decision of [
+      'detents',
+      'grabber',
+      'cornerRadius',
+      'backgroundColor',
+      'dimmed',
+      'draggable',
+      'dismissible',
+      'initialDetentIndex',
+      'maxContentHeight',
+    ]) {
+      expect(props[decision]).toBeUndefined();
+    }
+  });
+
+  /** What we do have to say is what our own content is. */
+  it('tells the sheet the body is a scroll view', () => {
+    // `scrollable` pins the list inside the sheet and is what makes a pull in
     // the body open it instead of scrolling a letterbox.
-    expect(props.scrollable).toBe(true);
+    expect(sheetOf(mount(true)).props.scrollable).toBe(true);
   });
 
   /** Otherwise the first tap on a search result is spent closing the keyboard. */
