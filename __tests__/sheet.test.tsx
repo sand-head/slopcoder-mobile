@@ -8,18 +8,18 @@
  */
 import React from 'react';
 import { act, create } from 'react-test-renderer';
-import { Keyboard, ScrollView, Text } from 'react-native';
+import { Animated, Keyboard, Modal, PanResponder, ScrollView, Text } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Sheet } from '../src/ui/Sheet';
-import { clampDrag, settleSheet, type SheetSize } from '../src/ui/sheetDrag';
+import { clampDrag, detents, settleSheet, type SheetSize } from '../src/ui/sheetDrag';
 
 describe('what a drag on the grip means', () => {
   const drag = (over: Partial<Parameters<typeof settleSheet>[0]>) =>
-    settleSheet({ size: 'natural', dy: 0, vy: 0, canExpand: true, ...over });
+    settleSheet({ size: 'medium', dy: 0, vy: 0, canGrow: true, ...over });
 
   it('does nothing at all for a nudge', () => {
-    expect(drag({ dy: 20 })).toBe('natural');
-    expect(drag({ dy: -20 })).toBe('natural');
+    expect(drag({ dy: 20 })).toBe('medium');
+    expect(drag({ dy: -20 })).toBe('medium');
   });
 
   it('dismisses on a long pull down, or a flick', () => {
@@ -34,9 +34,26 @@ describe('what a drag on the grip means', () => {
 
   /** Stretching a sheet that is already showing everything opens empty glass. */
   it('refuses to grow when there is nothing hidden', () => {
-    expect(drag({ dy: -200, canExpand: false })).toBe('natural');
+    expect(drag({ dy: -200, canGrow: false })).toBe('medium');
     expect(clampDrag(-60, false)).toBe(0);
     expect(clampDrag(-60, true)).toBe(-60);
+  });
+
+  /**
+   * The detent the sheet opens at has to be visibly smaller than the one it can
+   * be dragged to, or every upward gesture is a no-op and the grip is a lie.
+   * This is the bug the first attempt shipped: both detents resolved to the
+   * same cap, so the responder fired and nothing moved.
+   */
+  it('has somewhere to grow into', () => {
+    const { medium, full } = detents(852 - 59);
+    expect(full).toBeGreaterThan(medium + 100);
+    // And leaves a strip of backdrop to tap, however long the content is.
+    expect(full).toBeLessThan(852 - 59);
+  });
+
+  it('keeps the smaller detent usable on a short screen', () => {
+    expect(detents(320).medium).toBeGreaterThanOrEqual(240);
   });
 
   /**
@@ -44,10 +61,10 @@ describe('what a drag on the grip means', () => {
    * rather than dismissing, so a fat-fingered drag never loses your place in a
    * list — which is how every other multi-detent sheet on the platform behaves.
    */
-  it('steps down from full to natural before it closes', () => {
-    expect(drag({ size: 'full', dy: 200 })).toBe('natural');
-    expect(drag({ size: 'full', dy: 200, vy: 2 })).toBe('natural');
-    expect(drag({ size: 'natural', dy: 200 })).toBe('closed');
+  it('steps down from full to medium before it closes', () => {
+    expect(drag({ size: 'full', dy: 200 })).toBe('medium');
+    expect(drag({ size: 'full', dy: 200, vy: 2 })).toBe('medium');
+    expect(drag({ size: 'medium', dy: 200 })).toBe('closed');
   });
 
   it('always follows a finger downwards, wherever it is', () => {
@@ -55,8 +72,8 @@ describe('what a drag on the grip means', () => {
     expect(clampDrag(300, false)).toBe(300);
   });
 
-  it.each<SheetSize>(['natural', 'full'])('never leaves %s for nowhere', size => {
-    expect(['natural', 'full', 'closed']).toContain(drag({ size, dy: 40, vy: 0.1 }));
+  it.each<SheetSize>(['medium', 'full'])('never leaves %s for nowhere', size => {
+    expect(['medium', 'full', 'closed']).toContain(drag({ size, dy: 40, vy: 0.1 }));
   });
 });
 
@@ -84,6 +101,12 @@ describe('the sheet on screen', () => {
   const flatten = (style: unknown): Record<string, any> =>
     Array.isArray(style) ? Object.assign({}, ...style.filter(Boolean).map(flatten)) : style ?? {};
 
+  /** The sheet itself: the one box with a height cap on it. */
+  const sheetStyle = (tree: ReturnType<typeof create>) =>
+    tree.root
+      .findAll(node => flatten(node.props?.style).maxHeight != null, { deep: true })
+      .map(node => flatten(node.props.style))[0];
+
   /**
    * React Native defaults `flexShrink` to 0 where the web defaults to 1, which
    * is the usual reason a `ScrollView` in a capped column lays out at its full
@@ -107,36 +130,140 @@ describe('the sheet on screen', () => {
    * keyboard arrives. Without this a sheet with a search field in it hides its
    * own results the moment you type in it.
    */
-  it('sits above the keyboard', () => {
+  it('rises with the keyboard, at the keyboard\'s speed', () => {
     const listeners = new Map<string, (event: any) => void>();
     jest.spyOn(Keyboard, 'addListener').mockImplementation((event, handler) => {
       listeners.set(event, handler);
       return { remove: () => listeners.delete(event) } as any;
     });
+    const timing = jest.spyOn(Animated, 'timing');
 
     const tree = render();
-    const sheet = () =>
-      tree.root
-        .findAll(node => flatten(node.props?.style).maxHeight != null, { deep: true })
-        .map(node => flatten(node.props.style))[0];
 
-    // The `Will` events, not the `Did` ones: on iOS they carry the frame before
-    // the animation runs, so the sheet travels with the keyboard instead of
-    // catching up to it afterwards.
+    // The `Will` events, not the `Did` ones: on iOS they carry the frame and
+    // the duration before the animation runs, so the sheet travels with the
+    // keyboard instead of catching up to it afterwards.
     expect([...listeners.keys()]).toEqual(['keyboardWillShow', 'keyboardWillHide']);
 
-    expect(sheet().marginBottom).toBe(0);
-    const before = sheet().maxHeight;
+    const before = sheetStyle(tree).maxHeight;
+    timing.mockClear();
 
-    act(() => listeners.get('keyboardWillShow')!({ endCoordinates: { height: 336 } }));
+    act(() => listeners.get('keyboardWillShow')!({ endCoordinates: { height: 336 }, duration: 310 }));
 
-    expect(sheet().marginBottom).toBe(336);
+    // Lifted by exactly the keyboard's height, over exactly its duration.
+    expect(timing).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ toValue: -336, duration: 310 }),
+    );
     // And gives up the height the keyboard took, rather than growing under it.
-    expect(sheet().maxHeight).toBeLessThan(before);
+    expect(sheetStyle(tree).maxHeight).toBeLessThan(before);
 
-    act(() => listeners.get('keyboardWillHide')!({}));
-    expect(sheet().marginBottom).toBe(0);
+    act(() => listeners.get('keyboardWillHide')!({ duration: 310 }));
+    expect(timing).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ toValue: -0, duration: 310 }),
+    );
 
     jest.restoreAllMocks();
+  });
+
+  /**
+   * `animationType="slide"` slides the whole modal, and the modal is the
+   * backdrop too — so every sheet opened behind a rectangle of dimming rising
+   * up the screen with a hard horizontal edge. The sheet travels on its own
+   * now and the backdrop fades where it stands.
+   */
+  it('does not let the modal slide its own backdrop', () => {
+    const tree = render();
+    const modal = tree.root.findByType(Modal);
+
+    expect(modal.props.animationType).toBe('none');
+    expect(modal.props.transparent).toBe(true);
+
+    // The dimming is a fade, which means an animated opacity and no transform.
+    const backdrop = tree.root
+      .findAll(node => flatten(node.props?.style).opacity != null, { deep: true })
+      .map(node => flatten(node.props.style))
+      .find(style => style.position === 'absolute');
+
+    expect(backdrop?.opacity).toBeInstanceOf(Animated.Value);
+    expect(backdrop?.transform).toBeUndefined();
+  });
+
+  /**
+   * The one that has now been wrong twice, and could not be caught by reading
+   * either half on its own: the responder fires, the ladder answers, and the
+   * sheet is a different size afterwards. The first version dragged fine and
+   * resolved both detents to the same cap; the second opened at the larger one,
+   * so up had nowhere to go.
+   *
+   * Driven through the config the component hands to `PanResponder`, because
+   * gesture state is accumulated from touch histories that a test cannot
+   * plausibly fake — and the assertion is on the rendered height, not on the
+   * state, so a wiring that stops short still fails.
+   */
+  it('grows and shrinks the sheet when the grip is dragged', () => {
+    let config: any;
+    jest.spyOn(PanResponder, 'create').mockImplementation(created => {
+      config = created;
+      return { panHandlers: {} } as any;
+    });
+
+    const closed = jest.fn();
+    let tree: ReturnType<typeof create> | undefined;
+    act(() => {
+      tree = create(
+        <SafeAreaProvider initialMetrics={METRICS}>
+          <Sheet visible title="Attach" onClose={closed}>
+            <Text>a repository</Text>
+          </Sheet>
+        </SafeAreaProvider>,
+      );
+    });
+
+    // A list far longer than the space it has, so there is something to reveal.
+    const scroll = tree!.root.findByType(ScrollView);
+    act(() => scroll.props.onLayout({ nativeEvent: { layout: { height: 300 } } }));
+    act(() => scroll.props.onContentSizeChange(393, 2_000));
+
+    const medium = sheetStyle(tree!).maxHeight;
+
+    act(() => config.onPanResponderRelease({}, { dy: -200, vy: -1 }));
+    const full = sheetStyle(tree!).maxHeight;
+    expect(full).toBeGreaterThan(medium);
+
+    act(() => config.onPanResponderRelease({}, { dy: 200, vy: 1 }));
+    expect(sheetStyle(tree!).maxHeight).toBe(medium);
+    expect(closed).not.toHaveBeenCalled();
+
+    // And from there, down again gets out.
+    act(() => config.onPanResponderRelease({}, { dy: 200, vy: 1 }));
+    expect(closed).toHaveBeenCalled();
+
+    jest.restoreAllMocks();
+  });
+
+  /**
+   * The handlers have to be *on the grip*, not merely created. A responder
+   * spread onto the wrong subtree is a working drag that nothing can start.
+   */
+  it('puts the handlers on the row the grip is in', () => {
+    const tree = render();
+
+    const pill = tree.root.find(node => {
+      const style = flatten(node.props?.style);
+      return style.width === 36 && style.height === 4;
+    });
+
+    // Walk out of the grip until something is listening for a drag.
+    let listener = pill.parent;
+    while (listener && typeof listener.props?.onResponderRelease !== 'function') {
+      listener = listener.parent;
+    }
+
+    expect(listener).toBeDefined();
+    // And it is the header row, not the whole sheet: the list below has to keep
+    // its own scrolling, which a drag responder wrapped around it would fight.
+    expect(listener!.findAllByType(ScrollView)).toHaveLength(0);
   });
 });

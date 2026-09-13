@@ -6,13 +6,16 @@
  * thumb reach, with rows big enough to hit — so the arrangement follows the
  * platform while the content follows `TurnSettings`.
  *
- * Three things here are not decoration, and all three were broken on a phone:
+ * **The modal does not animate itself.** `animationType="slide"` slides the
+ * whole modal, and the modal includes the dimmed backdrop — so opening a sheet
+ * meant watching a rectangle of dimming rise up the screen behind it, with a
+ * hard horizontal edge. The sheet is animated here instead: it travels, the
+ * backdrop fades in place, and the two are separate values because they are
+ * separate things.
  *
- * - **The sheet has to clear the keyboard.** It is anchored to the bottom edge,
- *   which is exactly where the keyboard goes, so a sheet with a search field in
- *   it hid its own results the moment you typed.
- * - **The grip has to do something.** It is the one part of a sheet that says
- *   "you may drag me", and it was a rounded rectangle.
+ * **It opens at the smaller detent.** A sheet that opens at its largest size
+ * has nowhere to be dragged, which is how the first attempt shipped a grip that
+ * answered every gesture and moved nothing.
  *
  * The scroll view's `flexShrink: 1` is a belt rather than a fix. React Native
  * defaults `flexShrink` to 0 where the web defaults to 1, which is the usual
@@ -36,7 +39,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Body, Check, GlassSurface, Meta, Mono } from './kit';
-import { clampDrag, settleSheet, type SheetSize } from './sheetDrag';
+import { clampDrag, detents, settleSheet, type SheetSize } from './sheetDrag';
 import { mix, radius, useTheme } from '../theme';
 
 export interface SheetOption {
@@ -46,25 +49,32 @@ export interface SheetOption {
   description?: string;
 }
 
-/**
- * How much of the space above the keyboard a sheet may take. The remainder is
- * the strip of dimmed backdrop you tap to get out, which has to stay reachable
- * however long the content is.
- */
-const MAX_FRACTION = 0.9;
+/** How long the sheet takes to arrive, when the keyboard is not setting the pace. */
+const TRAVEL_MS = 260;
 
-/** How much room the keyboard is taking, tracked so the sheet can sit above it. */
-function useKeyboardHeight(): number {
-  const [height, setHeight] = useState(0);
+/** What the keyboard is doing, so the sheet can do it at the same speed. */
+interface KeyboardState {
+  height: number;
+  duration: number;
+}
+
+function useKeyboard(): KeyboardState {
+  const [state, setState] = useState<KeyboardState>({ height: 0, duration: TRAVEL_MS });
 
   useEffect(() => {
-    // iOS reports the frame before the animation runs, so the sheet moves with
-    // the keyboard rather than after it. Android only has the `Did` events.
-    const shown = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hidden = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    // iOS reports the frame *before* the animation runs and says how long it
+    // will take, which is what lets the sheet travel with the keyboard rather
+    // than jump after it. Android only has the `Did` events.
+    const ios = Platform.OS === 'ios';
+    const shown = ios ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hidden = ios ? 'keyboardWillHide' : 'keyboardDidHide';
 
-    const on = Keyboard.addListener(shown, event => setHeight(event.endCoordinates.height));
-    const off = Keyboard.addListener(hidden, () => setHeight(0));
+    const on = Keyboard.addListener(shown, event =>
+      setState({ height: event.endCoordinates.height, duration: event.duration || TRAVEL_MS }),
+    );
+    const off = Keyboard.addListener(hidden, event =>
+      setState({ height: 0, duration: event.duration || TRAVEL_MS }),
+    );
 
     return () => {
       on.remove();
@@ -72,7 +82,7 @@ function useKeyboardHeight(): number {
     };
   }, []);
 
-  return height;
+  return state;
 }
 
 export function Sheet({
@@ -89,38 +99,63 @@ export function Sheet({
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
-  const keyboard = useKeyboardHeight();
+  const keyboard = useKeyboard();
 
-  const [size, setSize] = useState<SheetSize>('natural');
-  // The pan responder is built once and has to read state that moves, so what
-  // it reads lives in refs rather than in the closure it was created with.
-  const sizeRef = useRef<SheetSize>('natural');
+  // Held open through the closing animation: with the modal doing none of its
+  // own, unmounting on `visible` would cut the exit off at the first frame.
+  const [mounted, setMounted] = useState(visible);
+  const [size, setSize] = useState<SheetSize>('medium');
+
+  const cap = detents(windowHeight - insets.top - keyboard.height)[size];
+
+  /** 0 closed, 1 open. Drives the travel and the backdrop together. */
+  const enter = useRef(new Animated.Value(0)).current;
+  /** Where the finger has the sheet, relative to where it rests. */
+  const drag = useRef(new Animated.Value(0)).current;
+  /** How far up the keyboard is holding it. */
+  const lift = useRef(new Animated.Value(0)).current;
+
+  // Read by the pan responder, which is built once and cannot see state move.
+  const sizeRef = useRef<SheetSize>('medium');
   sizeRef.current = size;
-
-  /**
-   * Whether anything is hidden below the fold, which is the only reason to
-   * offer a taller sheet: content against viewport, both measured, so a sheet
-   * showing all of itself refuses to grow into empty glass.
-   */
-  const canExpand = useRef(false);
+  const canGrow = useRef(false);
   const contentHeight = useRef(0);
   const viewportHeight = useRef(0);
   const measure = () => {
-    canExpand.current = contentHeight.current > viewportHeight.current + 1;
+    canGrow.current = contentHeight.current > viewportHeight.current + 1;
   };
 
-  const sheetHeight = useRef(0);
-  const drag = useRef(new Animated.Value(0)).current;
-
-  const maxHeight = Math.max(240, (windowHeight - insets.top - keyboard) * MAX_FRACTION);
-
-  // Every opening starts from the same place, however the last one ended.
   useEffect(() => {
     if (visible) {
-      setSize('natural');
+      setMounted(true);
+      setSize('medium');
       drag.setValue(0);
+      Animated.timing(enter, {
+        toValue: 1,
+        duration: TRAVEL_MS,
+        useNativeDriver: true,
+      }).start();
+      return;
     }
-  }, [visible, drag]);
+
+    Animated.timing(enter, { toValue: 0, duration: TRAVEL_MS, useNativeDriver: true }).start(
+      ({ finished }) => {
+        if (finished) setMounted(false);
+      },
+    );
+  }, [visible, enter, drag]);
+
+  useEffect(() => {
+    Animated.timing(lift, {
+      toValue: -keyboard.height,
+      duration: keyboard.duration,
+      useNativeDriver: true,
+    }).start();
+  }, [keyboard, lift]);
+
+  // The responder outlives any one render; the prop does not.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   const pan = useMemo(
     () =>
@@ -129,26 +164,20 @@ export function Sheet({
         // and the close button lives in the same row.
         onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dy) > 4,
         onPanResponderMove: (_event, gesture) =>
-          drag.setValue(clampDrag(gesture.dy, canExpand.current)),
+          drag.setValue(clampDrag(gesture.dy, canGrow.current || sizeRef.current === 'full')),
         onPanResponderRelease: (_event, gesture) => {
           const next = settleSheet({
             size: sizeRef.current,
             dy: gesture.dy,
             vy: gesture.vy,
-            canExpand: canExpand.current,
+            canGrow: canGrow.current,
           });
 
           if (next === 'closed') {
-            // Out of the way first, so the modal's own slide-out has nothing
-            // left to animate and the sheet does not jump back up on the way.
-            Animated.timing(drag, {
-              toValue: sheetHeight.current || windowHeight,
-              duration: 160,
-              useNativeDriver: true,
-            }).start(() => {
-              drag.setValue(0);
-              onClose();
-            });
+            // `onClose` runs the exit animation from wherever the finger left
+            // the sheet, so there is nothing to animate here and nothing to
+            // reset until it opens again.
+            onCloseRef.current();
             return;
           }
 
@@ -156,31 +185,28 @@ export function Sheet({
           Animated.spring(drag, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
         },
       }),
-    [drag, onClose, windowHeight],
+    [drag],
+  );
+
+  const travel = Animated.add(
+    enter.interpolate({ inputRange: [0, 1], outputRange: [windowHeight, 0] }),
+    Animated.add(drag, lift),
   );
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose}>
       <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-        {/* A sibling rather than a parent: a backdrop wrapped around the sheet
-            has to un-handle every touch the sheet wanted, and this one does
-            not have to. */}
-        <Pressable
-          accessibilityLabel="Close"
-          onPress={onClose}
-          style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.45)' }]}
-        />
+        {/* Fades in place. Sliding it is what put a moving horizontal edge
+            across the screen every time a sheet opened. */}
+        <Animated.View style={[StyleSheet.absoluteFill, { opacity: enter }]}>
+          <Pressable
+            accessibilityLabel="Close"
+            onPress={onClose}
+            style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.45)' }]}
+          />
+        </Animated.View>
 
-        <Animated.View
-          onLayout={event => {
-            sheetHeight.current = event.nativeEvent.layout.height;
-          }}
-          style={{
-            maxHeight,
-            height: size === 'full' ? maxHeight : undefined,
-            marginBottom: keyboard,
-            transform: [{ translateY: drag }],
-          }}>
+        <Animated.View style={{ maxHeight: cap, transform: [{ translateY: travel }] }}>
           <GlassSurface
             cornerRadius={radius.xxl}
             style={{
@@ -189,7 +215,7 @@ export function Sheet({
               borderBottomRightRadius: 0,
               // The keyboard covers the home indicator, so the inset it stands
               // clear of is gone while the keyboard is up.
-              paddingBottom: keyboard > 0 ? 12 : insets.bottom + 12,
+              paddingBottom: keyboard.height > 0 ? 12 : insets.bottom + 12,
               flexShrink: 1,
             }}>
             <View {...pan.panHandlers}>
