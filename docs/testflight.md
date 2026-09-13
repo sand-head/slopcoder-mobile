@@ -24,10 +24,39 @@ it into a secret; it is not a password, but it is easier to keep in one place.
   already says `aps-environment: production`, and an App ID without the
   capability makes the profile refuse to sign it.
 
-**Distribution certificate** — Certificates → **+** → *Apple Distribution*.
-Follow the CSR flow, download the `.cer`, double-click it, then in Keychain
-Access right-click the private key → Export → `.p12` with a password. Both the
-file and the password become secrets.
+**Distribution certificate** — every guide for this says "open Keychain
+Access". You do not need a Mac; Apple only ever sees a certificate signing
+request, and OpenSSL makes one.
+
+Work somewhere outside the repo — `~/.local/share/slopcoder-signing`, say. The
+private key is the half Apple never gets, and losing it means revoking the
+certificate and starting over.
+
+```sh
+# 1. A key, and a request Apple will sign. The email and name are free text;
+#    they show up in the certificate's subject and nowhere that matters.
+openssl genrsa -out distribution.key 2048
+openssl req -new -key distribution.key -out distribution.csr \
+  -subj "/emailAddress=you@example.com/CN=Your Name/C=US"
+```
+
+Then Certificates → **+** → *Apple Distribution* → upload `distribution.csr` →
+download the `.cer`. It comes back DER-encoded, and the `.p12` CI wants is that
+certificate and your private key in one file:
+
+```sh
+# 2. DER to PEM, then bundle with the key.
+openssl x509 -inform DER -in distribution.cer -out distribution.pem
+openssl pkcs12 -export -inkey distribution.key -in distribution.pem \
+  -name "Apple Distribution" -out distribution.p12 \
+  -certpbe PBE-SHA1-3DES -keypbe PBE-SHA1-3DES -macalg sha1
+```
+
+**Those three algorithm flags are not decoration.** OpenSSL 3 defaults to
+AES-256-CBC with an SHA-256 MAC, and macOS's `security import` — which is what
+the runner uses — is unreliable with that combination. The 3DES/SHA-1 form is
+what every Apple tool reads. The password you type at the export prompt becomes
+`IOS_CERTIFICATE_PASSWORD`; the file becomes `IOS_CERTIFICATE_BASE64`.
 
 **Provisioning profile** — Profiles → **+** → *App Store Connect* → pick the App
 ID and the distribution certificate. Download the `.mobileprovision`. Its name
@@ -35,7 +64,8 @@ does not matter: the workflow reads it back out of the file with
 `security cms -D`, so there is nothing to keep in sync.
 
 **APNs key** — Keys → **+** → tick *Apple Push Notifications service*. Download
-the `.p8`. **This is for the server, not for CI** — it fills slopcoder's
+the `.p8`. No CSR and no OpenSSL here: Apple generates this one and hands you the
+whole thing. **It is for the server, not for CI** — it fills slopcoder's
 `Push:Apns:{KeyId,TeamId,BundleId,PrivateKey}`. Confusing it with the App Store
 Connect key below is the single easiest mistake here; both are `.p8` files from
 different pages, and neither can be downloaded twice.
@@ -49,6 +79,9 @@ list, a name, and an SKU (any stable string; `slopcoder-mobile` is fine).
 **+**, role *App Manager*. You get a **Key ID**, an **Issuer ID** (shown once at
 the top of the page, shared by all keys), and a `.p8` that downloads **exactly
 once**.
+
+None of the above needs macOS. The only Mac in this pipeline is the
+`macos-15` runner that builds the archive.
 
 ## 3. Repository secrets
 
@@ -90,6 +123,9 @@ description and a contact email filled in first.
 
 - **The `.p8` files download once.** Both of them. Losing one means revoking the
   key and issuing another.
+- **Keep `distribution.key`.** It is the half of the certificate Apple never
+  had, so it cannot be re-downloaded — only replaced, by revoking the
+  certificate and making a new one. Back it up somewhere that is not this repo.
 - **A sandbox push token is not a production one.** The debug and release
   entitlements differ on purpose (`entitlements.test.ts` pins it), and the server
   records which environment a token came from, because production APNs rejects a
