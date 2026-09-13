@@ -84,9 +84,16 @@ from what the portal actually issued.
 Configure, leave the environment on **Sandbox & Production**: a token-based key
 is not environment-scoped the way the old APNs certificates were, and the
 sandbox-only restriction would leave every TestFlight and App Store build with
-no notifications. Apple allows two of these per account, so do not burn one
-experimenting. Download the `.p8`; no CSR and no OpenSSL here, Apple generates
-this one whole.
+no notifications.
+
+Leave **Key Restriction** off as well. The app a notification is for is chosen
+per send — `ApnsSender` puts the configured bundle id in the `apns-topic` header
+— so one unrestricted key serves every app you ever ship, while a scoped one
+would spend a slot per app and Apple allows **two keys per account**. The cost
+is blast radius: an unrestricted key can push to anything in the team, so treat
+the `.p8` as a private key rather than as a config value.
+
+Download it; no CSR and no OpenSSL here, Apple generates this one whole.
 
 Nothing in slopcoder selects an environment either — the app reports whether it
 holds a sandbox token (`AppDelegate.swift`, from `#if DEBUG`) and the server
