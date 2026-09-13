@@ -230,6 +230,53 @@ describe('signing material', () => {
   });
 });
 
+describe('app icon', () => {
+  const SET = path.join(IOS, 'slopcoder_mobile', 'Images.xcassets', 'AppIcon.appiconset');
+
+  /** Width, height and whether the PNG carries an alpha channel, from the IHDR chunk. */
+  function png(file: string): { width: number; height: number; alpha: boolean } {
+    const b = fs.readFileSync(file);
+    const colourType = b[25];
+    return {
+      width: b.readUInt32BE(16),
+      height: b.readUInt32BE(20),
+      // 4 = grey + alpha, 6 = RGBA. Apple rejects either outright.
+      alpha: colourType === 4 || colourType === 6,
+    };
+  }
+
+  /**
+   * The React Native template ships this catalog with a Contents.json listing
+   * every size and not one image file. The build succeeds, the archive
+   * succeeds, and altool rejects the upload with four errors — three missing
+   * sizes and a missing CFBundleIconName, which Xcode only writes when the
+   * catalog actually compiled an icon. Twenty-five minutes of CI to find out.
+   */
+  it('has an icon, and Contents.json points at it', () => {
+    const contents = JSON.parse(fs.readFileSync(path.join(SET, 'Contents.json'), 'utf8'));
+    expect(contents.images.length).toBeGreaterThan(0);
+
+    for (const image of contents.images) {
+      expect(image.filename).toBeDefined();
+      expect(fs.existsSync(path.join(SET, image.filename))).toBe(true);
+    }
+  });
+
+  it('is 1024 square, so Xcode can generate every size iPhone and iPad need', () => {
+    const { width, height } = png(path.join(SET, 'AppIcon.png'));
+    expect([width, height]).toEqual([1024, 1024]);
+  });
+
+  /** An app icon with transparency is rejected by App Store Connect, not softened. */
+  it('carries no alpha channel', () => {
+    expect(png(path.join(SET, 'AppIcon.png')).alpha).toBe(false);
+  });
+
+  it('is the icon the target builds', () => {
+    expect(PROJECT).toMatch(/ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon/);
+  });
+});
+
 describe('App Store Connect chores', () => {
   /**
    * Without this, every single upload sits in "Missing Compliance" until someone
