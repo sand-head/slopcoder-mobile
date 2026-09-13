@@ -19,6 +19,13 @@
  *   a socket that dropped after connecting once and nothing else, so a launch
  *   with no network leaves a hub that will never try again. This class owns
  *   that retry.
+ * - **A transport that cannot connect is silent.** Whatever goes wrong — a
+ *   proxy that will not upgrade, an auth scheme the socket handshake does not
+ *   carry, a network that eats WebSockets — surfaces to the app as a connection
+ *   that simply never arrives. So: long polling is allowed as a fallback, and
+ *   the reason the last attempt failed is kept for the UI to show. Neither is
+ *   a guess about which of those it is; they are what turns the next failure
+ *   into something readable instead of another round of theories.
  */
 import {
   HubConnection,
@@ -64,10 +71,14 @@ export interface SessionHubOptions {
   /** The session registry changed — re-list. Carries no payload by design. */
   onRegistryChanged?: () => void;
   onStateChange?: (connected: boolean) => void;
+  /** Why the connection is not up, or null once it is. */
+  onTrouble?: (reason: string | null) => void;
 }
 
 export class SessionHub {
   private connection: HubConnection | null = null;
+  /** Why the last attempt failed, for a UI that would otherwise say nothing. */
+  private failure: string | null = null;
   /** Our retry, for the attempts SignalR's own policy does not make. */
   private readonly retry = new SteadyRetry();
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -86,19 +97,32 @@ export class SessionHub {
     return this.connection?.state === HubConnectionState.Connected;
   }
 
+  /** What went wrong last, or null if nothing has. */
+  get lastFailure(): string | null {
+    return this.failure;
+  }
+
   async start(): Promise<void> {
     if (this.connection || this.stopped) return;
 
     const { baseUrl, apiKey } = this.options;
     const connection = new HubConnectionBuilder()
       .withUrl(`${baseUrl.replace(/\/+$/, '')}/hubs/session`, {
-        // Bearer on negotiate, then `?access_token=` on the socket handshake —
-        // the server accepts the query form only on /hubs/*. Pinned to
-        // WebSockets because React Native has no EventSource, so an SSE
-        // fallback fails looking like a hung connection rather than an error.
-        // Negotiation is left on: it surfaces a dead key as a clean 401.
+        // Bearer on negotiate. On the socket itself SignalR picks the form by
+        // platform: under React Native it sends `Authorization` as a handshake
+        // header, elsewhere `?access_token=`. The server takes either.
+        //
+        // WebSockets first, long polling second, and **no** server-sent events:
+        // React Native has no EventSource, so SSE fails looking like a hung
+        // connection rather than an error. Long polling is worse on battery and
+        // immeasurably better than a transcript that never updates, and it is
+        // reached only when the socket cannot be established at all.
+        //
+        // Negotiation is left on: it surfaces a dead key as a clean 401, and a
+        // fallback cannot happen without it.
         accessTokenFactory: () => apiKey,
-        transport: HttpTransportType.WebSockets,
+        // eslint-disable-next-line no-bitwise -- HttpTransportType is a flags enum.
+        transport: HttpTransportType.WebSockets | HttpTransportType.LongPolling,
       })
       .withAutomaticReconnect(new SteadyRetry())
       .build();
@@ -125,11 +149,16 @@ export class SessionHub {
 
     connection.onreconnected(() => {
       this.attempts = 0;
+      this.note(null);
       this.options.onStateChange?.(true);
       void this.resubscribeAll();
     });
-    connection.onreconnecting(() => this.options.onStateChange?.(false));
-    connection.onclose(() => {
+    connection.onreconnecting(error => {
+      this.note(error);
+      this.options.onStateChange?.(false);
+    });
+    connection.onclose(error => {
+      this.note(error);
       this.options.onStateChange?.(false);
       // `stop()` clears the field before closing, so reaching here still
       // holding it means SignalR gave up rather than that we asked it to.
@@ -150,14 +179,35 @@ export class SessionHub {
       // reconnect policy never engages for a handshake that did not happen. The
       // app then sits behind "Reconnecting to live updates…" forever.
       this.connection = null;
+      this.note(error);
       this.options.onStateChange?.(false);
       this.scheduleRetry();
       throw error;
     }
 
     this.attempts = 0;
+    this.note(null);
     this.options.onStateChange?.(true);
     await this.resubscribeAll();
+  }
+
+  /**
+   * Keep the reason, and tell whoever is listening.
+   *
+   * SignalR's own messages are the useful ones here — "Failed to complete
+   * negotiation", a status code, a transport name — and they are otherwise
+   * written to a console nobody can read on a phone.
+   */
+  private note(error: unknown): void {
+    const reason =
+      error == null
+        ? null
+        : error instanceof Error
+          ? error.message
+          : String(error);
+
+    this.failure = reason;
+    this.options.onTrouble?.(reason);
   }
 
   /**

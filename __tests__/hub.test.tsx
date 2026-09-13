@@ -51,7 +51,9 @@ jest.mock('@microsoft/signalr', () => {
   }
 
   class Builder {
-    withUrl() {
+    static options: any = null;
+    withUrl(_url: string, options: any) {
+      Builder.options = options;
       return this;
     }
     withAutomaticReconnect() {
@@ -67,8 +69,10 @@ jest.mock('@microsoft/signalr', () => {
   return {
     HubConnectionBuilder: Builder,
     HubConnectionState: { Connected: 'Connected', Disconnected: 'Disconnected' },
-    HttpTransportType: { WebSockets: 1 },
+    // The real values, because the code combines them as flags.
+    HttpTransportType: { None: 0, WebSockets: 1, ServerSentEvents: 2, LongPolling: 4 },
     __Connection: Connection,
+    __Builder: Builder,
   };
 });
 
@@ -198,6 +202,30 @@ describe('the shared hub', () => {
   });
 });
 
+describe('the transport', () => {
+  /**
+   * A socket that cannot be established — a proxy that will not upgrade, a
+   * network that eats WebSockets — is indistinguishable from a hung connection
+   * from inside the app, and pinning the client to WebSockets alone turns that
+   * into a transcript that never updates. Long polling is the fallback; SSE is
+   * not, because React Native has no EventSource and it would fail the same
+   * silent way it is meant to rescue.
+   */
+  it('falls back to long polling but never to server-sent events', async () => {
+    screen();
+    await act(async () => {});
+
+    const { transport } = signalr.__Builder.options;
+    const { WebSockets, LongPolling, ServerSentEvents } = signalr.HttpTransportType;
+
+    /* eslint-disable no-bitwise */
+    expect(transport & WebSockets).toBeTruthy();
+    expect(transport & LongPolling).toBeTruthy();
+    expect(transport & ServerSentEvents).toBeFalsy();
+    /* eslint-enable no-bitwise */
+  });
+});
+
 describe('a handshake that fails', () => {
   it('tries again rather than wedging', async () => {
     signalr.__Connection.failNext = true;
@@ -217,6 +245,30 @@ describe('a handshake that fails', () => {
 
     expect(started.length).toBeGreaterThan(1);
     expect(useConnection.getState().live).toBe(true);
+
+    list.close();
+  });
+
+  /**
+   * The phone has no console. Without this the only account of a connection
+   * that never arrives is a bar reading "Reconnecting to live updates…", which
+   * says nothing about whether it is the key, the proxy or the network.
+   */
+  it('keeps the reason, so the banner can be asked why', async () => {
+    signalr.__Connection.failNext = true;
+
+    const list = screen();
+    await act(async () => {});
+
+    expect(useConnection.getState().reason).toBe('no route to host');
+
+    signalr.__Connection.failNext = false;
+    await act(async () => {
+      jest.advanceTimersByTime(5_000);
+    });
+
+    // And drops it once there is nothing to explain.
+    expect(useConnection.getState().reason).toBeNull();
 
     list.close();
   });

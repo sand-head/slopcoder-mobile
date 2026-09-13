@@ -19,15 +19,23 @@ import { create } from 'zustand';
 interface ConnectionState {
   reachable: boolean;
   live: boolean;
+  /**
+   * Why the hub is not up, in the transport's own words. Kept because a phone
+   * has no console to read and "reconnecting" on its own is not a symptom
+   * anyone can act on — least of all whoever is asked to fix it.
+   */
+  reason: string | null;
   /** Bumped on every recovery, so screens can re-fetch without polling. */
   recoveries: number;
   setReachable: (reachable: boolean) => void;
   setLive: (live: boolean) => void;
+  setReason: (reason: string | null) => void;
 }
 
 export const useConnection = create<ConnectionState>((set, get) => ({
   reachable: true,
   live: false,
+  reason: null,
   recoveries: 0,
 
   setReachable: reachable => {
@@ -41,5 +49,10 @@ export const useConnection = create<ConnectionState>((set, get) => ({
   setLive: live => {
     if (get().live === live) return;
     set({ live });
+  },
+
+  setReason: reason => {
+    if (get().reason === reason) return;
+    set({ reason });
   },
 }));

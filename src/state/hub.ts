@@ -41,6 +41,7 @@ function acquire(credential: Credential): SessionHub {
       baseUrl: credential.server,
       apiKey: credential.apiKey,
       onStateChange: live => useConnection.getState().setLive(live),
+      onTrouble: reason => useConnection.getState().setReason(reason),
     });
 
     shared = { key: keyOf(credential), hub, refs: 0 };
@@ -100,6 +101,7 @@ export function useSessionHub(): { hub: SessionHub | null; connected: boolean } 
     const acquired = acquire(credential);
     setHub(acquired);
     useConnection.getState().setLive(acquired.connected);
+    useConnection.getState().setReason(acquired.lastFailure);
 
     // iOS suspends sockets in the background; SignalR's own reconnect handles
     // the wake, but only once something pokes it. Coming back to the front is
