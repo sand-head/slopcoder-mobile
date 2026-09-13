@@ -34,7 +34,9 @@ import type {
   SetThinkingRequest,
   StartSessionRequest,
   SteerRequest,
+  UsageDashboard,
 } from './contracts';
+import { UsageRange } from './contracts';
 
 /** The header `SameOriginFilter` demands. Any value works; the web client sends "1". */
 export const CLIENT_HEADER = 'X-Slopcoder-Client';
@@ -246,6 +248,10 @@ export class Seam {
 
   async nodes(signal?: AbortSignal): Promise<RemoteNodeSummary[]> {
     return (await this.get<RemoteNodeSummary[]>('api/seam/nodes/', signal)) ?? [];
+  }
+
+  usage(range: UsageRange, signal?: AbortSignal) {
+    return this.get<UsageDashboard>(`api/seam/usage?range=${UsageRange[range]}`, signal);
   }
 
   protocol(signal?: AbortSignal) {

@@ -298,6 +298,70 @@ export interface SetFacetRequest {
   facetName?: string | null;
 }
 
+// ---- usage ----
+
+export enum UsageRange {
+  Days7 = 0,
+  Days30 = 1,
+  Days90 = 2,
+  All = 3,
+}
+
+export enum UsageAttributionQuality {
+  Exact = 0,
+  InferredLegacy = 1,
+  UnknownLegacy = 2,
+}
+
+export interface UsageTotals {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  completions: number;
+  estimatedCost?: number | null;
+  /** Some model in here has no price, so the cost is a floor, not a total. */
+  hasUnpriced: boolean;
+}
+
+/**
+ * Tokens actually processed afresh — uncached input, cache writes, output.
+ *
+ * The headline figure, and computed here rather than read off the wire so the
+ * app does not depend on whether the server serializes its computed properties.
+ * In an agent loop the prompt prefix is re-read on every step, so the full
+ * footprint runs to many times this and, shown alone, reads as consumption it
+ * is not.
+ */
+export function newTokens(t: UsageTotals | ModelUsage): number {
+  return t.inputTokens + t.cacheWriteTokens + t.outputTokens;
+}
+
+export function totalTokens(t: UsageTotals | ModelUsage): number {
+  return t.inputTokens + t.outputTokens + t.cacheReadTokens + t.cacheWriteTokens;
+}
+
+export interface UsageBucket {
+  /** `DateOnly` on the wire: an ISO date with no time. */
+  day: string;
+  totals: UsageTotals;
+}
+
+export interface UsageBreakdown {
+  providerKind?: number | null;
+  connectionName?: string | null;
+  model: string;
+  totals: UsageTotals;
+  attributionQuality: UsageAttributionQuality;
+}
+
+export interface UsageDashboard {
+  range: UsageRange;
+  totals: UsageTotals;
+  daily: UsageBucket[];
+  breakdown: UsageBreakdown[];
+}
+
 // ---- catalogs the create screen needs ----
 
 export interface ModelCandidate {

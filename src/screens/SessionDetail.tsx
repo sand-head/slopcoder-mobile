@@ -46,6 +46,8 @@ import {
   Screen,
 } from '../ui/kit';
 import { Composer, type TurnOptions } from '../ui/Composer';
+import { Sheet } from '../ui/Sheet';
+import { newTokens } from '../api/contracts';
 import { font, mix, radius, useTheme } from '../theme';
 
 export function SessionDetailScreen({ route, navigation }: { route: any; navigation: any }) {
@@ -76,6 +78,7 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
   // back down while you are trying to read what happened earlier.
   const [pinned, setPinned] = useState(true);
   const pinnedRef = useRef(true);
+  const [usageOpen, setUsageOpen] = useState(false);
 
   useEffect(() => {
     if (!seam) return;
@@ -191,12 +194,16 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
           style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>
           <LogoMark size={28} />
         </Pressable>
-        <View style={{ flex: 1 }}>
+        <Pressable
+          onPress={() => setUsageOpen(true)}
+          accessibilityLabel="Session usage"
+          style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.6 : 1 })}>
           <Body numberOfLines={1} style={{ fontFamily: font.sansMedium, fontSize: 14 }}>
             {state?.title ?? 'Session'}
           </Body>
+          {/* The subtitle is already the summary; tapping it opens the rest. */}
           <Mono numberOfLines={1}>{subtitle}</Mono>
-        </View>
+        </Pressable>
       </View>
 
       <KeyboardAvoidingView
@@ -330,7 +337,85 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
           />
         </View>
       </KeyboardAvoidingView>
+
+      <Sheet visible={usageOpen} title="Session usage" onClose={() => setUsageOpen(false)}>
+        {state ? (
+          <>
+            <View style={{ gap: 6 }}>
+              <Meta>context</Meta>
+              {state.lastUsage && state.lastUsage.contextWindowTokens > 0 ? (
+                <>
+                  <ContextBar percent={contextPercent ?? 0} />
+                  <Mono>
+                    last request used {contextPercent}% of{' '}
+                    {state.lastUsage.contextWindowTokens.toLocaleString()} tokens
+                  </Mono>
+                </>
+              ) : (
+                <Mono>No request yet.</Mono>
+              )}
+            </View>
+
+            <View style={{ gap: 6 }}>
+              <Meta>this session</Meta>
+              {/* A cost with no model rows is not "nothing spent" — the two
+                  came from the same fold, and saying both is a contradiction. */}
+              {state.usage.models.length === 0 && state.usage.estimatedCost == null ? (
+                <Mono>Nothing spent yet.</Mono>
+              ) : (
+                state.usage.models.map(model => (
+                  <View
+                    key={model.model}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 12,
+                      minHeight: 44,
+                      paddingVertical: 8,
+                      borderTopWidth: 1,
+                      borderTopColor: c.border,
+                    }}>
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Body numberOfLines={1} style={{ fontSize: 14 }}>
+                        {model.model}
+                      </Body>
+                      <Mono>{model.completions} calls</Mono>
+                    </View>
+                    {/* New tokens, not the full footprint: in an agent loop the
+                        prefix is re-read every step, so the larger number reads
+                        as consumption it is not. */}
+                    <Mono style={{ fontSize: 12.5, color: c.foreground }}>
+                      {newTokens(model).toLocaleString()}
+                    </Mono>
+                  </View>
+                ))
+              )}
+              {state.usage.estimatedCost != null ? (
+                <Mono>estimated cost ${state.usage.estimatedCost.toFixed(2)}</Mono>
+              ) : null}
+            </View>
+          </>
+        ) : null}
+      </Sheet>
     </Screen>
+  );
+}
+
+/** The ContextRing, unrolled: a phone has the width for a bar and not the ring. */
+function ContextBar({ percent }: { percent: number }) {
+  const { c, status } = useTheme();
+  const tone = percent >= 90 ? c.destructive : percent >= 70 ? status.running : status.ok;
+
+  return (
+    <View
+      style={{
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: mix(c.mutedForeground, 20),
+        overflow: 'hidden',
+      }}>
+      <View style={{ width: `${Math.min(100, percent)}%`, height: 6, backgroundColor: tone }} />
+    </View>
   );
 }
 

@@ -3,7 +3,7 @@
  * from the web UI; what belongs here is what is true of *this device*.
  */
 import React from 'react';
-import { Platform, ScrollView, View } from 'react-native';
+import { Platform, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../state/auth';
 import { Body, Brand, Button, Hint, Meta, Mono, Screen, SectionLabel } from '../ui/kit';
@@ -37,6 +37,11 @@ export function SettingsScreen({ navigation }: { navigation: any }) {
         </View>
 
         <View>
+          <SectionLabel label="usage" />
+          <NavRow label="tokens and cost" onPress={() => navigation.navigate('Usage')} />
+        </View>
+
+        <View>
           <SectionLabel label="elsewhere" />
           <Hint>
             Everything else — providers, facets, memory, remote nodes, usage — lives on the server.
@@ -67,6 +72,28 @@ export function SettingsScreen({ navigation }: { navigation: any }) {
         </View>
       </ScrollView>
     </Screen>
+  );
+}
+
+/** A settings row that goes somewhere, with the web hub's trailing chevron. */
+function NavRow({ label, onPress }: { label: string; onPress: () => void }) {
+  const { c } = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => ({
+        minHeight: 44,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 12,
+        borderTopWidth: 1,
+        borderTopColor: c.border,
+        opacity: pressed ? 0.6 : 1,
+      })}>
+      <Body style={{ fontSize: 15 }}>{label}</Body>
+      <Body style={{ fontFamily: font.mono, fontSize: 16, color: c.mutedForeground }}>›</Body>
+    </Pressable>
   );
 }
 

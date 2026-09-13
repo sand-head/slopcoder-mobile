@@ -19,6 +19,7 @@ export const linking: LinkingOptions<Record<string, object | undefined>> = {
       Session: 'session/:id',
       NewSession: 'new',
       Settings: 'settings',
+      Usage: 'usage',
     },
   },
 };

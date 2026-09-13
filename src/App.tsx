@@ -16,6 +16,7 @@ import { SessionsScreen } from './screens/Sessions';
 import { SessionDetailScreen } from './screens/SessionDetail';
 import { NewSessionScreen } from './screens/NewSession';
 import { SettingsScreen } from './screens/Settings';
+import { UsageScreen } from './screens/Usage';
 import { useTheme } from './theme';
 import { linking } from './linking';
 
@@ -60,6 +61,7 @@ export default function App() {
               <Stack.Screen name="Session" component={SessionDetailScreen} />
               <Stack.Screen name="NewSession" component={NewSessionScreen} />
               <Stack.Screen name="Settings" component={SettingsScreen} />
+              <Stack.Screen name="Usage" component={UsageScreen} />
             </>
           ) : (
             <Stack.Screen name="Login" component={LoginScreen} />
