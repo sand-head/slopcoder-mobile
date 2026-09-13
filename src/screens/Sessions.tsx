@@ -33,14 +33,15 @@ import {
   stamp,
 } from '../ui/kit';
 import { Composer, shortRepo, type TurnOptions } from '../ui/Composer';
+import { ConnectionBanner } from '../ui/ConnectionBanner';
+import { useConnection } from '../state/connection';
 import { font, radius, useTheme } from '../theme';
 
 export function SessionsScreen({ navigation }: { navigation: any }) {
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
   const seam = useAuth(s => s.seam);
-  const credential = useAuth(s => s.credential);
-  const { hub, connected } = useSessionHub();
+  const { hub } = useSessionHub();
 
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -118,7 +119,9 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
       setSessions(await seam.sessions());
       setError(null);
     } catch (e) {
-      setError(String(e));
+      // OfflineError already carries the useful sentence; the banner says the
+      // rest, so this only needs to explain a server that answered badly.
+      setError(e instanceof Error ? e.message : String(e));
     }
   }, [seam]);
 
@@ -130,6 +133,13 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
 
   // The registry push carries no payload by design — it means "re-list".
   useEffect(() => hub?.addRegistryListener(() => void load()), [hub, load]);
+
+  // And once the server is answering again, refresh without being asked: the
+  // list is the first thing anyone looks at after a reconnect.
+  const recoveries = useConnection(s => s.recoveries);
+  useEffect(() => {
+    if (recoveries > 0) void load();
+  }, [recoveries, load]);
 
   const rename = async () => {
     if (!seam || !renaming) return;
@@ -160,6 +170,7 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
 
   return (
     <Screen>
+      <ConnectionBanner onRetry={load} />
       <ScrollView
         contentContainerStyle={{
           paddingHorizontal: 20,
@@ -221,8 +232,14 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
           }}
         />
 
-        {!connected && credential ? <Mono>Reconnecting to live updates…</Mono> : null}
-        {error ? <Body style={{ color: c.destructive, fontSize: 13 }}>{error}</Body> : null}
+        {error ? (
+          <View style={{ gap: 8 }}>
+            <Body style={{ color: c.destructive, fontSize: 13 }}>{error}</Body>
+            <Pressable onPress={load} hitSlop={8}>
+              <Mono style={{ color: c.primary, textDecorationLine: 'underline' }}>Try again</Mono>
+            </Pressable>
+          </View>
+        ) : null}
 
         {sessions === null ? (
           <Hint>Loading…</Hint>

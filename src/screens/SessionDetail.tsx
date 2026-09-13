@@ -47,6 +47,7 @@ import {
 } from '../ui/kit';
 import { Composer, type TurnOptions } from '../ui/Composer';
 import { Sheet } from '../ui/Sheet';
+import { ConnectionBanner } from '../ui/ConnectionBanner';
 import { newTokens } from '../api/contracts';
 import { font, mix, radius, useTheme } from '../theme';
 
@@ -200,6 +201,8 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
           <Mono numberOfLines={1}>{subtitle}</Mono>
         </Pressable>
       </View>
+
+      <ConnectionBanner />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}

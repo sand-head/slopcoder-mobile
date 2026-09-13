@@ -8,9 +8,10 @@
  */
 import * as Keychain from 'react-native-keychain';
 import { create } from 'zustand';
-import { Seam, loginWithPassword, redeemPairingCode } from '../api/seam';
+import { OfflineError, Seam, loginWithPassword, redeemPairingCode } from '../api/seam';
 import type { LoginFailure } from '../api/contracts';
 import { enablePush } from '../push';
+import { useConnection } from './connection';
 
 const SERVICE = 'town.sand.slopcoder';
 
@@ -94,11 +95,19 @@ function build(credential: Credential, get: () => AuthState): Seam {
     // A 401 means the key was revoked or the account deactivated. There is no
     // refresh to attempt; drop it and show the login screen.
     onSignedOut: () => void get().signOut(),
+    onReachable: reachable => useConnection.getState().setReachable(reachable),
   });
 }
 
-/** Turns a thrown `SeamError` from the auth routes into something to show a person. */
+/** Turns a thrown error from the auth routes into something to show a person. */
 export function loginMessage(error: unknown): string {
+  // Wrong address, server down, no network — indistinguishable from here, and
+  // all of them are "could not reach" rather than "wrong password". Saying the
+  // latter would send someone to reset a password that was fine.
+  if (error instanceof OfflineError) {
+    return 'Could not reach that server. Check the address and your connection.';
+  }
+
   const code = (error as { message?: string })?.message as LoginFailure | undefined;
   switch (code) {
     case 'invalid':
@@ -110,6 +119,6 @@ export function loginMessage(error: unknown): string {
     case 'too-many-attempts':
       return 'Too many attempts. Wait a minute and try again.';
     default:
-      return 'Could not reach that server.';
+      return 'That server answered with an error. Try again in a moment.';
   }
 }

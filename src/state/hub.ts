@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import { SessionHub } from '../api/hub';
 import { useAuth } from './auth';
+import { useConnection } from './connection';
 
 export function useSessionHub(): { hub: SessionHub | null; connected: boolean } {
   const credential = useAuth(s => s.credential);
@@ -24,7 +25,10 @@ export function useSessionHub(): { hub: SessionHub | null; connected: boolean } 
     const next = new SessionHub({
       baseUrl: credential.server,
       apiKey: credential.apiKey,
-      onStateChange: setConnected,
+      onStateChange: connectedNow => {
+        setConnected(connectedNow);
+        useConnection.getState().setLive(connectedNow);
+      },
     });
 
     void next.start().catch(() => setConnected(false));

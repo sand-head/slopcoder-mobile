@@ -12,7 +12,7 @@
  * between an estimate and a wrong number.
  */
 import React, { useEffect, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   UsageAttributionQuality,
@@ -26,6 +26,7 @@ import {
 import { useAuth } from '../state/auth';
 import { BackButton, Body, Hint, Meta, Mono, Screen, SectionLabel } from '../ui/kit';
 import { SheetSegments } from '../ui/Sheet';
+import { ConnectionBanner } from '../ui/ConnectionBanner';
 import { font, mix, radius, useTheme } from '../theme';
 
 const RANGES = [
@@ -57,19 +58,23 @@ export function UsageScreen({ navigation }: { navigation: any }) {
   const [range, setRange] = useState(UsageRange.Days30);
   const [data, setData] = useState<UsageDashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!seam) return;
     let cancelled = false;
     setData(null);
+    setError(null);
     seam
       .usage(range)
       .then(d => !cancelled && setData(d))
-      .catch(e => !cancelled && setError(String(e)));
+      // The message, not the exception: OfflineError already says the useful
+      // thing, and a stringified TypeError says nothing to anybody.
+      .catch(e => !cancelled && setError(e instanceof Error ? e.message : String(e)));
     return () => {
       cancelled = true;
     };
-  }, [seam, range]);
+  }, [seam, range, attempt]);
 
   return (
     <Screen>
@@ -88,6 +93,8 @@ export function UsageScreen({ navigation }: { navigation: any }) {
         <Body style={{ flex: 1, fontFamily: font.sansMedium, fontSize: 14 }}>Usage</Body>
       </View>
 
+      <ConnectionBanner onRetry={() => setAttempt(a => a + 1)} />
+
       <ScrollView
         contentContainerStyle={{
           padding: 20,
@@ -100,7 +107,14 @@ export function UsageScreen({ navigation }: { navigation: any }) {
           onSelect={key => setRange(RANGES.find(r => r.key === key)?.value ?? UsageRange.Days30)}
         />
 
-        {error ? <Body style={{ color: c.destructive, fontSize: 13 }}>{error}</Body> : null}
+        {error ? (
+          <View style={{ gap: 8 }}>
+            <Body style={{ color: c.destructive, fontSize: 13 }}>{error}</Body>
+            <Pressable onPress={() => setAttempt(a => a + 1)} hitSlop={8}>
+              <Mono style={{ color: c.primary, textDecorationLine: 'underline' }}>Try again</Mono>
+            </Pressable>
+          </View>
+        ) : null}
         {!data && !error ? <Hint>Loading…</Hint> : null}
 
         {data ? (

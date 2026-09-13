@@ -25,6 +25,7 @@ import {
 } from '../api/contracts';
 import { Body, Dot, GlassSurface, Meta, Mono, SendButton, Sliders } from './kit';
 import { Sheet, SheetGroup, SheetMultiGroup, SheetSegments } from './Sheet';
+import { useConnection } from '../state/connection';
 import { Field } from './kit';
 import { font, mix, radius, useTheme } from '../theme';
 
@@ -107,6 +108,7 @@ export function Composer({
   attachments?: Attachments;
 }) {
   const { c, status } = useTheme();
+  const reachable = useConnection(s => s.reachable);
   const [sheet, setSheet] = useState<'model' | 'turn' | 'attach' | null>(null);
   const [query, setQuery] = useState('');
   const [found, setFound] = useState<AttachOption[]>([]);
@@ -161,7 +163,7 @@ export function Composer({
           <TextInput
             value={value}
             onChangeText={onChangeValue}
-            placeholder={placeholder}
+            placeholder={reachable ? placeholder : 'Offline'}
             placeholderTextColor={c.mutedForeground}
             multiline
             autoCapitalize="sentences"
@@ -207,7 +209,9 @@ export function Composer({
             mode={action === 'Stop' ? 'stop' : 'send'}
             onPress={onAction}
             busy={busy}
-            disabled={disabled}
+            // Nothing to send into a server that is not answering, and a queued
+            // send that silently fails is worse than a button that says no.
+            disabled={disabled || !reachable}
             accessibilityLabel={action}
           />
         </View>

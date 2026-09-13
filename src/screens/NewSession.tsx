@@ -22,6 +22,7 @@ import {
 } from '../api/contracts';
 import { useAuth } from '../state/auth';
 import { Composer, shortRepo, type TurnOptions } from '../ui/Composer';
+import { ConnectionBanner } from '../ui/ConnectionBanner';
 import { BackButton, Body, Hint, LogoMark, Mono, Screen } from '../ui/kit';
 import { font, useTheme } from '../theme';
 
@@ -122,6 +123,8 @@ export function NewSessionScreen({ navigation }: { navigation: any }) {
           <Mono numberOfLines={1}>{subtitle}</Mono>
         </View>
       </View>
+
+      <ConnectionBanner />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}

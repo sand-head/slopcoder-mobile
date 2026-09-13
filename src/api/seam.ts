@@ -49,6 +49,22 @@ export class SignedOutError extends Error {
   }
 }
 
+/**
+ * The server could not be reached at all — no DNS, no route, no listener, or the
+ * phone has no network.
+ *
+ * Distinct from `SeamError` on purpose: a 500 means slopcoder is there and
+ * unhappy, and the two want different words and different remedies. `fetch`
+ * reports both as exceptions, so the classification has to happen here or every
+ * screen ends up showing "TypeError: Network request failed".
+ */
+export class OfflineError extends Error {
+  constructor() {
+    super('Could not reach slopcoder.');
+    this.name = 'OfflineError';
+  }
+}
+
 export class SeamError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);
@@ -61,17 +77,25 @@ export interface SeamOptions {
   apiKey: string;
   /** Called once when a 401 proves the key is dead. */
   onSignedOut?: () => void;
+  /**
+   * Reachability, reported from whether calls actually complete rather than
+   * from the OS. A phone with full bars and no route to this server is offline
+   * as far as anything here is concerned.
+   */
+  onReachable?: (reachable: boolean) => void;
 }
 
 export class Seam {
   readonly baseUrl: string;
   readonly apiKey: string;
   private readonly onSignedOut?: () => void;
+  private readonly onReachable?: (reachable: boolean) => void;
 
-  constructor({ baseUrl, apiKey, onSignedOut }: SeamOptions) {
+  constructor({ baseUrl, apiKey, onSignedOut, onReachable }: SeamOptions) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.apiKey = apiKey;
     this.onSignedOut = onSignedOut;
+    this.onReachable = onReachable;
   }
 
   // ---- transport ----
@@ -95,12 +119,23 @@ export class Seam {
     headers[CLIENT_HEADER] = '1';
     if (body !== undefined) headers['Content-Type'] = 'application/json';
 
-    const response = await fetch(`${this.baseUrl}/${path}`, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal,
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}/${path}`, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal,
+      });
+    } catch (error) {
+      // An aborted request is the caller changing its mind, not a dead server.
+      if (error instanceof Error && error.name === 'AbortError') throw error;
+      this.onReachable?.(false);
+      throw new OfflineError();
+    }
+
+    // Anything with a status code means we got there, whatever it says.
+    this.onReachable?.(true);
 
     if (response.status === 401) {
       this.onSignedOut?.();
@@ -272,11 +307,18 @@ export class Seam {
 // ---- device auth: the only calls made without a key ----
 
 async function claim(baseUrl: string, path: string, body: unknown): Promise<DeviceKey> {
-  const response = await fetch(`${baseUrl.replace(/\/+$/, '')}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl.replace(/\/+$/, '')}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    // A typo'd address and a server that is down look identical from here, and
+    // both are "could not reach" rather than "wrong password".
+    throw new OfflineError();
+  }
 
   const text = await response.text();
   const payload = text.length > 0 ? JSON.parse(text) : {};
