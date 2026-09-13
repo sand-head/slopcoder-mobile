@@ -15,6 +15,10 @@
  * - **Group membership does not survive a reconnect.** Every subscription must
  *   be re-established and re-seeded, or the session goes quiet while looking
  *   connected. On a phone this is the common case, not the edge case.
+ * - **`withAutomaticReconnect` does not cover the first handshake.** It retries
+ *   a socket that dropped after connecting once and nothing else, so a launch
+ *   with no network leaves a hub that will never try again. This class owns
+ *   that retry.
  */
 import {
   HubConnection,
@@ -64,6 +68,11 @@ export interface SessionHubOptions {
 
 export class SessionHub {
   private connection: HubConnection | null = null;
+  /** Our retry, for the attempts SignalR's own policy does not make. */
+  private readonly retry = new SteadyRetry();
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private attempts = 0;
+  private stopped = false;
   /** Per-session handlers. A session with none left is unsubscribed. */
   private readonly listeners = new Map<string, Set<DeltaHandler>>();
   private readonly registryListeners = new Set<() => void>();
@@ -78,7 +87,7 @@ export class SessionHub {
   }
 
   async start(): Promise<void> {
-    if (this.connection) return;
+    if (this.connection || this.stopped) return;
 
     const { baseUrl, apiKey } = this.options;
     const connection = new HubConnectionBuilder()
@@ -115,16 +124,55 @@ export class SessionHub {
     });
 
     connection.onreconnected(() => {
+      this.attempts = 0;
       this.options.onStateChange?.(true);
       void this.resubscribeAll();
     });
     connection.onreconnecting(() => this.options.onStateChange?.(false));
-    connection.onclose(() => this.options.onStateChange?.(false));
+    connection.onclose(() => {
+      this.options.onStateChange?.(false);
+      // `stop()` clears the field before closing, so reaching here still
+      // holding it means SignalR gave up rather than that we asked it to.
+      if (this.connection !== connection) return;
+
+      this.connection = null;
+      this.scheduleRetry();
+    });
 
     this.connection = connection;
-    await connection.start();
+
+    try {
+      await connection.start();
+    } catch (error) {
+      // Leaving a never-started connection assigned would wedge the hub for the
+      // life of the process: every later `start()` — the foreground poke, a
+      // screen mounting — returns at the guard above, and the automatic
+      // reconnect policy never engages for a handshake that did not happen. The
+      // app then sits behind "Reconnecting to live updates…" forever.
+      this.connection = null;
+      this.options.onStateChange?.(false);
+      this.scheduleRetry();
+      throw error;
+    }
+
+    this.attempts = 0;
     this.options.onStateChange?.(true);
     await this.resubscribeAll();
+  }
+
+  /**
+   * Try again later, on the same cadence a dropped socket gets. The first delay
+   * is floored: `SteadyRetry` answers 0 for a drop, which is right when the
+   * socket was up a moment ago and a busy loop when the server is simply down.
+   */
+  private scheduleRetry(): void {
+    if (this.stopped || this.retryTimer || this.connection) return;
+
+    const delay = this.retry.nextRetryDelayInMilliseconds({ previousRetryCount: this.attempts++ });
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      void this.start().catch(() => {});
+    }, Math.max(delay, 1_000));
   }
 
   /** "Something in your session list changed" — the push carries no payload. */
@@ -187,6 +235,12 @@ export class SessionHub {
   }
 
   async stop(): Promise<void> {
+    this.stopped = true;
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
+
     const connection = this.connection;
     this.connection = null;
     this.listeners.clear();
