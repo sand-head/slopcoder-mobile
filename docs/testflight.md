@@ -80,9 +80,19 @@ does not matter, and neither does knowing your Team ID: the job decodes the
 profile with `security cms -D` and reads both out of it, so neither can drift
 from what the portal actually issued.
 
-**APNs key** — Keys → **+** → tick *Apple Push Notifications service*. Download
-the `.p8`. No CSR and no OpenSSL here: Apple generates this one and hands you the
-whole thing. **It is for the server, not for CI** — it fills slopcoder's
+**APNs key** — Keys → **+** → tick *Apple Push Notifications service*. Under
+Configure, leave the environment on **Sandbox & Production**: a token-based key
+is not environment-scoped the way the old APNs certificates were, and the
+sandbox-only restriction would leave every TestFlight and App Store build with
+no notifications. Apple allows two of these per account, so do not burn one
+experimenting. Download the `.p8`; no CSR and no OpenSSL here, Apple generates
+this one whole.
+
+Nothing in slopcoder selects an environment either — the app reports whether it
+holds a sandbox token (`AppDelegate.swift`, from `#if DEBUG`) and the server
+picks the matching APNs host per device (`ApnsSender.cs`). One key covers both.
+
+**The key is for the server, not for CI** — it fills slopcoder's
 `Push:Apns:{KeyId,TeamId,BundleId,PrivateKey}`. Confusing it with the App Store
 Connect key below is the single easiest mistake here; both are `.p8` files from
 different pages, and neither can be downloaded twice.
