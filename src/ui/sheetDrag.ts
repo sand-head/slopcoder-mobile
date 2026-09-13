@@ -10,6 +10,13 @@
  * dragged, which is how the first attempt at this shipped a grip that responded
  * to every gesture and moved nothing. If a drag can have no visible effect, the
  * grip is a lie whatever the code does.
+ *
+ * Down always means out. An earlier version stepped from the tall detent to the
+ * short one instead, on the theory that a fat-fingered drag should not lose
+ * your place — but a sheet you cannot throw away from the size you are actually
+ * looking at is a sheet that ignores you, and the Claude app dismisses straight
+ * from its tallest detent in one gesture. Getting back to the short detent is
+ * not worth a gesture nobody reaches for.
  */
 
 /** Where a sheet can rest. Both are caps — a short sheet is its content, either way. */
@@ -39,24 +46,25 @@ export function settleSheet({ size, dy, vy, canGrow }: Drag): SheetSize | 'close
   const down = vy > FLICK || dy > STEP;
   const up = vy < -FLICK || dy < -STEP;
 
-  // One rung at a time: down from full returns to medium rather than
-  // dismissing, so a fat-fingered drag never loses your place in a list.
-  if (size === 'full') return down ? 'medium' : 'full';
   if (down) return 'closed';
-  return up && canGrow ? 'full' : 'medium';
+  return up && canGrow ? 'full' : size;
 }
 
 /**
- * How far the sheet may follow a finger.
+ * How far the sheet may follow a finger, given the room it has above it.
  *
  * Downwards it is unbounded — that gesture ends in a dismissal. Upwards it
- * stops at nothing when there is nowhere to go, because a sheet that lifts off
- * the bottom of the screen and springs back looks like a bug rather than a
- * refusal.
+ * stops dead at the tallest detent. Letting it run past was worth a quarter of
+ * the screen of overshoot on release, and the snap back from there is most of
+ * what read as jank; the Claude app's sheet does not budge past its own ceiling
+ * either.
  */
-export function clampDrag(dy: number, canGrow: boolean): number {
-  if (dy >= 0) return dy;
-  return canGrow ? dy : 0;
+export function clampDrag(dy: number, headroom: number): number {
+  const limit = Math.max(0, headroom);
+  if (dy >= -limit) return dy;
+  // Spelt out rather than `Math.max`, which answers `-0` here and leaves every
+  // caller to know that `-0 !== 0` under `Object.is`.
+  return limit === 0 ? 0 : -limit;
 }
 
 /**
@@ -74,3 +82,11 @@ export function detents(available: number): Record<SheetSize, number> {
     full: available * 0.94,
   };
 }
+
+/**
+ * The spring the sheet settles on, shared by every detent change so they all
+ * feel like the same object moving. Measured against the Claude app's sheet:
+ * about 27 frames from one detent to the other, decelerating the whole way,
+ * never overshooting.
+ */
+export const SETTLE = { stiffness: 260, damping: 28, mass: 1 } as const;

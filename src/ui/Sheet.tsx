@@ -6,24 +6,24 @@
  * thumb reach, with rows big enough to hit — so the arrangement follows the
  * platform while the content follows `TurnSettings`.
  *
+ * **Detents move the sheet; they never resize it.** The box is laid out once at
+ * its tallest and pushed down to show less, so changing detent is one transform
+ * and no layout at all. Capping the height per detent instead — which is the
+ * obvious way to write this — meant every release did a layout pass and a
+ * spring at the same time, and the two disagreed: measured off a recording, the
+ * sheet overshot a quarter of the screen past its target, sat still for eight
+ * frames, then crawled back. The bottom of the sheet hangs off the screen at
+ * the shorter detent, which is exactly what the Claude app's sheets do.
+ *
  * **The drag target is outside the glass, and that is the point of it.**
  * `GlassSurface` is a `UIVisualEffectView` on iOS 26, and `UIGlassEffect`
  * reconfigures its `contentView` in ways that can leave
  * `isUserInteractionEnabled` off — @callstack/liquid-glass carries a workaround
- * for exactly that, forcing it back on, with a comment about children mounting
- * after the effect is applied. Taps on the close button survived it; drags did
- * not, through two releases. So the strip that listens for the drag is a
- * sibling of the glass rather than a child of it, painted over the grip, and it
- * claims the responder on touch-down rather than negotiating on the first move.
- *
- * **The animation is JS-driven on purpose.** Three values compose into one
- * transform — the entrance, the finger, the keyboard — and a graph that mixes
- * native and JS nodes fails by doing nothing rather than by raising anything.
- * One view moving is not the place to spend that risk.
- *
- * **It opens at the smaller detent.** A sheet that opens at its largest size
- * has nowhere to be dragged, which is how the first attempt shipped a grip that
- * answered every gesture and moved nothing.
+ * for exactly that, with a comment about children mounting after the effect is
+ * applied. Taps on the close button survived it; drags did not, through two
+ * releases. So the strip that listens is a sibling of the glass rather than a
+ * child, painted over the grip, and it claims the responder on touch-down
+ * rather than negotiating on the first move.
  *
  * The scroll view's `flexShrink: 1` is a belt rather than a fix: React Native
  * defaults it to 0 where the web defaults to 1. This sheet measures correctly
@@ -46,7 +46,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Body, Check, GlassSurface, Meta, Mono } from './kit';
-import { clampDrag, detents, settleSheet, type SheetSize } from './sheetDrag';
+import { clampDrag, detents, SETTLE, settleSheet, type SheetSize } from './sheetDrag';
 import { mix, radius, useTheme } from '../theme';
 
 export interface SheetOption {
@@ -122,25 +122,29 @@ export function Sheet({
   const [size, setSize] = useState<SheetSize>('medium');
   /** Whether a finger is on the grip. Visible, so the affordance answers. */
   const [held, setHeld] = useState(false);
+  /** The sheet as laid out, which is what the detents are measured against. */
+  const [height, setHeight] = useState(0);
 
-  const cap = detents(windowHeight - insets.top - keyboard.height)[size];
+  const room = detents(windowHeight - insets.top - keyboard.height);
+  /** How far down the sheet sits to show the shorter detent. */
+  const lowered = Math.max(0, Math.min(height, room.full) - room.medium);
+  const restingAt = size === 'medium' ? lowered : 0;
 
   /** 0 closed, 1 open. Drives the travel and the backdrop together. */
   const enter = useRef(new Animated.Value(0)).current;
-  /** Where the finger has the sheet, relative to where it rests. */
-  const drag = useRef(new Animated.Value(0)).current;
+  /** Where the sheet is, resting or dragged. One value: a gesture folds into it. */
+  const offset = useRef(new Animated.Value(0)).current;
   /** How far up the keyboard is holding it. */
   const lift = useRef(new Animated.Value(0)).current;
 
   // Read by the pan responder, which is built once and cannot see state move.
   const sizeRef = useRef<SheetSize>('medium');
   sizeRef.current = size;
-  const canGrow = useRef(false);
-  const contentHeight = useRef(0);
-  const viewportHeight = useRef(0);
-  const measure = () => {
-    canGrow.current = contentHeight.current > viewportHeight.current + 1;
-  };
+  const restingRef = useRef(0);
+  const loweredRef = useRef(0);
+  loweredRef.current = lowered;
+  /** When the sheet started arriving, so its first placement is not animated. */
+  const openedAt = useRef(0);
 
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -149,29 +153,79 @@ export function Sheet({
     if (visible) {
       setMounted(true);
       setSize('medium');
-      drag.setValue(0);
+      openedAt.current = Date.now();
       Animated.timing(enter, {
         toValue: 1,
         duration: TRAVEL_MS,
-        useNativeDriver: false,
+        useNativeDriver: true,
       }).start();
       return;
     }
 
-    Animated.timing(enter, { toValue: 0, duration: TRAVEL_MS, useNativeDriver: false }).start(
+    Animated.timing(enter, { toValue: 0, duration: TRAVEL_MS, useNativeDriver: true }).start(
       ({ finished }) => {
         if (finished) setMounted(false);
       },
     );
-  }, [visible, enter, drag]);
+  }, [visible, enter]);
+
+  // Where the sheet rests, and how it gets there. While it is still arriving it
+  // is *placed* rather than moved — the first detent is decided by a layout
+  // pass that lands mid-entrance, and springing to it would be an animation
+  // nobody asked for, layered under the one they did.
+  useEffect(() => {
+    restingRef.current = restingAt;
+
+    if (Date.now() - openedAt.current < TRAVEL_MS) {
+      offset.setValue(restingAt);
+      return;
+    }
+
+    Animated.spring(offset, { toValue: restingAt, useNativeDriver: true, ...SETTLE }).start();
+  }, [restingAt, offset]);
 
   useEffect(() => {
     Animated.timing(lift, {
       toValue: -keyboard.height,
       duration: keyboard.duration,
-      useNativeDriver: false,
+      useNativeDriver: true,
     }).start();
   }, [keyboard, lift]);
+
+  /** The gesture itself, wherever it started. */
+  const dragging = useMemo(
+    () => ({
+      move: (dy: number) => offset.setValue(restingRef.current + clampDrag(dy, restingRef.current)),
+      release: (dy: number, vy: number) => {
+        const next = settleSheet({
+          size: sizeRef.current,
+          dy,
+          vy,
+          canGrow: loweredRef.current > 1,
+        });
+
+        if (next === 'closed') {
+          // The exit runs from wherever the finger left the sheet, because
+          // `offset` is where the finger left it.
+          onCloseRef.current();
+          return;
+        }
+
+        if (next === sizeRef.current) {
+          // Same detent, so nothing re-renders and nothing else will put it back.
+          Animated.spring(offset, {
+            toValue: restingRef.current,
+            useNativeDriver: true,
+            ...SETTLE,
+          }).start();
+          return;
+        }
+
+        setSize(next);
+      },
+    }),
+    [offset],
+  );
 
   const pan = useMemo(
     () =>
@@ -182,36 +236,40 @@ export function Sheet({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: () => setHeld(true),
-        onPanResponderMove: (_event, gesture) =>
-          drag.setValue(clampDrag(gesture.dy, canGrow.current || sizeRef.current === 'full')),
+        onPanResponderMove: (_event, gesture) => dragging.move(gesture.dy),
         onPanResponderRelease: (_event, gesture) => {
           setHeld(false);
-
-          const next = settleSheet({
-            size: sizeRef.current,
-            dy: gesture.dy,
-            vy: gesture.vy,
-            canGrow: canGrow.current,
-          });
-
-          if (next === 'closed') {
-            // `onClose` runs the exit animation from wherever the finger left
-            // the sheet, so there is nothing to animate here.
-            onCloseRef.current();
-            return;
-          }
-
-          setSize(next);
-          Animated.spring(drag, { toValue: 0, useNativeDriver: false, bounciness: 0 }).start();
+          dragging.release(gesture.dy, gesture.vy);
         },
         onPanResponderTerminate: () => setHeld(false),
       }),
-    [drag],
+    [dragging],
+  );
+
+  /**
+   * The same drag, started anywhere in the body.
+   *
+   * A native sheet at its short detent does not scroll its content — a pull
+   * anywhere opens it, and only once it is open does the list start to move.
+   * The list is told not to scroll at the short detent, so it declines the
+   * gesture and this ancestor picks it up; on start it declines too, which is
+   * what leaves taps on the rows to the rows.
+   */
+  const body = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: (_event, gesture) =>
+          sizeRef.current === 'medium' && Math.abs(gesture.dy) > 4,
+        onPanResponderMove: (_event, gesture) => dragging.move(gesture.dy),
+        onPanResponderRelease: (_event, gesture) => dragging.release(gesture.dy, gesture.vy),
+      }),
+    [dragging],
   );
 
   const travel = Animated.add(
     enter.interpolate({ inputRange: [0, 1], outputRange: [windowHeight, 0] }),
-    Animated.add(drag, lift),
+    Animated.add(offset, lift),
   );
 
   return (
@@ -227,7 +285,10 @@ export function Sheet({
           />
         </Animated.View>
 
-        <Animated.View style={{ maxHeight: cap, transform: [{ translateY: travel }] }}>
+        <Animated.View
+          {...body.panHandlers}
+          onLayout={event => setHeight(event.nativeEvent.layout.height)}
+          style={{ maxHeight: room.full, transform: [{ translateY: travel }] }}>
           <GlassSurface
             cornerRadius={radius.xxl}
             style={{
@@ -278,20 +339,16 @@ export function Sheet({
             </View>
 
             <ScrollView
+              // At the short detent the sheet moves instead of the list, which
+              // is what a native sheet does and is the difference between
+              // opening a panel and scrolling a letterbox.
+              scrollEnabled={size === 'full'}
               // Explicit, not load-bearing: see the note at the top of the file
               // about React Native's `flexShrink` default.
               style={{ flexShrink: 1 }}
               // A tap on a result while the keyboard is up must pick it, not
               // spend itself dismissing the keyboard.
               keyboardShouldPersistTaps="handled"
-              onLayout={event => {
-                viewportHeight.current = event.nativeEvent.layout.height;
-                measure();
-              }}
-              onContentSizeChange={(_width, height) => {
-                contentHeight.current = height;
-                measure();
-              }}
               contentContainerStyle={{ padding: 16, paddingTop: 4, gap: 14 }}>
               {children}
             </ScrollView>

@@ -8,7 +8,15 @@
  */
 import React from 'react';
 import { act, create } from 'react-test-renderer';
-import { Animated, Keyboard, Modal, PanResponder, ScrollView, Text } from 'react-native';
+import {
+  Animated,
+  Dimensions,
+  Keyboard,
+  Modal,
+  PanResponder,
+  ScrollView,
+  Text,
+} from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Sheet } from '../src/ui/Sheet';
 import { clampDrag, detents, settleSheet, type SheetSize } from '../src/ui/sheetDrag';
@@ -35,8 +43,19 @@ describe('what a drag on the grip means', () => {
   /** Stretching a sheet that is already showing everything opens empty glass. */
   it('refuses to grow when there is nothing hidden', () => {
     expect(drag({ dy: -200, canGrow: false })).toBe('medium');
-    expect(clampDrag(-60, false)).toBe(0);
-    expect(clampDrag(-60, true)).toBe(-60);
+  });
+
+  /**
+   * Upwards the sheet stops dead at its tallest detent. Letting it run past was
+   * worth a quarter of a screen of overshoot on release, and the snap back from
+   * there is most of what read as jank.
+   */
+  it('will not be dragged above the tallest detent', () => {
+    expect(clampDrag(-60, 200)).toBe(-60);
+    expect(clampDrag(-300, 200)).toBe(-200);
+    expect(clampDrag(-60, 0)).toBe(0);
+    // Downwards is free: that gesture ends in a dismissal.
+    expect(clampDrag(400, 0)).toBe(400);
   });
 
   /**
@@ -61,15 +80,21 @@ describe('what a drag on the grip means', () => {
    * rather than dismissing, so a fat-fingered drag never loses your place in a
    * list — which is how every other multi-detent sheet on the platform behaves.
    */
-  it('steps down from full to medium before it closes', () => {
-    expect(drag({ size: 'full', dy: 200 })).toBe('medium');
-    expect(drag({ size: 'full', dy: 200, vy: 2 })).toBe('medium');
+  /**
+   * Down is out, from either detent. Stepping tall-to-short instead sounds
+   * careful and reads as a sheet ignoring you: the gesture people make to throw
+   * a sheet away is a pull down from the size they are looking at, and the
+   * Claude app dismisses straight from its tallest detent.
+   */
+  it('closes on a pull down from either detent', () => {
+    expect(drag({ size: 'full', dy: 200 })).toBe('closed');
     expect(drag({ size: 'medium', dy: 200 })).toBe('closed');
+    expect(drag({ size: 'full', dy: 10, vy: 1.4 })).toBe('closed');
   });
 
-  it('always follows a finger downwards, wherever it is', () => {
-    // That gesture ends in a dismissal, so there is nothing to hold it back.
-    expect(clampDrag(300, false)).toBe(300);
+  it('stays put for a nudge from the tallest detent', () => {
+    expect(drag({ size: 'full', dy: 20 })).toBe('full');
+    expect(drag({ size: 'full', dy: -20 })).toBe('full');
   });
 
   it.each<SheetSize>(['medium', 'full'])('never leaves %s for nowhere', size => {
@@ -209,45 +234,93 @@ describe('the sheet on screen', () => {
   });
 
   /**
-   * The one that has now been wrong twice, and could not be caught by reading
-   * either half on its own: the responder fires, the ladder answers, and the
-   * sheet is a different size afterwards. The first version dragged fine and
-   * resolved both detents to the same cap; the second opened at the larger one,
-   * so up had nowhere to go.
+   * The one that has now been wrong three times, and could not be caught by
+   * reading either half on its own: the responder fires, the ladder answers,
+   * and the sheet ends up somewhere else.
    *
    * Driven through the config the component hands to `PanResponder`, because
-   * gesture state is accumulated from touch histories that a test cannot
-   * plausibly fake — and the assertion is on the rendered height, not on the
-   * state, so a wiring that stops short still fails.
+   * gesture state is accumulated from touch histories a test cannot plausibly
+   * fake. What is asserted is the *layout*, which must not move, and the
+   * spring, which must.
    */
-  it('grows and shrinks the sheet when the grip is dragged', () => {
-    let config: any;
+  it('moves the sheet between detents without relaying it out', () => {
+    const configs: any[] = [];
     jest.spyOn(PanResponder, 'create').mockImplementation(created => {
-      config = created;
+      configs.push(created);
       return { panHandlers: {} } as any;
     });
+    const spring = jest.spyOn(Animated, 'spring');
 
     const closed = jest.fn();
     const tree = mount(closed);
 
-    // A list far longer than the space it has, so there is something to reveal.
-    const scroll = tree.root.findByType(ScrollView);
-    act(() => scroll.props.onLayout({ nativeEvent: { layout: { height: 300 } } }));
-    act(() => scroll.props.onContentSizeChange(393, 2_000));
+    // Tall enough that there is somewhere to grow to.
+    const room = detents(Dimensions.get('window').height - METRICS.insets.top);
+    const sheet = tree.root.find(
+      node => typeof node.type === 'string' && flatten(node.props?.style).maxHeight != null,
+    );
+    act(() => sheet.props.onLayout({ nativeEvent: { layout: { height: room.full } } }));
 
-    const medium = sheetStyle(tree).maxHeight;
+    // The box is capped at the *tallest* detent and stays there. Capping it per
+    // detent is the obvious way to write this and is what made the sheet
+    // overshoot a quarter of the screen and stall for eight frames: the layout
+    // pass and the spring disagreed about where it was.
+    expect(sheetStyle(tree).maxHeight).toBe(room.full);
 
-    act(() => config.onPanResponderRelease({}, { dy: -200, vy: -1 }));
-    const full = sheetStyle(tree).maxHeight;
-    expect(full).toBeGreaterThan(medium);
+    // Past the entrance, after which a detent change is a movement rather than
+    // the first placement.
+    act(() => {
+      jest.advanceTimersByTime(400);
+    });
 
-    act(() => config.onPanResponderRelease({}, { dy: 200, vy: 1 }));
-    expect(sheetStyle(tree).maxHeight).toBe(medium);
-    expect(closed).not.toHaveBeenCalled();
+    const grip = configs[0];
+    spring.mockClear();
 
-    // And from there, down again gets out.
-    act(() => config.onPanResponderRelease({}, { dy: 200, vy: 1 }));
+    act(() => grip.onPanResponderRelease({}, { dy: -200, vy: -1 }));
+
+    expect(sheetStyle(tree).maxHeight).toBe(room.full);
+    expect(spring).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ toValue: 0, useNativeDriver: true }),
+    );
+
+    // And down is out, from the tall detent, in one gesture.
+    act(() => grip.onPanResponderRelease({}, { dy: 200, vy: 1 }));
     expect(closed).toHaveBeenCalled();
+
+    jest.restoreAllMocks();
+  });
+
+  /**
+   * A native sheet at its short detent does not scroll its content: a pull
+   * anywhere in the body opens it, and only then does the list move.
+   */
+  it('opens on a pull in the body instead of scrolling a letterbox', () => {
+    const configs: any[] = [];
+    jest.spyOn(PanResponder, 'create').mockImplementation(created => {
+      configs.push(created);
+      return { panHandlers: {} } as any;
+    });
+
+    const tree = mount();
+    const sheet = tree.root.find(
+      node => typeof node.type === 'string' && flatten(node.props?.style).maxHeight != null,
+    );
+    const tall = sheetStyle(tree).maxHeight;
+    act(() => sheet.props.onLayout({ nativeEvent: { layout: { height: tall } } }));
+
+    expect(tree.root.findByType(ScrollView).props.scrollEnabled).toBe(false);
+
+    // The body responder takes a drag, and leaves a tap to the row under it.
+    const [, body] = configs;
+    expect(body.onStartShouldSetPanResponder()).toBe(false);
+    expect(body.onMoveShouldSetPanResponder({}, { dy: -40 })).toBe(true);
+
+    act(() => body.onPanResponderRelease({}, { dy: -200, vy: -1 }));
+
+    expect(tree.root.findByType(ScrollView).props.scrollEnabled).toBe(true);
+    // Open, so the list has the gesture now.
+    expect(body.onMoveShouldSetPanResponder({}, { dy: -40 })).toBe(false);
 
     jest.restoreAllMocks();
   });
@@ -309,17 +382,20 @@ describe('the sheet on screen', () => {
   });
 
   /**
-   * A graph that mixes native and JS animated nodes fails by doing nothing
-   * rather than by raising anything, and three values compose into this one
-   * transform. One view moving is not the place to spend that risk.
+   * Every value here composes into a transform or an opacity, so the whole
+   * graph can run off the main thread — and it has to, because a JS-driven
+   * spring competing with a layout pass is what the measured stall was. A graph
+   * that mixes drivers fails by doing nothing rather than by raising anything,
+   * so the rule is all of them or none.
    */
-  it('animates on one driver', () => {
+  it('animates entirely on the native driver', () => {
     const timing = jest.spyOn(Animated, 'timing');
+    const spring = jest.spyOn(Animated, 'spring');
     render();
 
     expect(timing).toHaveBeenCalled();
-    for (const [, config] of timing.mock.calls) {
-      expect((config as any).useNativeDriver).toBe(false);
+    for (const [, config] of [...timing.mock.calls, ...spring.mock.calls]) {
+      expect((config as any).useNativeDriver).toBe(true);
     }
 
     jest.restoreAllMocks();
