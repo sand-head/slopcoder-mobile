@@ -84,19 +84,37 @@ describe('the sheet on screen', () => {
     insets: { top: 59, left: 0, right: 0, bottom: 34 },
   };
 
-  function render() {
+  /**
+   * Opening a sheet starts an animation, and a JS-driven one is a real timer.
+   * Left running past the test that made it, it fires into a torn-down renderer
+   * and takes the whole worker process with it.
+   */
+  const open: ReturnType<typeof create>[] = [];
+
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => {
+    for (const tree of open) act(() => tree.unmount());
+    open.length = 0;
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  });
+
+  function mount(onClose: () => void = () => {}) {
     let tree: ReturnType<typeof create> | undefined;
     act(() => {
       tree = create(
         <SafeAreaProvider initialMetrics={METRICS}>
-          <Sheet visible title="Attach" onClose={() => {}}>
+          <Sheet visible title="Attach" onClose={onClose}>
             <Text>a repository</Text>
           </Sheet>
         </SafeAreaProvider>,
       );
     });
+    open.push(tree!);
     return tree!;
   }
+
+  const render = () => mount();
 
   const flatten = (style: unknown): Record<string, any> =>
     Array.isArray(style) ? Object.assign({}, ...style.filter(Boolean).map(flatten)) : style ?? {};
@@ -210,30 +228,21 @@ describe('the sheet on screen', () => {
     });
 
     const closed = jest.fn();
-    let tree: ReturnType<typeof create> | undefined;
-    act(() => {
-      tree = create(
-        <SafeAreaProvider initialMetrics={METRICS}>
-          <Sheet visible title="Attach" onClose={closed}>
-            <Text>a repository</Text>
-          </Sheet>
-        </SafeAreaProvider>,
-      );
-    });
+    const tree = mount(closed);
 
     // A list far longer than the space it has, so there is something to reveal.
-    const scroll = tree!.root.findByType(ScrollView);
+    const scroll = tree.root.findByType(ScrollView);
     act(() => scroll.props.onLayout({ nativeEvent: { layout: { height: 300 } } }));
     act(() => scroll.props.onContentSizeChange(393, 2_000));
 
-    const medium = sheetStyle(tree!).maxHeight;
+    const medium = sheetStyle(tree).maxHeight;
 
     act(() => config.onPanResponderRelease({}, { dy: -200, vy: -1 }));
-    const full = sheetStyle(tree!).maxHeight;
+    const full = sheetStyle(tree).maxHeight;
     expect(full).toBeGreaterThan(medium);
 
     act(() => config.onPanResponderRelease({}, { dy: 200, vy: 1 }));
-    expect(sheetStyle(tree!).maxHeight).toBe(medium);
+    expect(sheetStyle(tree).maxHeight).toBe(medium);
     expect(closed).not.toHaveBeenCalled();
 
     // And from there, down again gets out.
@@ -244,26 +253,75 @@ describe('the sheet on screen', () => {
   });
 
   /**
-   * The handlers have to be *on the grip*, not merely created. A responder
-   * spread onto the wrong subtree is a working drag that nothing can start.
+   * The drag strip must be a *sibling* of the glass, painted after it.
+   *
+   * `GlassSurface` is a `UIVisualEffectView` on iOS 26, and `UIGlassEffect` can
+   * leave its `contentView` with `isUserInteractionEnabled` off; the package
+   * ships a workaround for it. Taps on the close button survived that. Drags
+   * did not, through two releases. Anything inside the glass is at the mercy of
+   * it, so the strip lives outside — and last, so it is on top.
    */
-  it('puts the handlers on the row the grip is in', () => {
+  it('listens for the drag outside the glass, and over it', () => {
     const tree = render();
 
-    const pill = tree.root.find(node => {
-      const style = flatten(node.props?.style);
-      return style.width === 36 && style.height === 4;
-    });
+    const dragging = tree.root.find(
+      // Host nodes only: the test renderer reports the component and the view
+      // it renders, and only one of them has a place among its siblings.
+      node => typeof node.type === 'string' && node.props?.accessibilityLabel === 'Resize',
+    );
 
-    // Walk out of the grip until something is listening for a drag.
-    let listener = pill.parent;
-    while (listener && typeof listener.props?.onResponderRelease !== 'function') {
-      listener = listener.parent;
+    // Nothing scrollable underneath it: it is a strip, not a wrapper.
+    expect(dragging.findAllByType(ScrollView)).toHaveLength(0);
+
+    // The glass is the box holding the list. The strip must not be inside it.
+    const glass = tree.root.find(
+      node =>
+        typeof node.type === 'string' &&
+        flatten(node.props?.style).paddingBottom != null &&
+        node.findAllByType(ScrollView).length > 0,
+    );
+    expect(glass.findAll(node => node.props?.accessibilityLabel === 'Resize')).toHaveLength(0);
+
+    // And it paints after the glass, so it is on top of it.
+    const sheet = tree.root.find(
+      node => typeof node.type === 'string' && flatten(node.props?.style).maxHeight != null,
+    );
+    const order = sheet.children.filter(child => typeof child !== 'string') as any[];
+    expect(order[0].findAllByType(ScrollView).length).toBeGreaterThan(0);
+    expect(
+      order[order.length - 1].findAll((node: any) => node.props?.accessibilityLabel === 'Resize')
+        .length,
+    ).toBeGreaterThan(0);
+  });
+
+  /** A thumb's worth of target, starting clear of the close button. */
+  it('gives the drag a real target that does not cover the close button', () => {
+    const tree = render();
+    const strip = flatten(
+      tree.root.find(
+        node => typeof node.type === 'string' && node.props?.accessibilityLabel === 'Resize',
+      ).props.style,
+    );
+
+    expect(strip.height).toBeGreaterThanOrEqual(44);
+    // The close button sits at x 16..48 with a 10pt hit slop around it.
+    expect(strip.left).toBeGreaterThanOrEqual(58);
+  });
+
+  /**
+   * A graph that mixes native and JS animated nodes fails by doing nothing
+   * rather than by raising anything, and three values compose into this one
+   * transform. One view moving is not the place to spend that risk.
+   */
+  it('animates on one driver', () => {
+    const timing = jest.spyOn(Animated, 'timing');
+    render();
+
+    expect(timing).toHaveBeenCalled();
+    for (const [, config] of timing.mock.calls) {
+      expect((config as any).useNativeDriver).toBe(false);
     }
 
-    expect(listener).toBeDefined();
-    // And it is the header row, not the whole sheet: the list below has to keep
-    // its own scrolling, which a drag responder wrapped around it would fight.
-    expect(listener!.findAllByType(ScrollView)).toHaveLength(0);
+    jest.restoreAllMocks();
   });
 });

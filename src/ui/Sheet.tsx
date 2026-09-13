@@ -6,23 +6,30 @@
  * thumb reach, with rows big enough to hit — so the arrangement follows the
  * platform while the content follows `TurnSettings`.
  *
- * **The modal does not animate itself.** `animationType="slide"` slides the
- * whole modal, and the modal includes the dimmed backdrop — so opening a sheet
- * meant watching a rectangle of dimming rise up the screen behind it, with a
- * hard horizontal edge. The sheet is animated here instead: it travels, the
- * backdrop fades in place, and the two are separate values because they are
- * separate things.
+ * **The drag target is outside the glass, and that is the point of it.**
+ * `GlassSurface` is a `UIVisualEffectView` on iOS 26, and `UIGlassEffect`
+ * reconfigures its `contentView` in ways that can leave
+ * `isUserInteractionEnabled` off — @callstack/liquid-glass carries a workaround
+ * for exactly that, forcing it back on, with a comment about children mounting
+ * after the effect is applied. Taps on the close button survived it; drags did
+ * not, through two releases. So the strip that listens for the drag is a
+ * sibling of the glass rather than a child of it, painted over the grip, and it
+ * claims the responder on touch-down rather than negotiating on the first move.
+ *
+ * **The animation is JS-driven on purpose.** Three values compose into one
+ * transform — the entrance, the finger, the keyboard — and a graph that mixes
+ * native and JS nodes fails by doing nothing rather than by raising anything.
+ * One view moving is not the place to spend that risk.
  *
  * **It opens at the smaller detent.** A sheet that opens at its largest size
  * has nowhere to be dragged, which is how the first attempt shipped a grip that
  * answered every gesture and moved nothing.
  *
- * The scroll view's `flexShrink: 1` is a belt rather than a fix. React Native
- * defaults `flexShrink` to 0 where the web defaults to 1, which is the usual
- * reason a `ScrollView` in a capped column lays out at its full content height
- * and overflows instead of scrolling — but this sheet was scrolling fine, and
- * the frames I took for a clipped last row were a mid-scroll. Stated explicitly
- * so the constraint does not depend on which ancestor happens to bound it.
+ * The scroll view's `flexShrink: 1` is a belt rather than a fix: React Native
+ * defaults it to 0 where the web defaults to 1. This sheet measures correctly
+ * either way — the bottom padding under a clipped row is exactly
+ * `insets.bottom + 12` on a real device — but the constraint is written down so
+ * it does not depend on which ancestor happens to bound the list.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -51,6 +58,14 @@ export interface SheetOption {
 
 /** How long the sheet takes to arrive, when the keyboard is not setting the pace. */
 const TRAVEL_MS = 260;
+
+/**
+ * The drag strip: a thumb's worth of it, starting clear of the close button so
+ * that tapping × still closes rather than starting a gesture that goes nowhere.
+ * The button sits at x 16..48 and carries a 10pt hit slop, so 60 clears it.
+ */
+const GRIP_HEIGHT = 56;
+const GRIP_CLEARANCE = 60;
 
 /** What the keyboard is doing, so the sheet can do it at the same speed. */
 interface KeyboardState {
@@ -105,6 +120,8 @@ export function Sheet({
   // own, unmounting on `visible` would cut the exit off at the first frame.
   const [mounted, setMounted] = useState(visible);
   const [size, setSize] = useState<SheetSize>('medium');
+  /** Whether a finger is on the grip. Visible, so the affordance answers. */
+  const [held, setHeld] = useState(false);
 
   const cap = detents(windowHeight - insets.top - keyboard.height)[size];
 
@@ -125,6 +142,9 @@ export function Sheet({
     canGrow.current = contentHeight.current > viewportHeight.current + 1;
   };
 
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     if (visible) {
       setMounted(true);
@@ -133,12 +153,12 @@ export function Sheet({
       Animated.timing(enter, {
         toValue: 1,
         duration: TRAVEL_MS,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }).start();
       return;
     }
 
-    Animated.timing(enter, { toValue: 0, duration: TRAVEL_MS, useNativeDriver: true }).start(
+    Animated.timing(enter, { toValue: 0, duration: TRAVEL_MS, useNativeDriver: false }).start(
       ({ finished }) => {
         if (finished) setMounted(false);
       },
@@ -149,23 +169,24 @@ export function Sheet({
     Animated.timing(lift, {
       toValue: -keyboard.height,
       duration: keyboard.duration,
-      useNativeDriver: true,
+      useNativeDriver: false,
     }).start();
   }, [keyboard, lift]);
-
-  // The responder outlives any one render; the prop does not.
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
 
   const pan = useMemo(
     () =>
       PanResponder.create({
-        // Only once it is clearly a drag: a tap on the grip is not a gesture,
-        // and the close button lives in the same row.
-        onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dy) > 4,
+        // Claimed on touch-down, not negotiated on the first move. The strip
+        // exists only to be dragged, so there is nothing to hand it to, and
+        // move-negotiation is one more thing that has to work.
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: () => setHeld(true),
         onPanResponderMove: (_event, gesture) =>
           drag.setValue(clampDrag(gesture.dy, canGrow.current || sizeRef.current === 'full')),
         onPanResponderRelease: (_event, gesture) => {
+          setHeld(false);
+
           const next = settleSheet({
             size: sizeRef.current,
             dy: gesture.dy,
@@ -175,15 +196,15 @@ export function Sheet({
 
           if (next === 'closed') {
             // `onClose` runs the exit animation from wherever the finger left
-            // the sheet, so there is nothing to animate here and nothing to
-            // reset until it opens again.
+            // the sheet, so there is nothing to animate here.
             onCloseRef.current();
             return;
           }
 
           setSize(next);
-          Animated.spring(drag, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
+          Animated.spring(drag, { toValue: 0, useNativeDriver: false, bounciness: 0 }).start();
         },
+        onPanResponderTerminate: () => setHeld(false),
       }),
     [drag],
   );
@@ -218,49 +239,47 @@ export function Sheet({
               paddingBottom: keyboard.height > 0 ? 12 : insets.bottom + 12,
               flexShrink: 1,
             }}>
-            <View {...pan.panHandlers}>
-              <View style={{ alignItems: 'center', paddingTop: 8, paddingBottom: 4 }}>
-                <View
-                  style={{
-                    width: 36,
-                    height: 4,
-                    borderRadius: 2,
-                    backgroundColor: c.mutedForeground,
-                    opacity: 0.4,
-                  }}
-                />
-              </View>
-
+            <View style={{ alignItems: 'center', paddingTop: 8, paddingBottom: 4 }}>
               <View
                 style={{
-                  flexDirection: 'row',
+                  width: held ? 52 : 36,
+                  height: 5,
+                  borderRadius: 3,
+                  backgroundColor: c.mutedForeground,
+                  opacity: held ? 0.9 : 0.4,
+                }}
+              />
+            </View>
+
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: 16,
+                paddingVertical: 10,
+              }}>
+              <Pressable
+                onPress={onClose}
+                hitSlop={10}
+                style={({ pressed }) => ({
+                  width: 32,
+                  height: 32,
+                  borderRadius: 16,
                   alignItems: 'center',
-                  paddingHorizontal: 16,
-                  paddingVertical: 10,
-                }}>
-                <Pressable
-                  onPress={onClose}
-                  hitSlop={10}
-                  style={({ pressed }) => ({
-                    width: 32,
-                    height: 32,
-                    borderRadius: 16,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: mix(c.mutedForeground, 15),
-                    opacity: pressed ? 0.6 : 1,
-                  })}>
-                  <Body style={{ color: c.foreground, fontSize: 15 }}>×</Body>
-                </Pressable>
-                <Body style={{ flex: 1, textAlign: 'center', fontSize: 16 }}>{title}</Body>
-                {/* Balances the close button so the title sits centred. */}
-                <View style={{ width: 32 }} />
-              </View>
+                  justifyContent: 'center',
+                  backgroundColor: mix(c.mutedForeground, 15),
+                  opacity: pressed ? 0.6 : 1,
+                })}>
+                <Body style={{ color: c.foreground, fontSize: 15 }}>×</Body>
+              </Pressable>
+              <Body style={{ flex: 1, textAlign: 'center', fontSize: 16 }}>{title}</Body>
+              {/* Balances the close button so the title sits centred. */}
+              <View style={{ width: 32 }} />
             </View>
 
             <ScrollView
-              // Explicit, not load-bearing today: see the note at the top of the
-              // file about React Native's `flexShrink` default.
+              // Explicit, not load-bearing: see the note at the top of the file
+              // about React Native's `flexShrink` default.
               style={{ flexShrink: 1 }}
               // A tap on a result while the keyboard is up must pick it, not
               // spend itself dismissing the keyboard.
@@ -277,6 +296,21 @@ export function Sheet({
               {children}
             </ScrollView>
           </GlassSurface>
+
+          {/* Last child, so it paints over the glass rather than inside it —
+              see the note at the top of the file. Starts clear of the close
+              button, and covers only the title, which nothing taps. */}
+          <View
+            {...pan.panHandlers}
+            accessibilityLabel="Resize"
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: GRIP_CLEARANCE,
+              right: GRIP_CLEARANCE,
+              height: GRIP_HEIGHT,
+            }}
+          />
         </Animated.View>
       </View>
     </Modal>

@@ -68,7 +68,9 @@ export function clampDrag(dy: number, canGrow: boolean): number {
  */
 export function detents(available: number): Record<SheetSize, number> {
   return {
-    medium: Math.max(240, available * 0.55),
-    full: available * 0.92,
+    // Roomy enough that opening one is not a step backwards from the sheet that
+    // filled the screen, and still a visible step short of `full`.
+    medium: Math.max(240, available * 0.68),
+    full: available * 0.94,
   };
 }
