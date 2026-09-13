@@ -132,7 +132,9 @@ GitHub → Settings → Secrets and variables → Actions. Base64 with
 | `APP_STORE_KEY_BASE64` | the App Store Connect `.p8`, base64'd |
 
 The four `ANDROID_*` secrets are only for the Android job and are not needed to
-reach TestFlight.
+reach TestFlight. Without `ANDROID_KEYSTORE_BASE64` that job is skipped rather
+than failed, so a release does not go red for a platform nobody is shipping yet;
+adding the secrets turns it back on with nothing to remember to flip.
 
 ## 4. Tag it
 

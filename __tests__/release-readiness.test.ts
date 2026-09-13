@@ -222,6 +222,29 @@ describe('signing material', () => {
     expect(gradle).toMatch(/SLOPCODER_STORE_FILE/);
   });
 
+  /**
+   * The Android job is off until its keystore exists, and the gate is a secret
+   * rather than a flag so it comes back by itself. Two ways this goes wrong: the
+   * gate outlives the reason for it and nobody notices Android never builds, or
+   * a copied `if:` takes the iOS job down with it — which would be a release
+   * that quietly shipped nothing at all.
+   */
+  it('gates Android on its signing key and gates iOS on nothing', () => {
+    const jobs = WORKFLOW.slice(WORKFLOW.indexOf('\njobs:'));
+    const job = (name: string) => {
+      const start = jobs.indexOf(`\n  ${name}:\n`);
+      const rest = jobs.slice(start + 1);
+      const next = rest.search(/\n  \w[\w-]*:\n/);
+      return next === -1 ? rest : rest.slice(0, next);
+    };
+
+    expect(job('android')).toMatch(/if: needs\.android-signing\.outputs\.configured == 'true'/);
+    // Reading the secret is the whole point of the gate job; a gate that checks
+    // nothing is one that stays shut.
+    expect(job('android-signing')).toMatch(/secrets\.ANDROID_KEYSTORE_BASE64/);
+    expect(job('ios')).not.toMatch(/^\s{4}if:/m);
+  });
+
   /** Secrets on a pull_request_target run are readable by any fork. */
   it('runs only on tags pushed to this repository', () => {
     const on = WORKFLOW.match(/^on:\n([\s\S]*?)\njobs:/m)?.[1] ?? '';
