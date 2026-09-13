@@ -25,6 +25,7 @@ import {
   type ModelCandidate,
   type UserQuestionAnswer,
 } from '../api/contracts';
+import { buildProposalCard, buildToolCard } from '../api/toolcard';
 import { summarize, type Item } from '../api/transcript';
 import { useAuth } from '../state/auth';
 import { useSessionHub } from '../state/hub';
@@ -34,7 +35,6 @@ import {
   BackButton,
   Body,
   Button,
-  Diamond,
   Dot,
   Fork,
   GLYPHS,
@@ -48,6 +48,7 @@ import {
 import { Composer, type TurnOptions } from '../ui/Composer';
 import { Sheet } from '../ui/Sheet';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
+import { ToolCard } from '../ui/ToolCard';
 import { newTokens } from '../api/contracts';
 import { font, mix, radius, useTheme } from '../theme';
 
@@ -473,35 +474,10 @@ function TranscriptRow({
 
     case 'tool':
       return (
-        <Collapsible
-          mark={
-            item.isError ? (
-              <Body style={{ fontFamily: font.mono, fontSize: 13, color: c.destructive }}>{GLYPHS.error}</Body>
-            ) : (
-              <Dot color={item.running ? status.running : status.ok} size={8} />
-            )
-          }
-          name={item.name}
-          meta={summarize(item.input)}
-          open={open}
-          onToggle={() => setOpen(!open)}>
-          <View style={{ gap: 6 }}>
-            {item.input ? (
-              <>
-                <Meta style={{ fontSize: 10 }}>input</Meta>
-                <Pre text={item.input} />
-              </>
-            ) : null}
-            {item.result !== null ? (
-              <>
-                <Meta style={{ fontSize: 10 }}>{item.isError ? 'error' : 'result'}</Meta>
-                <Pre text={item.result} error={item.isError} />
-              </>
-            ) : (
-              <Meta style={{ fontSize: 10 }}>running…</Meta>
-            )}
-          </View>
-        </Collapsible>
+        <ToolCard
+          card={buildToolCard(item.name, item.input, item.result, item.isError)}
+          state={item.running ? 'running' : item.isError ? 'failed' : 'ok'}
+        />
       );
 
     case 'plan':
@@ -558,21 +534,35 @@ function TranscriptRow({
             padding: 12,
             gap: 8,
           }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Diamond color={pending ? status.running : c.mutedForeground} />
-            <Body style={{ flex: 1, fontFamily: font.monoSemiBold, fontSize: 12.5 }}>
-              {item.toolName}
-            </Body>
-            <Meta style={{ fontSize: 10 }}>
-              {pending ? 'waiting' : item.approved === null ? 'no longer pending' : item.approved ? 'approved' : 'denied'}
-            </Meta>
-          </View>
+          {/* Only when there is something to say. The card below already names
+              the tool, so an open gate needs no line of its own. */}
+          {!pending || item.refused ? (
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+              <Meta style={{ fontSize: 10 }}>
+                {item.approved === true
+                  ? 'approved'
+                  : item.approved === false
+                    ? 'denied'
+                    : !pending
+                      ? 'no longer pending'
+                      : 'refused'}
+              </Meta>
+            </View>
+          ) : null}
 
           {/* Never truncated: this is the evidence the decision rests on. */}
           {item.reason ? (
             <Body style={{ fontSize: 12.5, color: c.mutedForeground }}>{item.reason}</Body>
           ) : null}
-          {item.input ? <Pre text={item.input} /> : null}
+
+          {/* Always 'pending', even after a verdict: a cross would say the tool
+              failed and a tick would say it succeeded, and this card knows
+              neither. The word above is the only thing that speaks to that. */}
+          <ToolCard
+            card={buildProposalCard(item.toolName, item.input)}
+            state="pending"
+            forceOpen
+          />
 
           {pending ? (
             <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>

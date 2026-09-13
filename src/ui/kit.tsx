@@ -49,15 +49,19 @@ export function Mono({
   children,
   style,
   numberOfLines,
+  ellipsizeMode,
 }: {
   children: React.ReactNode;
   style?: StyleProp<TextStyle>;
   numberOfLines?: number;
+  /** Which end to cut. A file path is worth more from its tail, so it takes 'head'. */
+  ellipsizeMode?: 'head' | 'middle' | 'tail' | 'clip';
 }) {
   const { c } = useTheme();
   return (
     <Text
       numberOfLines={numberOfLines}
+      ellipsizeMode={ellipsizeMode}
       style={[{ fontFamily: font.mono, fontSize: 11, color: c.mutedForeground }, style]}>
       {children}
     </Text>
