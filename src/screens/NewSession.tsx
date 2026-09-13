@@ -12,7 +12,7 @@
  * server-sandboxed, the only kind a phone can start.
  */
 import React, { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ApprovalMode,
@@ -22,7 +22,7 @@ import {
 } from '../api/contracts';
 import { useAuth } from '../state/auth';
 import { Composer, shortRepo, type TurnOptions } from '../ui/Composer';
-import { Body, Hint, LogoMark, Mono, Screen } from '../ui/kit';
+import { BackButton, Body, Hint, LogoMark, Mono, Screen } from '../ui/kit';
 import { font, useTheme } from '../theme';
 
 export function NewSessionScreen({ navigation }: { navigation: any }) {
@@ -101,8 +101,8 @@ export function NewSessionScreen({ navigation }: { navigation: any }) {
 
   return (
     <Screen>
-      {/* The cockpit's header: the logo goes back, the title sits over a mono
-          line saying what the session will be made of. */}
+      {/* The cockpit's header: back, then the title over a mono line saying
+          what the session will be made of. */}
       <View
         style={{
           flexDirection: 'row',
@@ -114,12 +114,7 @@ export function NewSessionScreen({ navigation }: { navigation: any }) {
           borderBottomWidth: 1,
           borderBottomColor: c.border,
         }}>
-        <Pressable
-          onPress={() => navigation.goBack()}
-          hitSlop={10}
-          style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>
-          <LogoMark size={28} />
-        </Pressable>
+        <BackButton onPress={() => navigation.goBack()} />
         <View style={{ flex: 1 }}>
           <Body numberOfLines={1} style={{ fontFamily: font.sansMedium, fontSize: 14 }}>
             New session

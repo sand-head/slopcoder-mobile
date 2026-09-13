@@ -84,6 +84,35 @@ export function Body({
 }
 
 /**
+ * Back, as a chevron rather than the logo.
+ *
+ * The mark was doing the job on every pushed screen, which read as a home button
+ * and told you nothing about where back went. `‹` is what the web's hub bar uses
+ * and what a phone user expects at the leading edge.
+ */
+export function BackButton({ onPress, label }: { onPress: () => void; label?: string }) {
+  const { c } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label ?? 'Back'}
+      onPress={onPress}
+      // Generous, because the glyph is small and it sits in the corner.
+      hitSlop={{ top: 12, bottom: 12, left: 16, right: 12 }}
+      style={({ pressed }) => ({
+        minWidth: 28,
+        height: 32,
+        justifyContent: 'center',
+        opacity: pressed ? 0.5 : 1,
+      })}>
+      <Text style={{ fontFamily: font.mono, fontSize: 22, lineHeight: 24, color: c.foreground }}>
+        ‹
+      </Text>
+    </Pressable>
+  );
+}
+
+/**
  * The real mark, not a letter in a box.
  *
  * The web app ships two theme-fixed SVGs — the frame takes the foreground and

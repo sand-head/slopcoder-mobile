@@ -6,7 +6,7 @@ import React from 'react';
 import { Platform, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../state/auth';
-import { Body, Brand, Button, Hint, Meta, Mono, Screen, SectionLabel } from '../ui/kit';
+import { BackButton, Body, Brand, Button, Hint, Meta, Mono, Screen, SectionLabel } from '../ui/kit';
 import { font, useTheme } from '../theme';
 import pkg from '../../package.json';
 
@@ -14,17 +14,33 @@ export function SettingsScreen({ navigation }: { navigation: any }) {
   const credential = useAuth(s => s.credential);
   const signOut = useAuth(s => s.signOut);
   const insets = useSafeAreaInsets();
+  const { c } = useTheme();
 
   return (
     <Screen>
+      {/* Previously there was no way back except the OS gesture, which Android
+          has and iOS only has from the screen edge. */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 10,
+          paddingHorizontal: 16,
+          paddingTop: insets.top + 8,
+          paddingBottom: 8,
+          borderBottomWidth: 1,
+          borderBottomColor: c.border,
+        }}>
+        <BackButton onPress={() => navigation.goBack()} />
+        <Body style={{ flex: 1, fontFamily: font.sansMedium, fontSize: 14 }}>Settings</Body>
+      </View>
+
       <ScrollView
         contentContainerStyle={{
           padding: 20,
-          paddingTop: insets.top + 12,
           paddingBottom: insets.bottom + 24,
           gap: 18,
         }}>
-        <Body style={{ fontFamily: font.sansMedium, fontSize: 22 }}>Settings</Body>
 
         <View>
           <SectionLabel label="account" />

@@ -31,6 +31,7 @@ import { useSessionHub } from '../state/hub';
 import { useSession } from '../state/session';
 import {
   Bars,
+  BackButton,
   Body,
   Button,
   Diamond,
@@ -40,7 +41,6 @@ import {
   GlassSurface,
   HalfDot,
   Hint,
-  LogoMark,
   Meta,
   Mono,
   Screen,
@@ -188,12 +188,7 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
           borderBottomWidth: 1,
           borderBottomColor: c.border,
         }}>
-        <Pressable
-          onPress={() => navigation.goBack()}
-          hitSlop={10}
-          style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>
-          <LogoMark size={28} />
-        </Pressable>
+        <BackButton onPress={() => navigation.goBack()} />
         <Pressable
           onPress={() => setUsageOpen(true)}
           accessibilityLabel="Session usage"

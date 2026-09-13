@@ -12,7 +12,7 @@
  * between an estimate and a wrong number.
  */
 import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   UsageAttributionQuality,
@@ -24,7 +24,7 @@ import {
   type UsageTotals,
 } from '../api/contracts';
 import { useAuth } from '../state/auth';
-import { Body, Hint, LogoMark, Meta, Mono, Screen, SectionLabel } from '../ui/kit';
+import { BackButton, Body, Hint, Meta, Mono, Screen, SectionLabel } from '../ui/kit';
 import { SheetSegments } from '../ui/Sheet';
 import { font, mix, radius, useTheme } from '../theme';
 
@@ -84,12 +84,7 @@ export function UsageScreen({ navigation }: { navigation: any }) {
           borderBottomWidth: 1,
           borderBottomColor: c.border,
         }}>
-        <Pressable
-          onPress={() => navigation.goBack()}
-          hitSlop={10}
-          style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>
-          <LogoMark size={28} />
-        </Pressable>
+        <BackButton onPress={() => navigation.goBack()} />
         <Body style={{ flex: 1, fontFamily: font.sansMedium, fontSize: 14 }}>Usage</Body>
       </View>
 
