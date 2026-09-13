@@ -26,7 +26,7 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>town.sand.slopcoder</string>
+			<string>codes.sand.slopcoder</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>slopcoder</string>
@@ -44,6 +44,15 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<!-- Pairing scans a QR code off the web cockpit. Without this string iOS does
+	     not prompt, it terminates the app the moment requestPermission() is
+	     called (Login.tsx) — a crash on the one screen a new install starts on. -->
+	<key>NSCameraUsageDescription</key>
+	<string>Scanning the pairing code on your slopcoder settings page signs this device in.</string>
+	<!-- The app speaks HTTPS and nothing else, which is exempt. Declaring it here
+	     answers the export-compliance question once instead of once per build. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string/>
 	<key>UILaunchStoryboardName</key>

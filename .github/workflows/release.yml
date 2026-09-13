@@ -71,18 +71,64 @@ jobs:
           # A throwaway keychain, so nothing outlives the job.
           security create-keychain -p runner build.keychain
           security default-keychain -s build.keychain
+          # codesign searches the keychain *list*, which create-keychain does not
+          # join. Without this the identity is present and still "not found".
+          security list-keychains -d user -s build.keychain login.keychain
           security unlock-keychain -p runner build.keychain
+          # An archive outlasts the default five-minute lock, and the failure
+          # reads as a signing error rather than as a timeout.
+          security set-keychain-settings -lut 3600 build.keychain
           echo "$CERTIFICATE_BASE64" | base64 -d > certificate.p12
           security import certificate.p12 -k build.keychain -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k runner build.keychain
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          echo "$PROVISIONING_PROFILE_BASE64" | base64 -d > ~/Library/MobileDevice/Provisioning\ Profiles/slopcoder.mobileprovision
+          echo "$PROVISIONING_PROFILE_BASE64" | base64 -d > profile.mobileprovision
+          cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
+          # The profile knows its own name and UUID. Reading them out beats
+          # keeping a secret in step with whatever it was called in the portal.
+          security cms -D -i profile.mobileprovision > profile.plist
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' profile.plist)
+          echo "SLOPCODER_PROFILE=$PROFILE_NAME" >> "$GITHUB_ENV"
+          echo "profile: $PROFILE_NAME"
       - name: Archive and export
         working-directory: ios
+        env:
+          SLOPCODER_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          # The tag is the version; the run number is the build. App Store Connect
+          # rejects a build number it has already seen, so it must never be the
+          # literal 1 that sits in the project file.
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version $VERSION build $GITHUB_RUN_NUMBER"
+
+          # Generated rather than committed: every value in it comes from a
+          # secret or from the profile, so a checked-in copy would be a file that
+          # is wrong by definition.
+          cat > ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>teamID</key><string>$SLOPCODER_TEAM_ID</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>uploadSymbols</key><true/>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>codes.sand.slopcoder</key><string>$SLOPCODER_PROFILE</string>
+            </dict>
+          </dict>
+          </plist>
+          PLIST
+
           xcodebuild -workspace slopcoder_mobile.xcworkspace \
             -scheme slopcoder_mobile -configuration Release \
-            -archivePath build/slopcoder.xcarchive archive
+            -archivePath build/slopcoder.xcarchive \
+            MARKETING_VERSION="$VERSION" \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            SLOPCODER_TEAM_ID="$SLOPCODER_TEAM_ID" \
+            SLOPCODER_PROFILE="$SLOPCODER_PROFILE" \
+            archive
           xcodebuild -exportArchive -archivePath build/slopcoder.xcarchive \
             -exportOptionsPlist ExportOptions.plist -exportPath build/ipa
       - name: Upload to TestFlight

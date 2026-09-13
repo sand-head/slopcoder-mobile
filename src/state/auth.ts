@@ -13,7 +13,7 @@ import type { LoginFailure } from '../api/contracts';
 import { enablePush } from '../push';
 import { useConnection } from './connection';
 
-const SERVICE = 'town.sand.slopcoder';
+const SERVICE = 'codes.sand.slopcoder';
 
 export interface Credential {
   server: string;

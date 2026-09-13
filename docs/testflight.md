@@ -1,0 +1,106 @@
+# Getting a build into TestFlight
+
+The repo is set up so a tag does the work: `git tag v1.0.0 && git push --tags`
+runs `.github/workflows/release.yml`, which archives, signs, and uploads. What
+follows is the one-time setup on Apple's side that a workflow cannot do for you.
+
+The app's bundle identifier is **`codes.sand.slopcoder`**. It appears in the
+Xcode project, the URL type, the Keychain service both TypeScript and Swift
+read, and the export options the workflow generates. `release-readiness.test.ts`
+fails if any of those drift apart, so change it in one place and the suite tells
+you the rest.
+
+---
+
+## 1. Apple Developer portal
+
+**Team ID** — developer.apple.com → Membership. Ten characters. You will paste
+it into a secret; it is not a password, but it is easier to keep in one place.
+
+**App ID** — Certificates, IDs & Profiles → Identifiers → **+** → App IDs → App.
+
+- Bundle ID: **Explicit**, `codes.sand.slopcoder`.
+- Capabilities: tick **Push Notifications**. The release build's entitlement
+  already says `aps-environment: production`, and an App ID without the
+  capability makes the profile refuse to sign it.
+
+**Distribution certificate** — Certificates → **+** → *Apple Distribution*.
+Follow the CSR flow, download the `.cer`, double-click it, then in Keychain
+Access right-click the private key → Export → `.p12` with a password. Both the
+file and the password become secrets.
+
+**Provisioning profile** — Profiles → **+** → *App Store Connect* → pick the App
+ID and the distribution certificate. Download the `.mobileprovision`. Its name
+does not matter: the workflow reads it back out of the file with
+`security cms -D`, so there is nothing to keep in sync.
+
+**APNs key** — Keys → **+** → tick *Apple Push Notifications service*. Download
+the `.p8`. **This is for the server, not for CI** — it fills slopcoder's
+`Push:Apns:{KeyId,TeamId,BundleId,PrivateKey}`. Confusing it with the App Store
+Connect key below is the single easiest mistake here; both are `.p8` files from
+different pages, and neither can be downloaded twice.
+
+## 2. App Store Connect
+
+**App record** — My Apps → **+** → New App. Platform iOS, the bundle ID from the
+list, a name, and an SKU (any stable string; `slopcoder-mobile` is fine).
+
+**API key** — Users and Access → Integrations → App Store Connect API →
+**+**, role *App Manager*. You get a **Key ID**, an **Issuer ID** (shown once at
+the top of the page, shared by all keys), and a `.p8` that downloads **exactly
+once**.
+
+## 3. Repository secrets
+
+GitHub → Settings → Secrets and variables → Actions. Base64 with
+`base64 -i <file> | pbcopy` on macOS, `base64 -w0 <file>` on Linux.
+
+| Secret | From |
+|---|---|
+| `APPLE_TEAM_ID` | Membership page |
+| `IOS_CERTIFICATE_BASE64` | the `.p12`, base64'd |
+| `IOS_CERTIFICATE_PASSWORD` | the password you set exporting it |
+| `IOS_PROVISIONING_PROFILE_BASE64` | the `.mobileprovision`, base64'd |
+| `APP_STORE_KEY_ID` | App Store Connect API key |
+| `APP_STORE_ISSUER_ID` | App Store Connect API, above the key list |
+| `APP_STORE_KEY_BASE64` | the App Store Connect `.p8`, base64'd |
+
+The four `ANDROID_*` secrets are only for the Android job and are not needed to
+reach TestFlight.
+
+## 4. Tag it
+
+```
+git tag v1.0.0
+git push --tags
+```
+
+The tag is the marketing version (`v1.0.0` → `1.0.0`); the **build** number is
+the workflow run number, because App Store Connect refuses a build number it has
+already accepted and would otherwise reject every upload after the first.
+
+Processing takes ten minutes or so. **Internal testing** — up to 100 people on
+your team — needs no review and is the fast path to your own phone. **External
+testing** needs a Beta App Review, typically a day, and needs the app's
+description and a contact email filled in first.
+
+---
+
+## Things that will bite
+
+- **The `.p8` files download once.** Both of them. Losing one means revoking the
+  key and issuing another.
+- **A sandbox push token is not a production one.** The debug and release
+  entitlements differ on purpose (`entitlements.test.ts` pins it), and the server
+  records which environment a token came from, because production APNs rejects a
+  sandbox token outright. A TestFlight build is *production*, even though it
+  feels like a test.
+- **The first archive is the slow one.** Expect 20–30 minutes on a `macos-15`
+  runner with a cold CocoaPods cache.
+- **`exportArchive` errors are usually the keychain, not the profile.** The
+  workflow adds its throwaway keychain to the search list and extends its lock
+  timeout to an hour for exactly this reason; if you change that step, those two
+  lines are the ones to keep.
+- **Automatic signing is off for Release** and deliberately so: CI installs one
+  specific profile, and letting Xcode pick means it picks something else on a
+  machine you cannot see.

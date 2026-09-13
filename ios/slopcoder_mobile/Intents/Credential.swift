@@ -16,7 +16,7 @@ struct Credential {
 
 enum CredentialStore {
     /// Must match `SERVICE` in `src/state/auth.ts`.
-    private static let service = "town.sand.slopcoder"
+    private static let service = "codes.sand.slopcoder"
     private static let account = "slopcoder"
 
     private struct Stored: Decodable {
