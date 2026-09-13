@@ -5,11 +5,36 @@
  * menu. On a phone the same content wants to come up from the bottom, inside
  * thumb reach, with rows big enough to hit — so the arrangement follows the
  * platform while the content follows `TurnSettings`.
+ *
+ * Three things here are not decoration, and all three were broken on a phone:
+ *
+ * - **The scroll view must be allowed to shrink.** React Native defaults
+ *   `flexShrink` to 0, so a `ScrollView` in a capped column lays out at its full
+ *   content height and simply overflows the cap — and a `View` does not clip by
+ *   default, so the overflow paints off the bottom of the screen instead of
+ *   scrolling. The turn-settings sheet lost its last row that way.
+ * - **The sheet has to clear the keyboard.** It is anchored to the bottom edge,
+ *   which is exactly where the keyboard goes, so a sheet with a search field in
+ *   it hid its own results the moment you typed.
+ * - **The grip has to do something.** It is the one part of a sheet that says
+ *   "you may drag me", and it was a rounded rectangle.
  */
-import React from 'react';
-import { Modal, Pressable, ScrollView, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Animated,
+  Keyboard,
+  Modal,
+  PanResponder,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Body, Check, GlassSurface, Meta, Mono } from './kit';
+import { clampDrag, settleSheet, type SheetSize } from './sheetDrag';
 import { mix, radius, useTheme } from '../theme';
 
 export interface SheetOption {
@@ -17,6 +42,35 @@ export interface SheetOption {
   label: string;
   /** The line underneath — what the choice means, not a restatement of it. */
   description?: string;
+}
+
+/**
+ * How much of the space above the keyboard a sheet may take. The remainder is
+ * the strip of dimmed backdrop you tap to get out, which has to stay reachable
+ * however long the content is.
+ */
+const MAX_FRACTION = 0.9;
+
+/** How much room the keyboard is taking, tracked so the sheet can sit above it. */
+function useKeyboardHeight(): number {
+  const [height, setHeight] = useState(0);
+
+  useEffect(() => {
+    // iOS reports the frame before the animation runs, so the sheet moves with
+    // the keyboard rather than after it. Android only has the `Did` events.
+    const shown = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hidden = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const on = Keyboard.addListener(shown, event => setHeight(event.endCoordinates.height));
+    const off = Keyboard.addListener(hidden, () => setHeight(0));
+
+    return () => {
+      on.remove();
+      off.remove();
+    };
+  }, []);
+
+  return height;
 }
 
 export function Sheet({
@@ -32,60 +86,172 @@ export function Sheet({
 }) {
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const keyboard = useKeyboardHeight();
+
+  const [size, setSize] = useState<SheetSize>('natural');
+  // The pan responder is built once and has to read state that moves, so what
+  // it reads lives in refs rather than in the closure it was created with.
+  const sizeRef = useRef<SheetSize>('natural');
+  sizeRef.current = size;
+
+  /**
+   * Whether anything is hidden below the fold, which is the only reason to
+   * offer a taller sheet: content against viewport, both measured, so a sheet
+   * showing all of itself refuses to grow into empty glass.
+   */
+  const canExpand = useRef(false);
+  const contentHeight = useRef(0);
+  const viewportHeight = useRef(0);
+  const measure = () => {
+    canExpand.current = contentHeight.current > viewportHeight.current + 1;
+  };
+
+  const sheetHeight = useRef(0);
+  const drag = useRef(new Animated.Value(0)).current;
+
+  const maxHeight = Math.max(240, (windowHeight - insets.top - keyboard) * MAX_FRACTION);
+
+  // Every opening starts from the same place, however the last one ended.
+  useEffect(() => {
+    if (visible) {
+      setSize('natural');
+      drag.setValue(0);
+    }
+  }, [visible, drag]);
+
+  const pan = useMemo(
+    () =>
+      PanResponder.create({
+        // Only once it is clearly a drag: a tap on the grip is not a gesture,
+        // and the close button lives in the same row.
+        onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dy) > 4,
+        onPanResponderMove: (_event, gesture) =>
+          drag.setValue(clampDrag(gesture.dy, canExpand.current)),
+        onPanResponderRelease: (_event, gesture) => {
+          const next = settleSheet({
+            size: sizeRef.current,
+            dy: gesture.dy,
+            vy: gesture.vy,
+            canExpand: canExpand.current,
+          });
+
+          if (next === 'closed') {
+            // Out of the way first, so the modal's own slide-out has nothing
+            // left to animate and the sheet does not jump back up on the way.
+            Animated.timing(drag, {
+              toValue: sheetHeight.current || windowHeight,
+              duration: 160,
+              useNativeDriver: true,
+            }).start(() => {
+              drag.setValue(0);
+              onClose();
+            });
+            return;
+          }
+
+          setSize(next);
+          Animated.spring(drag, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
+        },
+      }),
+    [drag, onClose, windowHeight],
+  );
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      {/* Tapping the dimmed area closes; tapping the sheet must not. */}
-      <Pressable
-        onPress={onClose}
-        style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' }}>
-        <Pressable style={{ maxHeight: '85%' }}>
+      <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+        {/* A sibling rather than a parent: a backdrop wrapped around the sheet
+            has to un-handle every touch the sheet wanted, and this one does
+            not have to. */}
+        <Pressable
+          accessibilityLabel="Close"
+          onPress={onClose}
+          style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.45)' }]}
+        />
+
+        <Animated.View
+          onLayout={event => {
+            sheetHeight.current = event.nativeEvent.layout.height;
+          }}
+          style={{
+            maxHeight,
+            height: size === 'full' ? maxHeight : undefined,
+            marginBottom: keyboard,
+            transform: [{ translateY: drag }],
+          }}>
           <GlassSurface
             cornerRadius={radius.xxl}
             style={{
               // Only the top corners round: the sheet is anchored to the edge.
               borderBottomLeftRadius: 0,
               borderBottomRightRadius: 0,
-              paddingBottom: insets.bottom + 12,
+              // The keyboard covers the home indicator, so the inset it stands
+              // clear of is gone while the keyboard is up.
+              paddingBottom: keyboard > 0 ? 12 : insets.bottom + 12,
+              flexShrink: 1,
             }}>
-          <View style={{ alignItems: 'center', paddingTop: 8, paddingBottom: 4 }}>
-            <View
-              style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: c.mutedForeground, opacity: 0.4 }}
-            />
-          </View>
+            <View {...pan.panHandlers}>
+              <View style={{ alignItems: 'center', paddingTop: 8, paddingBottom: 4 }}>
+                <View
+                  style={{
+                    width: 36,
+                    height: 4,
+                    borderRadius: 2,
+                    backgroundColor: c.mutedForeground,
+                    opacity: 0.4,
+                  }}
+                />
+              </View>
 
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              paddingHorizontal: 16,
-              paddingVertical: 10,
-            }}>
-            <Pressable
-              onPress={onClose}
-              hitSlop={10}
-              style={({ pressed }) => ({
-                width: 32,
-                height: 32,
-                borderRadius: 16,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: mix(c.mutedForeground, 15),
-                opacity: pressed ? 0.6 : 1,
-              })}>
-              <Body style={{ color: c.foreground, fontSize: 15 }}>×</Body>
-            </Pressable>
-            <Body style={{ flex: 1, textAlign: 'center', fontSize: 16 }}>{title}</Body>
-            {/* Balances the close button so the title sits centred. */}
-            <View style={{ width: 32 }} />
-          </View>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingHorizontal: 16,
+                  paddingVertical: 10,
+                }}>
+                <Pressable
+                  onPress={onClose}
+                  hitSlop={10}
+                  style={({ pressed }) => ({
+                    width: 32,
+                    height: 32,
+                    borderRadius: 16,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: mix(c.mutedForeground, 15),
+                    opacity: pressed ? 0.6 : 1,
+                  })}>
+                  <Body style={{ color: c.foreground, fontSize: 15 }}>×</Body>
+                </Pressable>
+                <Body style={{ flex: 1, textAlign: 'center', fontSize: 16 }}>{title}</Body>
+                {/* Balances the close button so the title sits centred. */}
+                <View style={{ width: 32 }} />
+              </View>
+            </View>
 
-            <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 4, gap: 14 }}>
+            <ScrollView
+              // Without the shrink this lays out at its full content height and
+              // paints straight off the bottom of the screen. See the note at
+              // the top of the file.
+              style={{ flexShrink: 1 }}
+              // A tap on a result while the keyboard is up must pick it, not
+              // spend itself dismissing the keyboard.
+              keyboardShouldPersistTaps="handled"
+              onLayout={event => {
+                viewportHeight.current = event.nativeEvent.layout.height;
+                measure();
+              }}
+              onContentSizeChange={(_width, height) => {
+                contentHeight.current = height;
+                measure();
+              }}
+              contentContainerStyle={{ padding: 16, paddingTop: 4, gap: 14 }}>
               {children}
             </ScrollView>
           </GlassSurface>
-        </Pressable>
-      </Pressable>
+        </Animated.View>
+      </View>
     </Modal>
   );
 }
