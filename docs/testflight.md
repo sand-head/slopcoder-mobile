@@ -33,12 +33,17 @@ private key is the half Apple never gets, and losing it means revoking the
 certificate and starting over.
 
 ```sh
-# 1. A key, and a request Apple will sign. The email and name are free text;
-#    they show up in the certificate's subject and nowhere that matters.
+# 1. A key, and a request Apple will sign.
 openssl genrsa -out distribution.key 2048
 openssl req -new -key distribution.key -out distribution.csr \
-  -subj "/emailAddress=you@example.com/CN=Your Name/C=US"
+  -subj "/emailAddress=<your Apple ID>/CN=<your name>/C=US"
 ```
+
+Apple takes only the public key out of that request. The subject is discarded
+and the issued certificate carries one minted from your account — `Apple
+Distribution: <name> (<team id>)` — so the email here changes nothing. Use the
+Apple ID address regardless: it is free to get right, and a mismatch is one more
+thing to second-guess when something else goes wrong six months from now.
 
 Then Certificates → **+** → *Apple Distribution* → upload `distribution.csr` →
 download the `.cer`. It comes back DER-encoded, and the `.p12` CI wants is that
