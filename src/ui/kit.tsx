@@ -141,6 +141,13 @@ export function LogoMark({ size = 18 }: { size?: number }) {
 /**
  * The wordmark. "slop" is the one goofy word in the whole product — bigger,
  * heavier, rounder and tilted, against the light mono "coder" beside it.
+ *
+ * **Neither word may pin a `lineHeight`.** Baloo 2 carries Devanagari vertical
+ * metrics — a 1.078em ascent over a 0.524em descent, so its natural line box is
+ * 1.6em — and forcing that box down to 1em does not centre the word, it shoves
+ * the glyphs up out of the box and leaves "slop" floating above "coder". Left
+ * alone, the two natural boxes centre to baselines 0.04em apart, which is half a
+ * pixel at this size. `wordmark.test.tsx` computes that from the shipped fonts.
  */
 export function Brand({ size = 15 }: { size?: number }) {
   const { c } = useTheme();
@@ -152,7 +159,6 @@ export function Brand({ size = 15 }: { size?: number }) {
           style={{
             fontFamily: font.display,
             fontSize: size * 1.15,
-            lineHeight: size * 1.15,
             color: c.foreground,
             transform: [{ rotate: '-2deg' }],
           }}>
