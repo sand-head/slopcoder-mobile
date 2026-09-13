@@ -23,9 +23,17 @@ App ID once you have made one. Ten characters.
 **App ID** — Certificates, IDs & Profiles → Identifiers → **+** → App IDs → App.
 
 - Bundle ID: **Explicit**, `codes.sand.slopcoder`.
-- Capabilities: tick **Push Notifications**. The release build's entitlement
-  already says `aps-environment: production`, and an App ID without the
-  capability makes the profile refuse to sign it.
+- Capabilities: tick **Push Notifications**, and nothing else.
+
+The rule is that the profile must cover every entitlement the app *claims*, and
+the app claims exactly one: `aps-environment`. An App ID without Push
+Notifications makes the profile refuse to sign the release build.
+
+**Siri is not one of them**, despite the app having Siri intents. That capability
+belongs to SiriKit, which this app does not use — `ios/slopcoder_mobile/Intents/`
+is App Intents, where the compiler writes the shortcut metadata into the binary
+and the system discovers it with no entitlement involved. Ticking it would put an
+entitlement in the profile that nothing ever asks for.
 
 **Distribution certificate** — every guide for this says "open Keychain
 Access". You do not need a Mac; Apple only ever sees a certificate signing

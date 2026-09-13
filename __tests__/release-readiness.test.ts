@@ -107,6 +107,44 @@ describe('identity', () => {
   });
 });
 
+describe('Siri', () => {
+  /**
+   * App Intents needs no entitlement: the compiler writes the shortcut metadata
+   * into the binary and the system reads it from there. SiriKit is the one that
+   * wants `com.apple.developer.siri`, and drifting to it would fail only on a
+   * signed device build, with an entitlement error that names neither framework.
+   */
+  it('uses App Intents, so no Siri capability is ever required', () => {
+    const dir = path.join(IOS, 'slopcoder_mobile', 'Intents');
+    const swift = fs
+      .readdirSync(dir)
+      .filter(f => f.endsWith('.swift'))
+      .map(f => fs.readFileSync(path.join(dir, f), 'utf8'));
+
+    expect(swift.length).toBeGreaterThan(0);
+    expect(swift.some(f => /import AppIntents/.test(f))).toBe(true);
+    expect(swift.some(f => /^import Intents$|INExtension|INIntent\b/m.test(f))).toBe(false);
+  });
+
+  /**
+   * Every entitlement the app claims has to be a capability ticked on the App ID
+   * in Apple's portal, which nothing here can check. Keeping the claimed set to
+   * exactly one makes the portal side a single decision rather than a list to
+   * reconcile — so a new key here is a deliberate trip to developer.apple.com.
+   */
+  it.each(['slopcoder_mobile.entitlements', 'slopcoder_mobile.release.entitlements'])(
+    '%s claims aps-environment and nothing else',
+    file => {
+      const keys = [
+        ...fs
+          .readFileSync(path.join(IOS, 'slopcoder_mobile', file), 'utf8')
+          .matchAll(/<key>([^<]+)<\/key>/g),
+      ].map(m => m[1]);
+      expect(keys).toEqual(['aps-environment']);
+    },
+  );
+});
+
 describe('release signing', () => {
   /** The block of build settings for one configuration of the app target. */
   function config(name: 'Debug' | 'Release'): string {
