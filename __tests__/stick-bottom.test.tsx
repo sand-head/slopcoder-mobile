@@ -1,16 +1,16 @@
 /**
  * The transcript has to end up at the bottom, and stay there until told not to.
  *
- * Every bug this covers shipped in the first TestFlight build and none of them
- * could be seen from a simulator screenshot: the list opened partway up its own
- * scrollback, and the jump-to-latest button landed short of the latest. Both
- * came from the same place — a `FlatList` reports the scrolls we ask for back
- * to us through `onScroll`, and one that landed short is indistinguishable from
- * a reader who scrolled up, so the follow turned itself off.
+ * The list opened partway up its own scrollback and the jump-to-latest button
+ * landed short of the latest, neither of which is visible in a simulator
+ * screenshot. The cause is in RN's own source: `VirtualizedList.scrollToEnd`
+ * aims at the last *cell*, so the content container's `paddingBottom` — the
+ * space held for the composer floating over the list — is left below the fold.
  *
- * A `FlatList` that has not laid out is what makes this untestable on device
- * and testable here: the hook only ever talks to the list through
- * `scrollToEnd`, so a counter stands in for one.
+ * The hook only ever talks to the list through `scrollToOffset`, which is what
+ * makes it testable here: a recorder stands in for the list, and the assertion
+ * that matters is that the offset asked for is past the end, because clamping
+ * it to the real end is the platform's job and it does it right.
  */
 import React from 'react';
 import { act, create } from 'react-test-renderer';
@@ -33,10 +33,13 @@ function scrollEvent(offset: number, content: number): any {
 /** Mounts the hook and hands back a handle on it, plus the list it scrolled. */
 function mount() {
   const list: { current: Scrollable | null } = { current: null };
-  let ends = 0;
+  const offsets: number[] = [];
   list.current = {
-    scrollToEnd: () => {
-      ends++;
+    scrollToOffset: ({ offset, animated }) => {
+      // An animated scroll renders rows on the way, which moves the end it was
+      // aiming at. There is never a reason for one here.
+      expect(animated).toBe(false);
+      offsets.push(offset);
     },
   };
 
@@ -55,10 +58,14 @@ function mount() {
       return stick.pinned;
     },
     get scrolls() {
-      return ends;
+      return offsets.length;
+    },
+    get lastOffset() {
+      return offsets[offsets.length - 1];
     },
     toBottom: () => act(() => stick.toBottom()),
-    grow: () => act(() => stick.props.onContentSizeChange()),
+    /** The list re-measured, and is now this tall. */
+    grow: (height = 2_000) => act(() => stick.props.onContentSizeChange(400, height)),
     drag: () => act(() => stick.props.onScrollBeginDrag()),
     scroll: (offset: number, content: number) =>
       act(() => stick.props.onScroll(scrollEvent(offset, content))),
@@ -74,8 +81,34 @@ describe('sticking to the bottom', () => {
     expect(view.pinned).toBe(true);
 
     // The transcript arrives after the screen does.
-    view.grow();
+    view.grow(2_000);
     expect(view.scrolls).toBe(1);
+  });
+
+  /**
+   * The one that was actually broken on the phone. `scrollToEnd` would have
+   * aimed at `lastCell.offset + lastCell.length - viewport`, leaving the
+   * container's bottom padding — a composer's worth of it — below the fold.
+   * Asking for the content height instead overshoots the largest legal offset
+   * by a viewport, and the platform clamps it to the real end.
+   */
+  it('asks for an offset past the end, not the last row', () => {
+    const view = mount();
+    view.grow(2_000);
+
+    const furthestLegal = 2_000 - VIEWPORT;
+    expect(view.lastOffset).toBeGreaterThan(furthestLegal);
+    expect(view.lastOffset).toBeGreaterThanOrEqual(2_000);
+  });
+
+  it('aims at the height it was last told about', () => {
+    const view = mount();
+    view.grow(2_000);
+    view.drag();
+    view.scroll(500, 3_400);
+
+    view.toBottom();
+    expect(view.lastOffset).toBe(3_400);
   });
 
   it('keeps scrolling while the list keeps measuring', () => {

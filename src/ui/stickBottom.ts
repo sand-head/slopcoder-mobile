@@ -1,18 +1,30 @@
 /**
  * Keeping a transcript's newest line on screen, which is harder than it sounds.
  *
- * A `FlatList` measures a row only once it has rendered one, so its idea of
- * where the content ends is an estimate until you get there. One `scrollToEnd`
- * therefore lands short of the real bottom whenever the rows below the fold
- * turn out taller than the estimate — which, in a transcript full of diffs and
- * command output, is most of the time. The fix is to scroll again every time
- * the content size changes, and stop when the reader says so.
+ * **`FlatList.scrollToEnd` does not go to the end.** It works out its offset
+ * from the last *cell* — `frame.offset + frame.length + footerLength -
+ * visibleLength` — and a cell knows nothing about the content container's
+ * padding. Ours has `paddingBottom: composerHeight + 16`, the whole point of
+ * which is to keep the newest line clear of the composer floating over the
+ * list, so `scrollToEnd` stops precisely one composer short and leaves the line
+ * you wanted to read underneath it. (RN's own ScrollView has a native
+ * `scrollToEnd` that gets this right; VirtualizedList does not call it. There
+ * is a TODO in its source about that.)
  *
- * That leaves one trap, and it is the one that made the jump-to-latest button
- * look broken: the list reports our own scrolls back through `onScroll`, and a
- * scroll that landed short reads exactly like a reader who has scrolled up. So
- * offsets only count once a finger has touched the glass. Until then we are
- * talking to ourselves.
+ * So: scroll past the end and let the platform clamp. Both `RCTScrollView` and
+ * Android's `ReactScrollView` clamp a programmatic offset to
+ * `contentSize - bounds`, which is the real bottom, padding and all. The
+ * content height reported by `onContentSizeChange` overshoots it by exactly one
+ * viewport, so it needs no fudge constant.
+ *
+ * The other half is knowing when to stop. A `FlatList` measures a row only once
+ * it has rendered one, so its content height is part measurement and part
+ * estimate, and a scroll to the estimated end renders more rows, which corrects
+ * the estimate, which moves the end. Scrolling again on each content-size
+ * change converges. The trap is that the list reports our scrolls back through
+ * `onScroll`, and one that landed short is indistinguishable from a reader
+ * scrolling up — so offsets only count once a finger has touched the glass.
+ * Until then we are talking to ourselves.
  */
 import type { RefObject } from 'react';
 import { useCallback, useRef, useState } from 'react';
@@ -29,7 +41,7 @@ const SELF_SCROLL_MS = 300;
 
 /** The sliver of a list this needs, so a test can stand in for one. */
 export interface Scrollable {
-  scrollToEnd(options?: { animated?: boolean }): void;
+  scrollToOffset(params: { offset: number; animated?: boolean }): void;
 }
 
 export interface StickBottom {
@@ -41,7 +53,7 @@ export interface StickBottom {
   props: {
     onScrollBeginDrag: () => void;
     onScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
-    onContentSizeChange: () => void;
+    onContentSizeChange: (width: number, height: number) => void;
     scrollEventThrottle: number;
   };
 }
@@ -52,6 +64,7 @@ export function useStickBottom(list: RefObject<Scrollable | null>): StickBottom 
   // whatever `pinned` was when it was last rendered.
   const pinnedRef = useRef(true);
   const scrolledAt = useRef(0);
+  const contentHeight = useRef(0);
 
   /**
    * Never animated. An animated scroll takes long enough that the rows it
@@ -63,13 +76,17 @@ export function useStickBottom(list: RefObject<Scrollable | null>): StickBottom 
     pinnedRef.current = true;
     setPinned(true);
     scrolledAt.current = Date.now();
-    list.current?.scrollToEnd({ animated: false });
+    // Deliberately past the end — by one viewport, since this is the height of
+    // the content rather than the largest offset. The platform clamps.
+    list.current?.scrollToOffset({ offset: contentHeight.current, animated: false });
   }, [list]);
 
   const onScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    contentHeight.current = contentSize.height;
+
     if (Date.now() - scrolledAt.current < SELF_SCROLL_MS) return;
 
-    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
     const fromBottom = contentSize.height - contentOffset.y - layoutMeasurement.height;
     const next = fromBottom < THRESHOLD;
 
@@ -82,9 +99,13 @@ export function useStickBottom(list: RefObject<Scrollable | null>): StickBottom 
     scrolledAt.current = 0;
   }, []);
 
-  const onContentSizeChange = useCallback(() => {
-    if (pinnedRef.current) toBottom();
-  }, [toBottom]);
+  const onContentSizeChange = useCallback(
+    (_width: number, height: number) => {
+      contentHeight.current = height;
+      if (pinnedRef.current) toBottom();
+    },
+    [toBottom],
+  );
 
   return {
     pinned,
