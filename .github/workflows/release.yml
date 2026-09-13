@@ -25,11 +25,13 @@ jobs:
       - name: Restore the keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        run: echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+        # Outside the checkout, so no step that archives the workspace can carry
+        # the signing key off the runner with it.
+        run: echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
       - name: Assemble release
         working-directory: android
         env:
-          SLOPCODER_STORE_FILE: release.keystore
+          SLOPCODER_STORE_FILE: ${{ runner.temp }}/release.keystore
           SLOPCODER_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
           SLOPCODER_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           SLOPCODER_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
@@ -78,18 +80,23 @@ jobs:
           # An archive outlasts the default five-minute lock, and the failure
           # reads as a signing error rather than as a timeout.
           security set-keychain-settings -lut 3600 build.keychain
-          echo "$CERTIFICATE_BASE64" | base64 -d > certificate.p12
-          security import certificate.p12 -k build.keychain -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          # Decoded signing material goes to RUNNER_TEMP, never into the
+          # checkout. Nothing archives the workspace today, but a step that did
+          # would carry the certificate and the profile out with it, and that is
+          # not a mistake anyone would catch reading the diff that made it.
+          echo "$CERTIFICATE_BASE64" | base64 -d > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k build.keychain -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k runner build.keychain
+          rm "$RUNNER_TEMP/certificate.p12"
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          echo "$PROVISIONING_PROFILE_BASE64" | base64 -d > profile.mobileprovision
-          cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
+          echo "$PROVISIONING_PROFILE_BASE64" | base64 -d > "$RUNNER_TEMP/profile.mobileprovision"
+          cp "$RUNNER_TEMP/profile.mobileprovision" ~/Library/MobileDevice/Provisioning\ Profiles/
           # The profile carries its own name and the team it belongs to. Reading
           # them out of it beats two more secrets that can drift from the portal
           # — and a team id is a lookup nobody should have to go hunting for.
-          security cms -D -i profile.mobileprovision > profile.plist
-          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' profile.plist)
-          TEAM_ID=$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' profile.plist)
+          security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" > "$RUNNER_TEMP/profile.plist"
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/profile.plist")
+          TEAM_ID=$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$RUNNER_TEMP/profile.plist")
           echo "SLOPCODER_PROFILE=$PROFILE_NAME" >> "$GITHUB_ENV"
           echo "SLOPCODER_TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
           echo "profile: $PROFILE_NAME, team: $TEAM_ID"

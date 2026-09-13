@@ -92,15 +92,30 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            // Supplied by the release workflow, which decodes the keystore
+            // outside the checkout. Absent on a laptop, where the block stays
+            // unconfigured and the build type below falls back to debug.
+            if (System.getenv("SLOPCODER_STORE_FILE")) {
+                storeFile file(System.getenv("SLOPCODER_STORE_FILE"))
+                storePassword System.getenv("SLOPCODER_STORE_PASSWORD")
+                keyAlias System.getenv("SLOPCODER_KEY_ALIAS")
+                keyPassword System.getenv("SLOPCODER_KEY_PASSWORD")
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            // The template shipped `signingConfigs.debug` here, which means a
+            // release APK signed with the debug key that is committed in this
+            // repo — installable by anyone, and rejected by Play. Use the real
+            // one whenever CI has supplied it.
+            signingConfig System.getenv("SLOPCODER_STORE_FILE")
+                ? signingConfigs.release
+                : signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }

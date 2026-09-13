@@ -175,6 +175,57 @@ describe('release signing', () => {
   });
 });
 
+describe('signing material', () => {
+  const WORKFLOW = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'release.yml'), 'utf8');
+
+  /**
+   * The reason the decoded certificate and profile live in RUNNER_TEMP is that
+   * one day somebody adds an upload-artifact to debug a build, points it at the
+   * workspace, and ships the distribution certificate to whoever can read the
+   * run. That is not a mistake anyone catches reading the diff that made it.
+   */
+  it('never decodes a secret into the checkout', () => {
+    const writes = [...WORKFLOW.matchAll(/base64 -d > (\S+)/g)].map(m => m[1].replace(/"/g, ''));
+    expect(writes.length).toBeGreaterThan(0);
+    for (const target of writes)
+      expect(target.startsWith('$RUNNER_TEMP/') || target.startsWith('~/')).toBe(true);
+  });
+
+  /** Masking is exact-match, so the only safe amount of secret on stdout is none. */
+  it('redirects every decoded secret to a file rather than printing it', () => {
+    const printed = WORKFLOW.split('\n').filter(
+      line => /echo\s+"\$[A-Z_]*(CERTIFICATE|KEY|PROFILE|PASSWORD)[A-Z_]*"/.test(line) && !line.includes('>'),
+    );
+    expect(printed).toEqual([]);
+  });
+
+  /** xtrace would echo `security import -P "<password>"` verbatim. */
+  it('turns on no shell tracing', () => {
+    expect(WORKFLOW).not.toMatch(/set -x|bash -x/);
+  });
+
+  /**
+   * The template signs release with `signingConfigs.debug`, i.e. with the
+   * keystore committed at android/app/debug.keystore. An APK signed with it is
+   * installable by anyone who cloned the repo, and the four ANDROID_* secrets
+   * the workflow passes would go unread while everything looked green.
+   */
+  it('signs an Android release with the CI keystore, never the committed debug one', () => {
+    const gradle = fs.readFileSync(path.join(ROOT, 'android', 'app', 'build.gradle'), 'utf8');
+    const release = gradle.slice(gradle.indexOf('buildTypes'));
+    expect(release).toMatch(/signingConfigs\.release/);
+    expect(release).not.toMatch(/signingConfig\s+signingConfigs\.debug/);
+    expect(gradle).toMatch(/SLOPCODER_STORE_FILE/);
+  });
+
+  /** Secrets on a pull_request_target run are readable by any fork. */
+  it('runs only on tags pushed to this repository', () => {
+    const on = WORKFLOW.match(/^on:\n([\s\S]*?)\njobs:/m)?.[1] ?? '';
+    expect(on).toMatch(/tags/);
+    expect(on).not.toMatch(/pull_request/);
+  });
+});
+
 describe('App Store Connect chores', () => {
   /**
    * Without this, every single upload sits in "Missing Compliance" until someone
