@@ -7,6 +7,7 @@ import { Platform, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../state/auth';
 import { BackButton, Body, Brand, Button, Hint, Meta, Mono, Screen, SectionLabel } from '../ui/kit';
+import { useNavMenu } from '../ui/NavMenu';
 import { font, useTheme } from '../theme';
 import pkg from '../../package.json';
 
@@ -15,6 +16,7 @@ export function SettingsScreen({ navigation }: { navigation: any }) {
   const signOut = useAuth(s => s.signOut);
   const insets = useSafeAreaInsets();
   const { c } = useTheme();
+  const nav = useNavMenu(navigation, 'Settings');
 
   return (
     <Screen>
@@ -33,6 +35,7 @@ export function SettingsScreen({ navigation }: { navigation: any }) {
         }}>
         <BackButton onPress={() => navigation.goBack()} />
         <Body style={{ flex: 1, fontFamily: font.sansMedium, fontSize: 14 }}>Settings</Body>
+        {nav.button}
       </View>
 
       <ScrollView
@@ -57,13 +60,6 @@ export function SettingsScreen({ navigation }: { navigation: any }) {
           <NavRow label="tokens and cost" onPress={() => navigation.navigate('Usage')} />
         </View>
 
-        {/* The sessions screen carries a strip of these, but only once there is
-            something to report — so this is the door in for an account that has
-            no routines yet, and the one place the heartbeat can be set up. */}
-        <View>
-          <SectionLabel label="routines" />
-          <NavRow label="schedules, runs and the heartbeat" onPress={() => navigation.navigate('Routines')} />
-        </View>
 
         <View>
           <SectionLabel label="elsewhere" />
@@ -96,6 +92,8 @@ export function SettingsScreen({ navigation }: { navigation: any }) {
           <Meta>version {pkg.version}</Meta>
         </View>
       </ScrollView>
+
+      {nav.menu}
     </Screen>
   );
 }

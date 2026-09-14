@@ -26,6 +26,7 @@ import {
 import { useAuth } from '../state/auth';
 import { BackButton, Body, Hint, Meta, Mono, Screen, SectionLabel } from '../ui/kit';
 import { SheetSegments } from '../ui/Sheet';
+import { useNavMenu } from '../ui/NavMenu';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 import { font, mix, radius, useTheme } from '../theme';
 
@@ -54,6 +55,7 @@ export function UsageScreen({ navigation }: { navigation: any }) {
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
   const seam = useAuth(s => s.seam);
+  const nav = useNavMenu(navigation, 'Usage');
 
   const [range, setRange] = useState(UsageRange.Days30);
   const [data, setData] = useState<UsageDashboard | null>(null);
@@ -91,6 +93,7 @@ export function UsageScreen({ navigation }: { navigation: any }) {
         }}>
         <BackButton onPress={() => navigation.goBack()} />
         <Body style={{ flex: 1, fontFamily: font.sansMedium, fontSize: 14 }}>Usage</Body>
+        {nav.button}
       </View>
 
       <ConnectionBanner onRetry={() => setAttempt(a => a + 1)} />
@@ -165,6 +168,8 @@ export function UsageScreen({ navigation }: { navigation: any }) {
           </>
         ) : null}
       </ScrollView>
+
+      {nav.menu}
     </Screen>
   );
 }

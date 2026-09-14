@@ -37,6 +37,8 @@ import {
   stamp,
 } from '../ui/kit';
 import { Composer, shortRepo, type TurnOptions } from '../ui/Composer';
+import { useNavMenu } from '../ui/NavMenu';
+import { useRoutineAlert } from '../state/routines';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 import { useConnection } from '../state/connection';
 import { font, radius, useTheme } from '../theme';
@@ -46,6 +48,8 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
   const insets = useSafeAreaInsets();
   const seam = useAuth(s => s.seam);
   const { hub } = useSessionHub();
+  const nav = useNavMenu(navigation, 'Sessions');
+  const setFailed = useRoutineAlert(s => s.setFailed);
 
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -129,14 +133,18 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
       // list's problem, so it is caught on its own.
       seam
         .routineStatus(deviceZone())
-        .then(setRoutines)
+        .then(status => {
+          setRoutines(status);
+          // The menu button's pip, from a read the strip was making anyway.
+          setFailed(status.anyFailed);
+        })
         .catch(() => {});
     } catch (e) {
       // OfflineError already carries the useful sentence; the banner says the
       // rest, so this only needs to explain a server that answered badly.
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [seam]);
+  }, [seam, setFailed]);
 
   useEffect(() => {
     void load();
@@ -212,11 +220,7 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
           <Brand />
           <View style={{ flex: 1 }} />
           <Button label="New" variant="ghost" onPress={() => navigation.navigate('NewSession')} />
-          <Button
-            label="Settings"
-            variant="ghost"
-            onPress={() => navigation.navigate('Settings')}
-          />
+          {nav.button}
         </View>
 
         <Body style={{ fontFamily: font.sansMedium, fontSize: 24, marginTop: 4 }}>What’s next?</Body>
@@ -340,6 +344,8 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {nav.menu}
     </Screen>
   );
 }

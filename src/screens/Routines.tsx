@@ -49,9 +49,11 @@ import {
   statusLabel,
 } from '../api/routines';
 import { useAuth } from '../state/auth';
+import { useRoutineAlert } from '../state/routines';
 import { BackButton, Body, Button, Hint, Meta, Mono, Screen, StatusDot } from '../ui/kit';
 import { HistoryStrip, outcomeColor } from '../ui/HistoryStrip';
 import { SheetSegments } from '../ui/Sheet';
+import { useNavMenu } from '../ui/NavMenu';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 import { font, mix, radius, useTheme } from '../theme';
 
@@ -73,6 +75,8 @@ export function RoutinesScreen({ navigation }: { navigation: any }) {
   const insets = useSafeAreaInsets();
   const seam = useAuth(s => s.seam);
   const server = useAuth(s => s.credential?.server);
+  const nav = useNavMenu(navigation, 'Routines');
+  const setFailed = useRoutineAlert(s => s.setFailed);
 
   const [board, setBoard] = useState<RoutineBoard | null>(null);
   const [tab, setTab] = useState('runs');
@@ -83,14 +87,17 @@ export function RoutinesScreen({ navigation }: { navigation: any }) {
   const load = useCallback(async () => {
     if (!seam) return;
     try {
-      setBoard(await seam.routineBoard(deviceZone()));
+      const next = await seam.routineBoard(deviceZone());
+      setBoard(next);
+      // The board knows what the strip's status read would have told us.
+      setFailed(next.failures.length > 0);
       setError(null);
     } catch (e) {
       // The board it already has stays: a poll that could not reach the server
       // is a line at the top, not a screen that empties itself.
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [seam]);
+  }, [seam, setFailed]);
 
   useEffect(() => {
     void load();
@@ -171,6 +178,7 @@ export function RoutinesScreen({ navigation }: { navigation: any }) {
             onPress={() => void Linking.openURL(`${server.replace(/\/+$/, '')}/routines/new`)}
           />
         ) : null}
+        {nav.button}
       </View>
 
       <ConnectionBanner onRetry={load} />
@@ -337,6 +345,8 @@ export function RoutinesScreen({ navigation }: { navigation: any }) {
           </Mono>
         ) : null}
       </ScrollView>
+
+      {nav.menu}
     </Screen>
   );
 }

@@ -26,11 +26,13 @@ import { rowToChoice } from '../api/repoPicker';
 import { Composer, shortRepo, type TurnOptions } from '../ui/Composer';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 import { BackButton, Body, Hint, LogoMark, Mono, Screen } from '../ui/kit';
+import { useNavMenu } from '../ui/NavMenu';
 import { font, useTheme } from '../theme';
 
 export function NewSessionScreen({ navigation }: { navigation: any }) {
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
+  const nav = useNavMenu(navigation, 'NewSession');
   const seam = useAuth(s => s.seam);
 
   const [prompt, setPrompt] = useState('');
@@ -125,6 +127,7 @@ export function NewSessionScreen({ navigation }: { navigation: any }) {
           </Body>
           <Mono numberOfLines={1}>{subtitle}</Mono>
         </View>
+        {nav.button}
       </View>
 
       <ConnectionBanner />
@@ -177,6 +180,8 @@ export function NewSessionScreen({ navigation }: { navigation: any }) {
           />
         </View>
       </KeyboardAvoidingView>
+
+      {nav.menu}
     </Screen>
   );
 }
