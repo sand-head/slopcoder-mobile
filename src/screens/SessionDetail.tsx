@@ -47,7 +47,6 @@ import {
   markdownStyles,
 } from '../ui/kit';
 import { Composer, type TurnOptions } from '../ui/Composer';
-import { useNavMenu } from '../ui/NavMenu';
 import { Sheet } from '../ui/Sheet';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 import { ToolCard } from '../ui/ToolCard';
@@ -58,7 +57,6 @@ import { font, mix, radius, useTheme } from '../theme';
 export function SessionDetailScreen({ route, navigation }: { route: any; navigation: any }) {
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
-  const nav = useNavMenu(navigation);
   const id: string = route.params.id;
 
   const seam = useAuth(s => s.seam);
@@ -204,7 +202,6 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
           {/* The subtitle is already the summary; tapping it opens the rest. */}
           <Mono numberOfLines={1}>{subtitle}</Mono>
         </Pressable>
-        {nav.button}
       </View>
 
       <ConnectionBanner />
@@ -384,8 +381,6 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
           </>
         ) : null}
       </Sheet>
-
-      {nav.menu}
     </Screen>
   );
 }

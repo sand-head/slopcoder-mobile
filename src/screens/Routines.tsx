@@ -50,7 +50,7 @@ import {
 } from '../api/routines';
 import { useAuth } from '../state/auth';
 import { useRoutineAlert } from '../state/routines';
-import { BackButton, Body, Button, Hint, Meta, Mono, Screen, StatusDot } from '../ui/kit';
+import { Body, Button, Hint, Meta, Mono, Screen, StatusDot } from '../ui/kit';
 import { HistoryStrip, outcomeColor } from '../ui/HistoryStrip';
 import { SheetSegments } from '../ui/Sheet';
 import { useNavMenu } from '../ui/NavMenu';
@@ -169,7 +169,7 @@ export function RoutinesScreen({ navigation }: { navigation: any }) {
           borderBottomWidth: 1,
           borderBottomColor: c.border,
         }}>
-        <BackButton onPress={() => navigation.goBack()} />
+        {nav.button}
         <Body style={{ flex: 1, fontFamily: font.sansMedium, fontSize: 14 }}>Routines</Body>
         {server ? (
           <Button
@@ -178,7 +178,6 @@ export function RoutinesScreen({ navigation }: { navigation: any }) {
             onPress={() => void Linking.openURL(`${server.replace(/\/+$/, '')}/routines/new`)}
           />
         ) : null}
-        {nav.button}
       </View>
 
       <ConnectionBanner onRetry={load} />

@@ -6,7 +6,7 @@ import React from 'react';
 import { Platform, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../state/auth';
-import { BackButton, Body, Brand, Button, Hint, Meta, Mono, Screen, SectionLabel } from '../ui/kit';
+import { Body, Brand, Button, Hint, Meta, Mono, Screen, SectionLabel } from '../ui/kit';
 import { useNavMenu } from '../ui/NavMenu';
 import { font, useTheme } from '../theme';
 import pkg from '../../package.json';
@@ -33,9 +33,8 @@ export function SettingsScreen({ navigation }: { navigation: any }) {
           borderBottomWidth: 1,
           borderBottomColor: c.border,
         }}>
-        <BackButton onPress={() => navigation.goBack()} />
-        <Body style={{ flex: 1, fontFamily: font.sansMedium, fontSize: 14 }}>Settings</Body>
         {nav.button}
+        <Body style={{ flex: 1, fontFamily: font.sansMedium, fontSize: 14 }}>Settings</Body>
       </View>
 
       <ScrollView

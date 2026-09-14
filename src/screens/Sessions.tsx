@@ -216,11 +216,12 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
             tintColor={c.mutedForeground}
           />
         }>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        {/* The rail's own edge: the panel button leads, as it does on the web. */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          {nav.button}
           <Brand />
           <View style={{ flex: 1 }} />
           <Button label="New" variant="ghost" onPress={() => navigation.navigate('NewSession')} />
-          {nav.button}
         </View>
 
         <Body style={{ fontFamily: font.sansMedium, fontSize: 24, marginTop: 4 }}>What’s next?</Body>

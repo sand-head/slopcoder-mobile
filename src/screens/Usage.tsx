@@ -24,7 +24,7 @@ import {
   type UsageTotals,
 } from '../api/contracts';
 import { useAuth } from '../state/auth';
-import { BackButton, Body, Hint, Meta, Mono, Screen, SectionLabel } from '../ui/kit';
+import { Body, Hint, Meta, Mono, Screen, SectionLabel } from '../ui/kit';
 import { SheetSegments } from '../ui/Sheet';
 import { useNavMenu } from '../ui/NavMenu';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
@@ -91,9 +91,8 @@ export function UsageScreen({ navigation }: { navigation: any }) {
           borderBottomWidth: 1,
           borderBottomColor: c.border,
         }}>
-        <BackButton onPress={() => navigation.goBack()} />
-        <Body style={{ flex: 1, fontFamily: font.sansMedium, fontSize: 14 }}>Usage</Body>
         {nav.button}
+        <Body style={{ flex: 1, fontFamily: font.sansMedium, fontSize: 14 }}>Usage</Body>
       </View>
 
       <ConnectionBanner onRetry={() => setAttempt(a => a + 1)} />

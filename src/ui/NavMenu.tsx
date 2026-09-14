@@ -1,35 +1,43 @@
 /**
- * The rail, as a phone has one.
+ * The rail, as a phone has one: a panel that comes in from the left.
  *
  * The cockpit keeps a 56px icon rail down the left of every page — home, a new
  * session, the running sessions, then Routines, Code, Usage, Settings and the
- * account. It is hidden below `md`, and until now the app had no answer for
- * what replaces it: each screen reached one or two others by name and anything
- * else was unreachable or, worse, filed under Settings, which is where you put
- * a thing when you have not decided where it goes.
+ * account — hidden below `md`. This is that rail at phone width: same
+ * destinations, same order, same side, behind a button at the leading edge.
  *
- * So: the same destinations, in the same order, behind one button in the
- * header. Two properties of the rail are worth keeping and are easy to lose:
+ * **It is not a sheet.** A bottom sheet is for the choices *this screen* is
+ * making — the composer's dials, a run — and it comes up under the thumb that
+ * was already there. Navigation is not a choice about the screen you are on, it
+ * is leaving it, and it belongs on the edge the rail lives on.
  *
- * - **It is on every page.** A menu that only exists on the home screen is a
- *   home screen with a menu, not a rail.
- * - **Routines carries state.** A red pip when a run failed, so "something
- *   broke overnight" is visible from wherever you are — see [[state/routines]].
+ * **Root pages only.** The panel belongs where the rail does: on the places you
+ * switch *between*. A pushed screen — a session, a routine, the new-session
+ * form — is a thing you came into and go back out of, and it keeps its back
+ * chevron. A root page has nothing above it to go back to, so its leading edge
+ * is the panel's instead.
+ *
+ * Two properties of the rail are worth keeping and easy to lose: it is on every
+ * root page, and Routines carries a red pip when a run failed, so "something
+ * broke overnight" reaches you wherever you are — see `state/routines.ts`.
  *
  * Code mode is listed and cannot be opened, exactly as the rail greys it out
- * when there is no session to open it for. Leaving it out would answer the
- * question "where is code mode?" with silence; saying where it is answers it.
+ * when there is no session to open it for. Leaving it off would answer "where
+ * is code mode?" with silence; saying where it is answers it.
  */
-import React from 'react';
-import { Pressable, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, Dimensions, Easing, Modal, Pressable, ScrollView, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../state/auth';
 import { useRoutineAlert } from '../state/routines';
-import { Body, Meta, Mono } from './kit';
-import { Sheet } from './Sheet';
-import { font, mix, radius, useTheme } from '../theme';
+import { Body, Brand, Meta, Mono } from './kit';
+import { font, mix, useTheme } from '../theme';
 
-/** The screens this app has, in the rail's own order. */
+/** Where the panel can take you. */
 export type Destination = 'Sessions' | 'NewSession' | 'Routines' | 'Usage' | 'Settings';
+
+/** The screens that carry the panel: the places, not the things. */
+export type RootScreen = Extract<Destination, 'Sessions' | 'Routines' | 'Usage' | 'Settings'>;
 
 interface Entry {
   key: Destination | 'Code';
@@ -47,17 +55,17 @@ const ENTRIES: Entry[] = [
   { key: 'Settings', label: 'Settings', note: 'this device, and signing out' },
 ];
 
+/** Wide enough to read a line in, capped so the screen behind stays visible. */
+const PANEL = Math.min(312, Math.round(Dimensions.get('window').width * 0.82));
+
+/** Long enough to read as a slide, short enough not to be in the way. */
+const SLIDE_MS = 220;
+
 /**
  * Three lines, drawn rather than typed: Geist Mono has no hamburger glyph, and
  * React Native has no fallback stack to find one in.
  */
-export function MenuButton({
-  onPress,
-  label = 'Menu',
-}: {
-  onPress: () => void;
-  label?: string;
-}) {
+export function MenuButton({ onPress, label = 'Menu' }: { onPress: () => void; label?: string }) {
   const { c } = useTheme();
   const anyFailed = useRoutineAlert(s => s.anyFailed);
 
@@ -66,11 +74,12 @@ export function MenuButton({
       accessibilityRole="button"
       accessibilityLabel={anyFailed ? `${label} — a routine run failed` : label}
       onPress={onPress}
-      hitSlop={{ top: 12, bottom: 12, left: 12, right: 16 }}
+      // Generous on the leading side: it sits in the corner, which is where a
+      // thumb is least accurate.
+      hitSlop={{ top: 12, bottom: 12, left: 16, right: 12 }}
       style={({ pressed }) => ({
-        width: 36,
-        height: 36,
-        borderRadius: radius.md,
+        width: 32,
+        height: 32,
         alignItems: 'center',
         justifyContent: 'center',
         opacity: pressed ? 0.5 : 1,
@@ -84,8 +93,8 @@ export function MenuButton({
         <View
           style={{
             position: 'absolute',
-            top: 3,
-            right: 3,
+            top: 0,
+            right: 0,
             width: 7,
             height: 7,
             borderRadius: 3.5,
@@ -97,7 +106,7 @@ export function MenuButton({
   );
 }
 
-export function NavMenu({
+export function NavPanel({
   visible,
   onClose,
   onGo,
@@ -105,116 +114,183 @@ export function NavMenu({
 }: {
   visible: boolean;
   onClose: () => void;
-  /** Called with a destination once the sheet is out of the way. */
+  /** Called with a destination as the panel starts on its way out. */
   onGo: (destination: Destination) => void;
-  /** The screen the menu was opened from, marked rather than offered. */
+  /** The screen it was opened from, marked rather than offered. */
   current?: Destination;
 }) {
   const { c } = useTheme();
+  const insets = useSafeAreaInsets();
   const credential = useAuth(s => s.credential);
   const anyFailed = useRoutineAlert(s => s.anyFailed);
 
+  // The modal outlives `visible` by one animation, so the panel can be seen
+  // leaving; without this it vanishes on the frame the state flips.
+  const [mounted, setMounted] = useState(visible);
+  const slide = useRef(new Animated.Value(visible ? 1 : 0)).current;
+
+  useEffect(() => {
+    if (visible) setMounted(true);
+
+    const animation = Animated.timing(slide, {
+      toValue: visible ? 1 : 0,
+      duration: SLIDE_MS,
+      easing: visible ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
+      // A transform and an opacity, which is exactly what the native driver
+      // takes — so the slide keeps its frames even while the screen behind it
+      // is fetching.
+      useNativeDriver: true,
+    });
+    animation.start(({ finished }) => {
+      if (finished && !visible) setMounted(false);
+    });
+
+    return () => animation.stop();
+  }, [visible, slide]);
+
+  if (!mounted) return null;
+
   return (
-    <Sheet visible={visible} title="slopcoder" onClose={onClose}>
-      <View
+    <Modal
+      visible
+      transparent
+      // The slide is ours; the modal must not run a second animation over it.
+      animationType="none"
+      statusBarTranslucent
+      // Android's back button, which would otherwise leave the screen entirely.
+      onRequestClose={onClose}>
+      <Animated.View style={{ flex: 1, opacity: slide }}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Close the menu"
+          onPress={onClose}
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }}
+        />
+      </Animated.View>
+
+      <Animated.View
+        accessibilityViewIsModal
         style={{
-          backgroundColor: c.card,
-          borderRadius: radius.lg,
-          borderWidth: 1,
-          borderColor: c.border,
-          overflow: 'hidden',
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          left: 0,
+          width: PANEL,
+          backgroundColor: c.background,
+          borderRightWidth: 1,
+          borderRightColor: c.border,
+          paddingTop: insets.top + 14,
+          paddingBottom: insets.bottom + 14,
+          transform: [
+            { translateX: slide.interpolate({ inputRange: [0, 1], outputRange: [-PANEL, 0] }) },
+          ],
         }}>
-        {ENTRIES.map((entry, index) => {
-          const here = entry.key === current;
-          const off = entry.key === 'Code';
+        <View style={{ paddingHorizontal: 16, paddingBottom: 14 }}>
+          <Brand size={14} />
+        </View>
 
-          return (
-            <Pressable
-              key={entry.key}
-              disabled={off || here}
-              onPress={() => onGo(entry.key as Destination)}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: off, selected: here }}
-              style={({ pressed }) => ({
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 12,
-                minHeight: 56,
-                paddingHorizontal: 14,
-                paddingVertical: 10,
-                borderTopWidth: index === 0 ? 0 : 1,
-                borderTopColor: c.border,
-                backgroundColor: here
-                  ? mix(c.primary, 10)
-                  : pressed
-                    ? mix(c.mutedForeground, 10)
-                    : 'transparent',
-                opacity: off ? 0.5 : 1,
-              })}>
-              {/* The rail marks where you are with a filled tile; a row marks it
-                  with a bar in the same place, since there is no icon to fill. */}
-              <View
-                style={{
-                  width: 3,
-                  height: 22,
-                  borderRadius: 2,
-                  backgroundColor: here ? c.primary : 'transparent',
-                }}
-              />
-              <View style={{ flex: 1, gap: 2 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Body style={{ fontFamily: font.sansMedium, fontSize: 15 }}>{entry.label}</Body>
-                  {entry.key === 'Routines' && anyFailed ? (
-                    <View
-                      style={{
-                        width: 7,
-                        height: 7,
-                        borderRadius: 3.5,
-                        backgroundColor: c.destructive,
-                      }}
-                    />
-                  ) : null}
+        <ScrollView contentContainerStyle={{ paddingBottom: 8 }}>
+          {ENTRIES.map(entry => {
+            const here = entry.key === current;
+            const off = entry.key === 'Code';
+
+            return (
+              <Pressable
+                key={entry.key}
+                disabled={off || here}
+                onPress={() => onGo(entry.key as Destination)}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: off, selected: here }}
+                style={({ pressed }) => ({
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  minHeight: 52,
+                  paddingRight: 14,
+                  paddingVertical: 9,
+                  backgroundColor: here
+                    ? mix(c.primary, 10)
+                    : pressed
+                      ? mix(c.mutedForeground, 10)
+                      : 'transparent',
+                  opacity: off ? 0.45 : 1,
+                })}>
+                {/* The rail fills the tile you are on. With no icon to fill, the
+                    same mark is a bar against the edge the rail lives on. */}
+                <View
+                  style={{
+                    width: 3,
+                    alignSelf: 'stretch',
+                    borderTopRightRadius: 2,
+                    borderBottomRightRadius: 2,
+                    backgroundColor: here ? c.primary : 'transparent',
+                  }}
+                />
+                <View style={{ flex: 1, gap: 2, paddingLeft: 13 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Body style={{ fontFamily: font.sansMedium, fontSize: 15 }}>{entry.label}</Body>
+                    {entry.key === 'Routines' && anyFailed ? (
+                      <View
+                        style={{
+                          width: 7,
+                          height: 7,
+                          borderRadius: 3.5,
+                          backgroundColor: c.destructive,
+                        }}
+                      />
+                    ) : null}
+                  </View>
+                  <Mono numberOfLines={2} style={{ lineHeight: 16 }}>
+                    {entry.note}
+                  </Mono>
                 </View>
-                <Mono numberOfLines={2} style={{ lineHeight: 16 }}>
-                  {entry.note}
-                </Mono>
-              </View>
-              {here ? <Meta style={{ color: c.primary }}>here</Meta> : null}
-            </Pressable>
-          );
-        })}
-      </View>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
 
-      {/* The rail's account button, which on a phone is just who you are. */}
-      <View style={{ gap: 2, paddingHorizontal: 2 }}>
-        <Meta>signed in</Meta>
-        <Mono numberOfLines={1} style={{ fontSize: 12 }}>
-          {credential?.userName ?? '—'} · {credential?.server ?? '—'}
-        </Mono>
-      </View>
-    </Sheet>
+        {/* The rail's account button, which on a phone is just who you are. */}
+        <View
+          style={{
+            gap: 3,
+            paddingHorizontal: 16,
+            paddingTop: 12,
+            borderTopWidth: 1,
+            borderTopColor: c.border,
+          }}>
+          <Meta>signed in</Meta>
+          <Mono numberOfLines={1} style={{ fontSize: 12 }}>
+            {credential?.userName ?? '—'}
+          </Mono>
+          <Mono numberOfLines={1} ellipsizeMode="head" style={{ fontSize: 12 }}>
+            {credential?.server ?? '—'}
+          </Mono>
+        </View>
+      </Animated.View>
+    </Modal>
   );
 }
 
 /**
- * Everything a screen needs to carry the menu: the button, the sheet, and the
- * navigation between them.
+ * Everything a root screen needs to carry the panel: the button for its leading
+ * edge, and the panel itself.
  *
- * A hook rather than a component because the button belongs in a header the
- * screen owns and the sheet belongs at the root of it — two places, one piece
- * of state, and no screen should have to remember that.
+ * A hook rather than a component because the two live in different places — the
+ * button inside a header the screen owns, the panel at the root of it — and no
+ * screen should have to remember that. It takes a {@link RootScreen} rather
+ * than any destination, so the type says what the doc comment above says: a
+ * pushed screen does not get one.
  */
-export function useNavMenu(navigation: any, current?: Destination) {
-  const [open, setOpen] = React.useState(false);
+export function useNavMenu(navigation: any, current: RootScreen) {
+  const [open, setOpen] = useState(false);
 
   const menu = (
-    <NavMenu
+    <NavPanel
       visible={open}
       current={current}
       onClose={() => setOpen(false)}
       onGo={destination => {
         setOpen(false);
-        // `navigate` on a native stack pops back to a screen already below,
+        // `navigate` on a native stack pops back to a screen already below
         // rather than stacking a second copy of it.
         navigation.navigate(destination);
       }}
