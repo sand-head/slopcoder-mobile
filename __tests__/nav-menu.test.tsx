@@ -26,7 +26,7 @@ jest.mock('../src/state/auth', () => ({
     select({ credential: { userName: 'jessie', server: 'https://slop.example.com' } }),
 }));
 
-import { MenuButton, NavPanel } from '../src/ui/NavMenu';
+import { MenuButton, NavPanel, OFFSCREEN } from '../src/ui/NavMenu';
 import { useRoutineAlert } from '../src/state/routines';
 
 const SRC = path.join(__dirname, '..', 'src', 'screens');
@@ -83,6 +83,10 @@ describe('the panel', () => {
     expect(panel.bottom).toBe(0);
     expect(panel.width).toBeGreaterThan(200);
     expect(panel.transform[0].translateX).toBeDefined();
+
+    // Pinned to the left edge and shut a full width to the left of it — which
+    // is the direction, and the only part of an interpolation a test can read.
+    expect(OFFSCREEN).toBe(-panel.width);
   });
 
   /** Tapping the dimmed part of the screen behind is how a panel is dismissed. */

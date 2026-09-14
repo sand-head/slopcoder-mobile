@@ -58,6 +58,14 @@ const ENTRIES: Entry[] = [
 /** Wide enough to read a line in, capped so the screen behind stays visible. */
 const PANEL = Math.min(312, Math.round(Dimensions.get('window').width * 0.82));
 
+/**
+ * Where the panel sits when it is shut: its own width to the *left* of the
+ * screen, which is the whole of what makes this a side panel rather than
+ * something that rises out of the bottom. Exported because the sign is the only
+ * part of an interpolation a test can read.
+ */
+export const OFFSCREEN = -PANEL;
+
 /** Long enough to read as a slide, short enough not to be in the way. */
 const SLIDE_MS = 220;
 
@@ -182,7 +190,7 @@ export function NavPanel({
           paddingTop: insets.top + 14,
           paddingBottom: insets.bottom + 14,
           transform: [
-            { translateX: slide.interpolate({ inputRange: [0, 1], outputRange: [-PANEL, 0] }) },
+            { translateX: slide.interpolate({ inputRange: [0, 1], outputRange: [OFFSCREEN, 0] }) },
           ],
         }}>
         <View style={{ paddingHorizontal: 16, paddingBottom: 14 }}>
