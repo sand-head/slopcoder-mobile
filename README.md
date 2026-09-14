@@ -13,12 +13,18 @@ Sessions it creates run in the server's Docker sandbox, the same as the web cock
 - Create a session: repo search, remote nodes, model, facet, thinking level, approval mode
 - Watch a turn stream in, steer it mid-flight, stop it
 - Answer permission approvals and agent questions
+- Keep an eye on routines: what has run, what failed, what is next — pause one, run it
+  now, retry a failure, fix its prompt, close a trigger
 
 ## What it deliberately does not do
 
 Code mode, the terminal, and the workspace diff panel. All three are SkiaSharp canvases
 over WebAssembly in the web app and have no native path short of a rewrite. If you need
 them, open the session on a computer.
+
+Writing a routine, too. Choosing a model, a schedule, repositories, triggers and where the
+answer goes is a form — the cockpit has a good one, and "New routine" opens it rather than
+offering a worse copy on a 390pt screen.
 
 ## Layout
 
@@ -29,8 +35,9 @@ src/api/          the seam client — this is the part to read first
   hub.ts          SignalR; the live half
   stream.ts       reassembling a transcript from deltas
   transcript.ts   folding events into renderable items
+  routines.ts     how a routine reads — a port of RoutineFormat.cs
 src/state/        auth (keychain), the hub connection, one session's live view
-src/screens/      login, sessions, session detail, new session, settings
+src/screens/      login, sessions, session detail, new session, routines, settings
 src/theme.ts      the web cockpit's tokens, converted to sRGB
 ```
 
