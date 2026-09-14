@@ -12,19 +12,20 @@
  *
  * Authoring is not here. Writing a routine means picking a model, repositories,
  * a schedule, triggers and where the answer goes — a form the cockpit already
- * has and a phone has no business reproducing — so "New routine" opens it in
- * the browser, signed in, rather than offering a worse copy.
+ * has and a phone has no business reproducing — so "New routine" opens that
+ * page in an in-app browser over this one, rather than offering a worse copy.
+ *
+ * The three tabs are pinned under the bar rather than scrolling with the
+ * page, as a tab strip is, and the page starts at the top when they change.
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
   Switch,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   AutomationKind,
   type HeartbeatStatus,
@@ -50,11 +51,13 @@ import {
 } from '../api/routines';
 import { useAuth } from '../state/auth';
 import { useRoutineAlert } from '../state/routines';
-import { Body, Button, Hint, Meta, Mono, Screen, StatusDot } from '../ui/kit';
+import { Body, Button, Hint, Meta, Mono, Screen, Skeleton, StatusDot } from '../ui/kit';
 import { HistoryStrip, outcomeColor } from '../ui/HistoryStrip';
 import { SheetSegments } from '../ui/Sheet';
-import { useNavMenu } from '../ui/NavMenu';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
+import { barButton } from '../navigation/headers';
+import { cockpitUrl, openInApp } from '../ui/browser';
+import { tapSelect } from '../ui/haptics';
 import { font, mix, radius, useTheme } from '../theme';
 
 /**
@@ -72,11 +75,24 @@ const TABS = [
 
 export function RoutinesScreen({ navigation }: { navigation: any }) {
   const { c } = useTheme();
-  const insets = useSafeAreaInsets();
   const seam = useAuth(s => s.seam);
   const server = useAuth(s => s.credential?.server);
-  const nav = useNavMenu(navigation, 'Routines');
   const setFailed = useRoutineAlert(s => s.setFailed);
+  const page = useRef<React.ComponentRef<typeof ScrollView>>(null);
+
+  const newRoutine = useCallback(() => {
+    if (server) void openInApp(cockpitUrl(server, 'routines/new'), c.primary);
+  }, [server, c.primary]);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      title: 'Routines',
+      ...barButton(
+        { label: 'New routine', symbol: 'plus', onPress: newRoutine, disabled: !server },
+        ({ onPress, disabled }) => <Button label="New" variant="ghost" onPress={onPress} disabled={disabled} />,
+      ),
+    });
+  }, [navigation, newRoutine, server]);
 
   const [board, setBoard] = useState<RoutineBoard | null>(null);
   const [tab, setTab] = useState('runs');
@@ -158,36 +174,26 @@ export function RoutinesScreen({ navigation }: { navigation: any }) {
 
   return (
     <Screen>
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 10,
-          paddingHorizontal: 16,
-          paddingTop: insets.top + 8,
-          paddingBottom: 8,
-          borderBottomWidth: 1,
-          borderBottomColor: c.border,
-        }}>
-        {nav.button}
-        <Body style={{ flex: 1, fontFamily: font.sansMedium, fontSize: 14 }}>Routines</Body>
-        {server ? (
-          <Button
-            label="New"
-            variant="ghost"
-            onPress={() => void Linking.openURL(`${server.replace(/\/+$/, '')}/routines/new`)}
-          />
-        ) : null}
-      </View>
-
       <ConnectionBanner onRetry={load} />
 
+      <View style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: 6 }}>
+        <SheetSegments
+          options={TABS.map(t =>
+            t.key === 'routines' ? { ...t, label: `${t.label} · ${cards.length}` } : t,
+          )}
+          selected={tab}
+          onSelect={next => {
+            if (next === tab) return;
+            tapSelect();
+            setTab(next);
+            page.current?.scrollTo({ y: 0, animated: false });
+          }}
+        />
+      </View>
+
       <ScrollView
-        contentContainerStyle={{
-          padding: 20,
-          paddingBottom: insets.bottom + 24,
-          gap: 16,
-        }}
+        ref={page}
+        contentContainerStyle={{ padding: 20, paddingTop: 8, paddingBottom: 24, gap: 16 }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -199,19 +205,13 @@ export function RoutinesScreen({ navigation }: { navigation: any }) {
             tintColor={c.mutedForeground}
           />
         }>
-        <SheetSegments
-          options={TABS.map(t =>
-            t.key === 'routines' ? { ...t, label: `${t.label} · ${cards.length}` } : t,
-          )}
-          selected={tab}
-          onSelect={setTab}
-        />
-
         {error ? (
-          <Body style={{ color: c.destructive, fontSize: 13 }}>{error}</Body>
+          <Body accessibilityLiveRegion="polite" style={{ color: c.destructive, fontSize: 13 }}>
+            {error}
+          </Body>
         ) : null}
 
-        {board === null ? <Hint>Loading…</Hint> : null}
+        {board === null && !error ? <Skeleton rows={4} /> : null}
 
         {board !== null && cards.length === 0 && board.heartbeat === null ? (
           <View style={{ gap: 10 }}>
@@ -223,15 +223,7 @@ export function RoutinesScreen({ navigation }: { navigation: any }) {
               the cockpit.
             </Hint>
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              {server ? (
-                <Button
-                  label="New routine"
-                  variant="outline"
-                  onPress={() =>
-                    void Linking.openURL(`${server.replace(/\/+$/, '')}/routines/new`)
-                  }
-                />
-              ) : null}
+              {server ? <Button label="New routine" variant="outline" onPress={newRoutine} /> : null}
               <Button
                 label="Set up the heartbeat"
                 variant="ghost"
@@ -344,8 +336,6 @@ export function RoutinesScreen({ navigation }: { navigation: any }) {
           </Mono>
         ) : null}
       </ScrollView>
-
-      {nav.menu}
     </Screen>
   );
 }
@@ -368,6 +358,7 @@ function FailureRow({
   return (
     <Pressable
       onPress={onOpen}
+      accessibilityRole="button"
       style={({ pressed }) => ({
         flexDirection: 'row',
         alignItems: 'flex-start',
@@ -388,7 +379,7 @@ function FailureRow({
           </Mono>
         ) : null}
       </View>
-      <Pressable onPress={onRetry} disabled={busy} hitSlop={10}>
+      <Pressable onPress={onRetry} disabled={busy} hitSlop={10} accessibilityRole="button" accessibilityLabel="Retry">
         <Mono style={{ color: c.primary, textDecorationLine: 'underline', opacity: busy ? 0.5 : 1 }}>
           retry
         </Mono>
@@ -405,6 +396,8 @@ function RunRow({ run, onPress }: { run: RunSummary; onPress: () => void }) {
   return (
     <Pressable
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${run.routineName}, ${statusLabel(run.status)}, ${clock(run.startedAt)}`}
       style={({ pressed }) => ({
         minHeight: 44,
         flexDirection: 'row',
@@ -470,6 +463,8 @@ function RoutineTile({
       }}>
       <Pressable
         onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={card.name}
         style={({ pressed }) => ({
           padding: 12,
           gap: 8,
@@ -500,6 +495,7 @@ function RoutineTile({
           <Switch
             value={card.enabled}
             disabled={busy}
+            accessibilityLabel={`${card.name} enabled`}
             onValueChange={onToggle}
             trackColor={{ true: c.primary, false: mix(c.mutedForeground, 30) }}
           />
@@ -551,6 +547,8 @@ function HeartbeatTile({
       }}>
       <Pressable
         onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel="heartbeat"
         style={({ pressed }) => ({ padding: 12, gap: 8, opacity: pressed ? 0.7 : 1 })}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           {beat.running ? (
@@ -569,6 +567,7 @@ function HeartbeatTile({
           <Switch
             value={beat.enabled}
             disabled={busy}
+            accessibilityLabel="heartbeat enabled"
             onValueChange={onToggle}
             trackColor={{ true: c.primary, false: mix(c.mutedForeground, 30) }}
           />

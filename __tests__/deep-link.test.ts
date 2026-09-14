@@ -60,6 +60,15 @@ describe('the session deep link', () => {
     expect(appDelegate).toContain(scheme);
   });
 
+  it('puts the tab bar under a cold-launched session, so back has somewhere to go', () => {
+    // Without `initialRouteName` the cockpit is the only route: its back
+    // button does nothing and Android's back button leaves the app. A tapped
+    // notification is a cold launch more often than not.
+    const state = getStateFromPath('session/abc-123', linking.config as never);
+
+    expect(state?.routes.map(r => r.name)).toEqual(['Tabs', 'Session']);
+  });
+
   it('routes the path the push payload carries', () => {
     // What PushNotificationService.NotifyAsync sends as `url`, minus its leading
     // slash — which is exactly what the AppDelegate strips.

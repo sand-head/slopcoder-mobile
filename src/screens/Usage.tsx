@@ -11,9 +11,8 @@
  * no price and contributed nothing to the estimate. Saying so is the difference
  * between an estimate and a wrong number.
  */
-import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import {
   UsageAttributionQuality,
   UsageRange,
@@ -24,10 +23,10 @@ import {
   type UsageTotals,
 } from '../api/contracts';
 import { useAuth } from '../state/auth';
-import { Body, Hint, Meta, Mono, Screen, SectionLabel } from '../ui/kit';
+import { Body, Hint, Meta, Mono, Screen, SectionLabel, Skeleton } from '../ui/kit';
 import { SheetSegments } from '../ui/Sheet';
-import { useNavMenu } from '../ui/NavMenu';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
+import { tapSelect } from '../ui/haptics';
 import { font, mix, radius, useTheme } from '../theme';
 
 const RANGES = [
@@ -53,14 +52,17 @@ function money(value: number | null | undefined): string {
 
 export function UsageScreen({ navigation }: { navigation: any }) {
   const { c } = useTheme();
-  const insets = useSafeAreaInsets();
   const seam = useAuth(s => s.seam);
-  const nav = useNavMenu(navigation, 'Usage');
 
   const [range, setRange] = useState(UsageRange.Days30);
   const [data, setData] = useState<UsageDashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({ title: 'Usage' });
+  }, [navigation]);
 
   useEffect(() => {
     if (!seam) return;
@@ -72,52 +74,48 @@ export function UsageScreen({ navigation }: { navigation: any }) {
       .then(d => !cancelled && setData(d))
       // The message, not the exception: OfflineError already says the useful
       // thing, and a stringified TypeError says nothing to anybody.
-      .catch(e => !cancelled && setError(e instanceof Error ? e.message : String(e)));
+      .catch(e => !cancelled && setError(e instanceof Error ? e.message : String(e)))
+      .finally(() => !cancelled && setRefreshing(false));
     return () => {
       cancelled = true;
     };
   }, [seam, range, attempt]);
 
+  const refresh = useCallback(() => {
+    setRefreshing(true);
+    setAttempt(a => a + 1);
+  }, []);
+
   return (
     <Screen>
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 10,
-          paddingHorizontal: 16,
-          paddingTop: insets.top + 8,
-          paddingBottom: 8,
-          borderBottomWidth: 1,
-          borderBottomColor: c.border,
-        }}>
-        {nav.button}
-        <Body style={{ flex: 1, fontFamily: font.sansMedium, fontSize: 14 }}>Usage</Body>
-      </View>
-
-      <ConnectionBanner onRetry={() => setAttempt(a => a + 1)} />
-
       <ScrollView
-        contentContainerStyle={{
-          padding: 20,
-          paddingBottom: insets.bottom + 24,
-          gap: 18,
-        }}>
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={{ padding: 20, paddingBottom: 24, gap: 18 }}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={c.mutedForeground} />
+        }>
+        <ConnectionBanner onRetry={refresh} />
+
         <SheetSegments
           options={RANGES.map(r => ({ key: r.key, label: r.label }))}
           selected={RANGES.find(r => r.value === range)?.key ?? 'Days30'}
-          onSelect={key => setRange(RANGES.find(r => r.key === key)?.value ?? UsageRange.Days30)}
+          onSelect={key => {
+            tapSelect();
+            setRange(RANGES.find(r => r.key === key)?.value ?? UsageRange.Days30);
+          }}
         />
 
         {error ? (
           <View style={{ gap: 8 }}>
-            <Body style={{ color: c.destructive, fontSize: 13 }}>{error}</Body>
-            <Pressable onPress={() => setAttempt(a => a + 1)} hitSlop={8}>
+            <Body accessibilityLiveRegion="polite" style={{ color: c.destructive, fontSize: 13 }}>
+              {error}
+            </Body>
+            <Pressable onPress={refresh} hitSlop={8} accessibilityRole="button">
               <Mono style={{ color: c.primary, textDecorationLine: 'underline' }}>Try again</Mono>
             </Pressable>
           </View>
         ) : null}
-        {!data && !error ? <Hint>Loading…</Hint> : null}
+        {!data && !error ? <Skeleton rows={3} /> : null}
 
         {data ? (
           <>
@@ -167,8 +165,6 @@ export function UsageScreen({ navigation }: { navigation: any }) {
           </>
         ) : null}
       </ScrollView>
-
-      {nav.menu}
     </Screen>
   );
 }

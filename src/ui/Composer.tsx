@@ -9,10 +9,11 @@
  * because it is the one a person changes and there is no hover to discover it
  * with.
  *
- * The action button keeps its label rather than becoming an arrow. Send, Steer
- * and Stop are three different things, and on the one occasion it matters — a
- * turn running away with itself — the difference should not be a matter of
- * remembering which icon meant which.
+ * Stop is its own control. It used to be what the send button became when the
+ * box was empty during a turn, on the grounds that Enter could then never
+ * reach it by accident — a keyboard's problem, and there is no Enter on a
+ * phone. Here a running turn shows a square beside the arrow, whatever is in
+ * the box, so stopping never means clearing a steer you were about to send.
  */
 import React, { useEffect, useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
@@ -92,6 +93,8 @@ export function Composer({
   busy,
   disabled,
   running,
+  onStop,
+  stopping,
   options,
   onChangeOptions,
   models,
@@ -107,6 +110,10 @@ export function Composer({
   busy?: boolean;
   disabled?: boolean;
   running?: boolean;
+  /** Offered while a turn runs; the square beside the arrow. */
+  onStop?: () => void;
+  /** The stop has been asked for and the harness has not yet answered. */
+  stopping?: boolean;
   options: TurnOptions;
   onChangeOptions: (next: TurnOptions) => void;
   models: ModelCandidate[];
@@ -199,13 +206,13 @@ export function Composer({
             placeholderTextColor={c.mutedForeground}
             multiline
             autoCapitalize="sentences"
+            accessibilityLabel={placeholder}
             style={{
               flex: 1,
               minHeight: 30,
               maxHeight: 192,
               paddingTop: 4,
               paddingBottom: 4,
-              // 16 or iOS zooms the field on focus.
               fontSize: 16,
               lineHeight: 22,
               fontFamily: font.sans,
@@ -237,8 +244,17 @@ export function Composer({
           {options.approval !== ApprovalMode.Dangerous ? <Pill label={approvalLabel} muted /> : null}
 
           <View style={{ flex: 1 }} />
+          {running && onStop ? (
+            <SendButton
+              mode="stop"
+              onPress={onStop}
+              busy={stopping}
+              disabled={!reachable}
+              accessibilityLabel={stopping ? 'Stopping' : 'Stop'}
+            />
+          ) : null}
           <SendButton
-            mode={action === 'Stop' ? 'stop' : 'send'}
+            mode="send"
             onPress={onAction}
             busy={busy}
             // Nothing to send into a server that is not answering, and a queued

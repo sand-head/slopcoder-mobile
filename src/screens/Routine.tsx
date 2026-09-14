@@ -12,10 +12,9 @@
  * would reasonably change one-handed — pause it, run it now, retry a failure,
  * fix a sentence in the prompt, close one door without touching the others.
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Alert,
-  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -23,7 +22,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Markdown from '@ronradtke/react-native-markdown-display';
 import {
   AutomationKind,
@@ -45,7 +43,6 @@ import {
 } from '../api/routines';
 import { useAuth } from '../state/auth';
 import {
-  BackButton,
   Body,
   Button,
   GLYPHS,
@@ -53,12 +50,16 @@ import {
   Meta,
   Mono,
   Screen,
+  Skeleton,
   StatusDot,
   markdownStyles,
 } from '../ui/kit';
 import { HistoryStrip, outcomeColor } from '../ui/HistoryStrip';
 import { Sheet, SheetSegments } from '../ui/Sheet';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
+import { OverflowMenu } from '../ui/menu';
+import { cockpitUrl, openInApp } from '../ui/browser';
+import { tapConfirm, tapRefuse, tapSelect } from '../ui/haptics';
 import { font, mix, radius, useTheme } from '../theme';
 
 /** How many runs one page of the log carries. */
@@ -76,7 +77,6 @@ const TABS = [
 export function RoutineScreen({ route, navigation }: { route: any; navigation: any }) {
   const theme = useTheme();
   const { c } = theme;
-  const insets = useSafeAreaInsets();
   const seam = useAuth(s => s.seam);
   const server = useAuth(s => s.credential?.server);
 
@@ -192,7 +192,7 @@ export function RoutineScreen({ route, navigation }: { route: any; navigation: a
     }
   };
 
-  const remove = () => {
+  const remove = useCallback(() => {
     const name = detail?.routine.name ?? 'this routine';
     Alert.alert(`Delete “${name}”?`, 'It stops running and its run history goes with it.', [
       { text: 'Cancel', style: 'cancel' },
@@ -200,17 +200,76 @@ export function RoutineScreen({ route, navigation }: { route: any; navigation: a
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
+          tapRefuse();
           await seam?.deleteRoutine(id);
           navigation.goBack();
         },
       },
     ]);
-  };
+  }, [detail?.routine.name, seam, id, navigation]);
+
+  const routine = detail?.routine;
+  const beat = routine?.kind === AutomationKind.Heartbeat;
+  const paused = !routine?.enabled || !routine?.scheduleEnabled;
+
+  // The bar: the routine's name, its switch, and the menu the cockpit's
+  // card carries — open the session, edit it (in the browser, over this
+  // screen), delete it.
+  const sessionId = routine?.sessionId ?? null;
+  const enabled = routine?.enabled ?? false;
+  const name = routine?.name ?? 'Routine';
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      title: name,
+      headerRight: () =>
+        routine ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Switch
+              value={enabled}
+              disabled={busy}
+              accessibilityLabel={`${name} enabled`}
+              onValueChange={on => {
+                setDetail(d => (d ? { ...d, routine: { ...d.routine, enabled: on } } : d));
+                void act(() => seam!.setRoutineEnabled(id, on));
+              }}
+              trackColor={{ true: c.primary, false: mix(c.mutedForeground, 30) }}
+            />
+            <OverflowMenu
+              title={name}
+              items={[
+                ...(sessionId
+                  ? [{ key: 'session', title: 'Open session', symbol: 'bubble.left', onPress: () => navigation.navigate('Session', { id: sessionId }) }]
+                  : []),
+                ...(server
+                  ? [{ key: 'edit', title: 'Edit in the cockpit', symbol: 'pencil', onPress: () => void openInApp(cockpitUrl(server, `routines/${id}/edit`), c.primary) }]
+                  : []),
+                { key: 'delete', title: 'Delete', symbol: 'trash', destructive: true, onPress: remove },
+              ]}>
+              <Pressable
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="More"
+                style={({ pressed }) => ({
+                  width: 36,
+                  height: 36,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: pressed ? 0.5 : 1,
+                })}>
+                <Body style={{ fontFamily: font.mono, fontSize: 18, color: c.primary }}>{GLYPHS.more}</Body>
+              </Pressable>
+            </OverflowMenu>
+          </View>
+        ) : null,
+    });
+    // `act` and `routine` change identity every render; the values the bar
+    // reads are listed instead.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigation, name, enabled, busy, sessionId, server, id, remove, c.primary, c.mutedForeground, !!routine]);
 
   if (missing) {
     return (
       <Screen>
-        <Header insets={insets} title="routine" onBack={() => navigation.goBack()} />
         <View style={{ padding: 20, gap: 8 }}>
           <Body style={{ fontFamily: font.sansMedium, fontSize: 16 }}>No such routine</Body>
           <Hint>It was deleted, or it belongs to someone else.</Hint>
@@ -219,36 +278,18 @@ export function RoutineScreen({ route, navigation }: { route: any; navigation: a
     );
   }
 
-  const routine = detail?.routine;
-  const beat = routine?.kind === AutomationKind.Heartbeat;
-  const paused = !routine?.enabled || !routine?.scheduleEnabled;
-
   return (
     <Screen>
-      <Header
-        insets={insets}
-        title={routine?.name ?? 'routine'}
-        onBack={() => navigation.goBack()}
-        right={
-          routine ? (
-            <Switch
-              value={routine.enabled}
-              disabled={busy}
-              onValueChange={on => {
-                setDetail(d => (d ? { ...d, routine: { ...d.routine, enabled: on } } : d));
-                void act(() => seam!.setRoutineEnabled(id, on));
-              }}
-              trackColor={{ true: c.primary, false: mix(c.mutedForeground, 30) }}
-            />
-          ) : null
-        }
-      />
-
       <ConnectionBanner onRetry={load} />
 
       <ScrollView
-        contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 24, gap: 16 }}
+        contentContainerStyle={{ padding: 20, paddingBottom: 24, gap: 16 }}
         keyboardShouldPersistTaps="handled"
+        // The prompt editor sits at the foot of this page; without these the
+        // keyboard covered it and the Save row, and the page could not scroll
+        // to the caret.
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="interactive"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -260,9 +301,13 @@ export function RoutineScreen({ route, navigation }: { route: any; navigation: a
             tintColor={c.mutedForeground}
           />
         }>
-        {error ? <Body style={{ color: c.destructive, fontSize: 13 }}>{error}</Body> : null}
+        {error ? (
+          <Body accessibilityLiveRegion="polite" style={{ color: c.destructive, fontSize: 13 }}>
+            {error}
+          </Body>
+        ) : null}
 
-        {!detail ? <Hint>Loading…</Hint> : null}
+        {!detail && !error ? <Skeleton rows={4} /> : null}
 
         {detail && routine ? (
           <>
@@ -303,52 +348,21 @@ export function RoutineScreen({ route, navigation }: { route: any; navigation: a
                 label="Run now"
                 variant="outline"
                 busy={busy}
-                onPress={() => void act(() => seam!.runRoutineNow(id))}
+                onPress={() => {
+                  tapConfirm();
+                  void act(() => seam!.runRoutineNow(id));
+                }}
               />
-              <View style={{ flex: 1 }} />
-              <Pressable
-                onPress={() =>
-                  Alert.alert(routine.name, undefined, [
-                    ...(routine.sessionId
-                      ? [
-                          {
-                            text: 'Open session',
-                            onPress: () =>
-                              navigation.navigate('Session', { id: routine.sessionId }),
-                          },
-                        ]
-                      : []),
-                    ...(server
-                      ? [
-                          {
-                            text: 'Edit in the cockpit',
-                            onPress: () =>
-                              void Linking.openURL(
-                                `${server.replace(/\/+$/, '')}/routines/${id}/edit`,
-                              ),
-                          },
-                        ]
-                      : []),
-                    { text: 'Delete', style: 'destructive' as const, onPress: remove },
-                    { text: 'Cancel', style: 'cancel' as const },
-                  ])
-                }
-                hitSlop={10}
-                style={({ pressed }) => ({
-                  width: 36,
-                  height: 36,
-                  borderRadius: radius.md,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  opacity: pressed ? 0.5 : 1,
-                })}>
-                <Body style={{ fontFamily: font.mono, fontSize: 16, color: c.mutedForeground }}>
-                  {GLYPHS.more}
-                </Body>
-              </Pressable>
             </View>
 
-            <SheetSegments options={TABS} selected={tab} onSelect={setTab} />
+            <SheetSegments
+              options={TABS}
+              selected={tab}
+              onSelect={next => {
+                if (next !== tab) tapSelect();
+                setTab(next);
+              }}
+            />
 
             {tab === 'runs' ? (
               <View>
@@ -357,7 +371,7 @@ export function RoutineScreen({ route, navigation }: { route: any; navigation: a
                   <RunRow key={row.id} run={row} onPress={() => setSelected(row.id)} />
                 ))}
                 {runs.length < total ? (
-                  <Pressable onPress={loadMore} style={{ paddingVertical: 14 }} hitSlop={8}>
+                  <Pressable onPress={loadMore} style={{ paddingVertical: 14 }} hitSlop={8} accessibilityRole="button">
                     <Mono style={{ color: c.primary, textDecorationLine: 'underline' }}>
                       {paging ? 'loading…' : `load more · ${runs.length} of ${total}`}
                     </Mono>
@@ -480,39 +494,6 @@ export function RoutineScreen({ route, navigation }: { route: any; navigation: a
   );
 }
 
-function Header({
-  insets,
-  title,
-  onBack,
-  right,
-}: {
-  insets: { top: number };
-  title: string;
-  onBack: () => void;
-  right?: React.ReactNode;
-}) {
-  const { c } = useTheme();
-  return (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 10,
-        paddingHorizontal: 16,
-        paddingTop: insets.top + 8,
-        paddingBottom: 8,
-        borderBottomWidth: 1,
-        borderBottomColor: c.border,
-      }}>
-      <BackButton onPress={onBack} />
-      <Body numberOfLines={1} style={{ flex: 1, fontFamily: font.sansMedium, fontSize: 14 }}>
-        {title}
-      </Body>
-      {right}
-    </View>
-  );
-}
-
 /** One row of the run log: when, how it ended, how long, what it said. */
 function RunRow({ run, onPress }: { run: RunSummary; onPress: () => void }) {
   const theme = useTheme();
@@ -521,6 +502,8 @@ function RunRow({ run, onPress }: { run: RunSummary; onPress: () => void }) {
   return (
     <Pressable
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${when(run.startedAt)}, ${statusLabel(run.status)}`}
       style={({ pressed }) => ({
         minHeight: 44,
         flexDirection: 'row',
@@ -598,6 +581,7 @@ function TriggerRow({
         <Switch
           value={trigger.enabled}
           disabled={busy}
+          accessibilityLabel={`${trigger.summary} enabled`}
           onValueChange={onToggle}
           trackColor={{ true: c.primary, false: mix(c.mutedForeground, 30) }}
         />
@@ -606,7 +590,7 @@ function TriggerRow({
         <View style={{ flex: 1 }}>
           <HistoryStrip history={trigger.history} height={12} />
         </View>
-        <Pressable onPress={onFire} disabled={busy} hitSlop={10}>
+        <Pressable onPress={onFire} disabled={busy} hitSlop={10} accessibilityRole="button" accessibilityLabel="Fire trigger">
           <Mono
             style={{ color: c.primary, textDecorationLine: 'underline', opacity: busy ? 0.5 : 1 }}>
             fire

@@ -1,0 +1,23 @@
+diff --git a/node_modules/react-native-bottom-tabs/ios/RCTTabViewComponentView.mm b/node_modules/react-native-bottom-tabs/ios/RCTTabViewComponentView.mm
+index 09ab604..af3438f 100644
+--- a/node_modules/react-native-bottom-tabs/ios/RCTTabViewComponentView.mm
++++ b/node_modules/react-native-bottom-tabs/ios/RCTTabViewComponentView.mm
+@@ -17,8 +17,18 @@
+ #import <React/RCTImageLoader.h>
+ #import <React/RCTImageSource.h>
+ #import <React/RCTBridge+Private.h>
++#if SWIFT_PACKAGE
++#import <react/renderer/imagemanager/RCTImagePrimitivesConversions.h>
++#elif __has_include(<React/RCTImagePrimitivesConversions.h>)
++#import <React/RCTImagePrimitivesConversions.h>
++#else
+ #import "RCTImagePrimitivesConversions.h"
++#endif
++#if __has_include(<React/RCTConversions.h>)
++#import <React/RCTConversions.h>
++#else
+ #import "RCTConversions.h"
++#endif
+ #import <react/utils/ManagedObjectWrapper.h>
+ 
+ #if TARGET_OS_OSX

@@ -82,9 +82,15 @@ export function Sheet({
           paddingTop: 14,
           paddingBottom: 10,
         }}>
+        {/* Balances the close button so the title sits centred. */}
+        <View style={{ width: 32 }} />
+        <Body style={{ flex: 1, textAlign: 'center', fontSize: 16 }}>{title}</Body>
+        {/* Trailing, where the platform's own round close control sits. */}
         <Pressable
           onPress={onClose}
           hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
           style={({ pressed }) => ({
             width: 32,
             height: 32,
@@ -96,9 +102,6 @@ export function Sheet({
           })}>
           <Body style={{ color: c.foreground, fontSize: 15 }}>×</Body>
         </Pressable>
-        <Body style={{ flex: 1, textAlign: 'center', fontSize: 16 }}>{title}</Body>
-        {/* Balances the close button so the title sits centred. */}
-        <View style={{ width: 32 }} />
       </View>
 
       <ScrollView
