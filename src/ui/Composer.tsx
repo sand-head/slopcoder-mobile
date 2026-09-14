@@ -27,6 +27,7 @@ import { Body, Dot, GlassSurface, Meta, Mono, SendButton, Sliders } from './kit'
 import { Sheet, SheetGroup, SheetMultiGroup, SheetSegments } from './Sheet';
 import { useConnection } from '../state/connection';
 import { Field } from './kit';
+import { offer, shouldSearch } from '../api/repoPicker';
 import { font, mix, radius, useTheme } from '../theme';
 
 /** A repository or a node the next turn should have. */
@@ -44,6 +45,12 @@ export interface Attachments {
   repos: string[];
   nodes: string[];
   recentRepos: AttachOption[];
+  /** The caller's own repositories, across every connected forge. */
+  ownedRepos: AttachOption[];
+  /** False until they have arrived, which is not the same as having none. */
+  ownedLoaded: boolean;
+  /** What could not be listed. A half-failed fan-out must not read as a short list. */
+  ownedError?: string | null;
   availableNodes: AttachOption[];
   searchRepos: (query: string) => Promise<AttachOption[]>;
   onChange: (next: { repos: string[]; nodes: string[] }) => void;
@@ -112,19 +119,44 @@ export function Composer({
   const [sheet, setSheet] = useState<'model' | 'turn' | 'attach' | null>(null);
   const [query, setQuery] = useState('');
   const [found, setFound] = useState<AttachOption[]>([]);
+  const [searching, setSearching] = useState(false);
 
-  // Repo search fans out to every connected forge, so it is the one call worth
-  // waiting for the typing to stop.
+  const owned = attachments?.ownedRepos ?? [];
+  const ownedLoaded = attachments?.ownedLoaded ?? false;
+  const willSearch = attachments != null && shouldSearch(owned, query, ownedLoaded);
+
+  // The one call here that leaves the device, and the only one worth waiting
+  // for the typing to stop. It runs when nothing of yours matched — see
+  // `repoPicker.ts` for why that is the condition rather than the query alone.
   useEffect(() => {
-    if (!attachments || query.trim().length < 2) {
-      setFound([]);
+    setFound([]);
+    if (!attachments || !willSearch) {
+      setSearching(false);
       return;
     }
+
+    setSearching(true);
+    let live = true;
     const timer = setTimeout(() => {
-      void attachments.searchRepos(query.trim()).then(setFound);
+      void attachments
+        .searchRepos(query.trim())
+        .then(rows => live && setFound(rows))
+        .finally(() => live && setSearching(false));
     }, 300);
-    return () => clearTimeout(timer);
-  }, [attachments, query]);
+
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [attachments, query, willSearch]);
+
+  const offered = offer({
+    query,
+    recent: attachments?.recentRepos ?? [],
+    owned,
+    found,
+    searching,
+  });
 
   const current = models.find(
     m => !options.selection.auto && m.modelId === options.selection.modelId,
@@ -281,9 +313,14 @@ export function Composer({
       {attachments ? (
         <Sheet visible={sheet === 'attach'} title="Attach" onClose={() => setSheet(null)}>
           <Field value={query} onChangeText={setQuery} placeholder="Search repositories…" />
+          {/* A forge that failed to answer would otherwise look like a forge
+              with nothing on it. */}
+          {attachments.ownedError ? (
+            <Mono style={{ color: c.destructive }}>{attachments.ownedError}</Mono>
+          ) : null}
           <SheetMultiGroup
-            label={query.trim().length >= 2 ? 'matches' : 'recent'}
-            options={query.trim().length >= 2 ? found : attachments.recentRepos}
+            label={offered.label}
+            options={offered.options}
             selected={attachments.repos}
             onToggle={key =>
               attachments.onChange({
@@ -293,7 +330,7 @@ export function Composer({
                 nodes: attachments.nodes,
               })
             }
-            empty={query.trim().length >= 2 ? 'Nothing matched.' : 'No recent repositories.'}
+            empty={offered.empty}
           />
           <SheetMultiGroup
             label="remote nodes"

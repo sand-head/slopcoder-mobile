@@ -17,6 +17,8 @@ import {
   type SessionSummary,
 } from '../api/contracts';
 import { useAuth } from '../state/auth';
+import { useOwnedRepos } from '../state/repos';
+import { rowToChoice } from '../api/repoPicker';
 import { useSessionHub } from '../state/hub';
 import {
   Body,
@@ -57,6 +59,7 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
   const [nodes, setNodes] = useState<string[]>([]);
   const [recent, setRecent] = useState<string[]>([]);
   const [allNodes, setAllNodes] = useState<RemoteNodeSummary[]>([]);
+  const owned = useOwnedRepos(seam);
   const [options, setOptions] = useState<TurnOptions>({
     selection: { auto: true, connectionId: null, modelId: null },
     thinking: null,
@@ -224,13 +227,13 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
             repos,
             nodes,
             recentRepos: recent.map(url => ({ key: url, label: shortRepo(url) })),
+            ownedRepos: owned.repos,
+            ownedLoaded: owned.loaded,
+            ownedError: owned.error,
             availableNodes: allNodes
               .filter(n => n.enabled)
               .map(n => ({ key: n.id, label: n.name, description: n.host })),
-            searchRepos: async query => {
-              const rows = await seam!.searchRepos(query);
-              return rows.map(r => ({ key: r.cloneUrl, label: r.fullName }));
-            },
+            searchRepos: async query => (await seam!.searchRepos(query)).map(rowToChoice),
             onChange: next => {
               setRepos(next.repos);
               setNodes(next.nodes);

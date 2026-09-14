@@ -45,6 +45,30 @@ describe('Seam', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('https://slop.example.com/api/seam/sessions/');
   });
 
+  /**
+   * `/git/repos` answers `{repos, errors}` because a fan-out across forges can
+   * half-fail. `/git/repos/search` is best-effort and answers the rows bare.
+   * Reading the second as the first yielded `undefined.repos`, so every search
+   * in the attach sheet came back empty and it only ever showed the
+   * repositories recent sessions had used.
+   */
+  it('reads a repository search as the bare array the endpoint returns', async () => {
+    const rows = [{ fullName: 'a/b', cloneUrl: 'https://x/a/b.git', kind: 1, private: false }];
+    fetchMock.mockReturnValue(reply(200, rows));
+    const seam = new Seam({ baseUrl: 'https://s', apiKey: 'slop_k' });
+
+    await expect(seam.searchRepos('b')).resolves.toEqual(rows);
+    expect(fetchMock.mock.calls[0][0]).toBe('https://s/api/seam/git/repos/search?q=b');
+  });
+
+  /** The listing it is not: this one really does wrap its rows. */
+  it('reads a repository listing as an object, errors and all', async () => {
+    fetchMock.mockReturnValue(reply(200, { repos: [], errors: ['github: 503'] }));
+    const seam = new Seam({ baseUrl: 'https://s', apiKey: 'slop_k' });
+
+    await expect(seam.repos()).resolves.toEqual({ repos: [], errors: ['github: 503'] });
+  });
+
   it('reads a 404 as null, not as a failure', async () => {
     fetchMock.mockReturnValue(reply(404));
     const seam = new Seam({ baseUrl: 'https://s', apiKey: 'slop_k' });

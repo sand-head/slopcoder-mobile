@@ -273,12 +273,20 @@ export class Seam {
     );
   }
 
+  /**
+   * A bare array, not a listing. `/git/repos` answers `{repos, errors}` because
+   * a fan-out can half-fail; `/git/repos/search` is best-effort and answers the
+   * rows alone (`SeamEndpoints.cs`, `IGitApi.SearchRepositoriesAsync`). Reading
+   * it as a listing yielded `undefined.repos` — so every search came back empty
+   * and the attach sheet only ever showed recent sessions' repositories.
+   */
   async searchRepos(query: string, signal?: AbortSignal): Promise<GitRepoRow[]> {
-    const listing = await this.get<GitRepoListing>(
-      `api/seam/git/repos/search?q=${encodeURIComponent(query)}`,
-      signal,
+    return (
+      (await this.get<GitRepoRow[]>(
+        `api/seam/git/repos/search?q=${encodeURIComponent(query)}`,
+        signal,
+      )) ?? []
     );
-    return listing?.repos ?? [];
   }
 
   async nodes(signal?: AbortSignal): Promise<RemoteNodeSummary[]> {
