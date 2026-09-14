@@ -10,7 +10,7 @@
  * button of its own.
  */
 import React from 'react';
-import { Platform } from 'react-native';
+import { Platform, type StyleProp, type ViewStyle } from 'react-native';
 import { MenuView, type MenuAction } from '@react-native-menu/menu';
 
 export interface MenuItem {
@@ -26,6 +26,7 @@ export function OverflowMenu({
   title,
   items,
   longPress = false,
+  style,
   children,
 }: {
   /** The menu's own heading — on iOS a small grey line, on Android nothing. */
@@ -33,6 +34,13 @@ export function OverflowMenu({
   items: MenuItem[];
   /** Open on a long press of the child as well as a tap. */
   longPress?: boolean;
+  /**
+   * The native wrapper is a view of its own with no size of its own. Wrapped
+   * around a flex row's child it must carry that child's flex, or the child
+   * lays out in zero width — a session row rendered as a dot and a `…` with
+   * nothing between them.
+   */
+  style?: StyleProp<ViewStyle>;
   children: React.ReactNode;
 }) {
   const actions: MenuAction[] = items.map(item => ({
@@ -44,6 +52,7 @@ export function OverflowMenu({
 
   return (
     <MenuView
+      style={style}
       title={title}
       actions={actions}
       shouldOpenOnLongPress={longPress}

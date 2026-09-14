@@ -491,7 +491,7 @@ function SessionCard({
           minHeight: 44,
         }}>
         {/* The whole row is the link; a long press on it is the menu. */}
-        <OverflowMenu title={session.title} items={items} longPress>
+        <OverflowMenu title={session.title} items={items} longPress style={{ flex: 1 }}>
           <Pressable
             onPress={onPress}
             accessibilityRole="button"
