@@ -140,7 +140,9 @@ function Head({
       ) : null}
 
       {/* Chips give way before the verb and the subject do, and the row clips
-          rather than spilling past the card's edge. */}
+          rather than spilling past the card's edge. The strip shrinks; the
+          chips inside it do not — a chip that shrank wrapped "182 lines" into
+          a column of letters as tall as the card. */}
       <View style={{ flexDirection: 'row', gap: 4, flexShrink: 8, overflow: 'hidden' }}>
         {card.facets.map((facet, index) => (
           <Facet key={index} text={facet} />
@@ -175,6 +177,7 @@ function Facet({ text }: { text: string }) {
   return (
     <View
       style={{
+        flexShrink: 0,
         borderRadius: radius.sm - 2,
         paddingHorizontal: 4,
         paddingVertical: 1,
@@ -184,7 +187,9 @@ function Facet({ text }: { text: string }) {
             ? mix(c.destructive, 14)
             : mix(c.mutedForeground, 14),
       }}>
-      <Mono style={{ fontSize: 10.5, color: added ? status.ok : bad ? c.destructive : c.mutedForeground }}>
+      <Mono
+        numberOfLines={1}
+        style={{ fontSize: 10.5, color: added ? status.ok : bad ? c.destructive : c.mutedForeground }}>
         {text}
       </Mono>
     </View>

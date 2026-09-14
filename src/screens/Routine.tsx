@@ -58,6 +58,7 @@ import {
 import { HistoryStrip, outcomeColor } from '../ui/HistoryStrip';
 import { Sheet, SheetSegments } from '../ui/Sheet';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
+import { useHeaderInset } from '../navigation/headers';
 import { OverflowMenu } from '../ui/menu';
 import { cockpitUrl, openInApp } from '../ui/browser';
 import { tapConfirm, tapRefuse, tapSelect } from '../ui/haptics';
@@ -79,6 +80,7 @@ export function RoutineScreen({ route, navigation }: { route: any; navigation: a
   const theme = useTheme();
   const { c } = theme;
   const insets = useSafeAreaInsets();
+  const headerInset = useHeaderInset();
   const seam = useAuth(s => s.seam);
   const server = useAuth(s => s.credential?.server);
 
@@ -272,7 +274,7 @@ export function RoutineScreen({ route, navigation }: { route: any; navigation: a
   if (missing) {
     return (
       <Screen>
-        <View style={{ padding: 20, gap: 8 }}>
+        <View style={{ padding: 20, paddingTop: headerInset + 20, gap: 8 }}>
           <Body style={{ fontFamily: font.sansMedium, fontSize: 16 }}>No such routine</Body>
           <Hint>It was deleted, or it belongs to someone else.</Hint>
         </View>
@@ -282,7 +284,11 @@ export function RoutineScreen({ route, navigation }: { route: any; navigation: a
 
   return (
     <Screen>
-      <ConnectionBanner onRetry={load} />
+      {/* Over the page, below the bar: the page insets itself for the bar,
+          and a banner in the flow above it would be under it. */}
+      <View pointerEvents="box-none" style={{ position: 'absolute', top: headerInset, left: 0, right: 0, zIndex: 1 }}>
+        <ConnectionBanner onRetry={load} />
+      </View>
 
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"

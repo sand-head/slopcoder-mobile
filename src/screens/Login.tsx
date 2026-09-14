@@ -26,6 +26,7 @@ import { loginMessage, useAuth } from '../state/auth';
 import { Body, Brand, Button, Field, Hint, Meta, Screen } from '../ui/kit';
 import { tapError, tapSuccess } from '../ui/haptics';
 import { radius, useTheme } from '../theme';
+import { useHeaderInset } from '../navigation/headers';
 
 export function LoginScreen({ navigation, route }: { navigation: any; route: any }) {
   const { c } = useTheme();
@@ -182,6 +183,7 @@ export function LoginScreen({ navigation, route }: { navigation: any; route: any
 export function ScanScreen({ navigation }: { navigation: any }) {
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
+  const headerInset = useHeaderInset();
   const { hasPermission, requestPermission } = useCameraPermission();
   const handled = useRef(false);
 
@@ -215,7 +217,7 @@ export function ScanScreen({ navigation }: { navigation: any }) {
   if (!hasPermission) {
     return (
       <Screen>
-        <View style={{ flex: 1, padding: 20, paddingTop: 24, gap: 14 }}>
+        <View style={{ flex: 1, padding: 20, paddingTop: headerInset + 24, gap: 14 }}>
           <Body>slopcoder needs the camera to scan a pairing code.</Body>
           <Button label="Allow camera" onPress={() => void requestPermission()} />
         </View>

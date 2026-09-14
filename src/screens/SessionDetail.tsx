@@ -11,15 +11,11 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import {
   ActivityIndicator,
   FlatList,
-  Keyboard,
-  KeyboardAvoidingView,
   LayoutAnimation,
-  Platform,
   Pressable,
   ScrollView,
   View,
 } from 'react-native';
-import { useHeaderHeight } from '@react-navigation/elements';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Markdown from '@ronradtke/react-native-markdown-display';
 import {
@@ -30,7 +26,15 @@ import {
   type UserQuestionAnswer,
 } from '../api/contracts';
 import { buildProposalCard, buildToolCard } from '../api/toolcard';
-import { summarize, type Item } from '../api/transcript';
+import {
+  groupSubagents,
+  subagentDetail,
+  subagentState,
+  summarize,
+  type Item,
+  type Row,
+  type SubagentGroup,
+} from '../api/transcript';
 import { useAuth } from '../state/auth';
 import { useSessionHub } from '../state/hub';
 import { useSession } from '../state/session';
@@ -54,28 +58,26 @@ import { Sheet } from '../ui/Sheet';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 import { ToolCard } from '../ui/ToolCard';
 import { useAtBottom } from '../ui/atBottom';
+import { useKeyboardHeight } from '../ui/keyboard';
+import { useHeaderInset } from '../navigation/headers';
 import { tapConfirm, tapRefuse } from '../ui/haptics';
 import { newTokens } from '../api/contracts';
 import { font, mix, radius, useTheme } from '../theme';
 
 export function SessionDetailScreen({ route, navigation }: { route: any; navigation: any }) {
   const { c } = useTheme();
-  const headerHeight = useHeaderHeight();
   const insets = useSafeAreaInsets();
   const id: string = route.params.id;
+
+  // The bar is transparent and this screen runs up under it, so the
+  // transcript's visual top and the banner both start below it.
+  const headerInset = useHeaderInset();
 
   // The composer clears the home indicator when the keyboard is down, and
   // sits straight on the keyboard when it is up — the inset is the phone's
   // bottom edge, and with the keyboard there the bottom edge is the keyboard.
-  const [keyboardUp, setKeyboardUp] = useState(false);
-  useEffect(() => {
-    const shown = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardUp(true));
-    const hidden = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardUp(false));
-    return () => {
-      shown.remove();
-      hidden.remove();
-    };
-  }, []);
+  const keyboardHeight = useKeyboardHeight();
+  const keyboardUp = keyboardHeight > 0;
 
   const seam = useAuth(s => s.seam);
   const { hub } = useSessionHub();
@@ -93,7 +95,7 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
   // Measured, not guessed: the composer grows with the text and with however
   // many dials are off default, and the transcript has to clear whatever it is.
   const [composerHeight, setComposerHeight] = useState(96);
-  const listRef = useRef<FlatList<Item>>(null);
+  const listRef = useRef<FlatList<Row>>(null);
 
   // The list is inverted: index 0 is the newest line, and the platform keeps
   // it in view as lines arrive. This only says whether the reader is there.
@@ -220,21 +222,15 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
   }, [pendingCount]);
 
-  // Newest first, for the inverted list.
-  const reversed = useMemo(() => [...items].reverse(), [items]);
+  // Each subagent's thread folded under its own row, then newest first for
+  // the inverted list.
+  const reversed = useMemo(() => groupSubagents(items).reverse(), [items]);
 
   return (
     <Screen>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        // The bar above is outside this view's own frame, which is all the
-        // avoiding view can measure; this is the one thing it has to be told.
-        keyboardVerticalOffset={headerHeight}
-        style={{ flex: 1 }}>
-        <ConnectionBanner />
-
+      <View style={{ flex: 1 }}>
         {error ? (
-          <View style={{ padding: 20 }}>
+          <View style={{ padding: 20, paddingTop: headerInset + 20 }}>
             <Body accessibilityLiveRegion="polite" style={{ color: c.destructive }}>
               {error}
             </Body>
@@ -255,8 +251,8 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
             // container's top is the visual bottom.
             contentContainerStyle={{
               paddingHorizontal: 16,
-              paddingTop: composerHeight + 16,
-              paddingBottom: 16,
+              paddingTop: composerHeight + keyboardHeight + 16,
+              paddingBottom: headerInset + 16,
               gap: 4,
             }}
             {...bottom}
@@ -271,8 +267,8 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
               ) : undefined
             }
             renderItem={({ item }) => (
-              <TranscriptRow
-                item={item}
+              <RowView
+                row={item}
                 pendingApprovals={state?.pendingApprovalIds ?? []}
                 pendingQuestions={state?.pendingQuestionIds ?? []}
                 onApprove={(requestId, approved) => {
@@ -314,7 +310,7 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
               position: 'absolute',
               left: 0,
               right: 0,
-              bottom: composerHeight + 8,
+              bottom: composerHeight + keyboardHeight + 8,
               alignItems: 'center',
             }}>
             <Pressable
@@ -331,13 +327,20 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
           </View>
         ) : null}
 
+        {/* Over the transcript, below the bar: the banner is news, not a row. */}
+        <View pointerEvents="box-none" style={{ position: 'absolute', top: headerInset, left: 0, right: 0 }}>
+          <ConnectionBanner />
+        </View>
+
         <View
           onLayout={event => setComposerHeight(event.nativeEvent.layout.height)}
           style={{
             position: 'absolute',
             left: 0,
             right: 0,
-            bottom: 0,
+            // Straight on the keyboard: the height is in this style because a
+            // parent's padding would not move an absolute child at all.
+            bottom: keyboardHeight,
             paddingHorizontal: 10,
             paddingBottom: (keyboardUp ? 0 : insets.bottom) + 10,
             paddingTop: 4,
@@ -366,7 +369,7 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
             facets={facets}
           />
         </View>
-      </KeyboardAvoidingView>
+      </View>
 
       <Sheet visible={usageOpen} title="Session usage" onClose={() => setUsageOpen(false)}>
         {state ? (
@@ -449,19 +452,122 @@ function ContextBar({ percent }: { percent: number }) {
   );
 }
 
+interface RowHandlers {
+  pendingApprovals: string[];
+  pendingQuestions: string[];
+  onApprove: (requestId: string, approved: boolean) => void;
+  onAnswer: (requestId: string, answers: UserQuestionAnswer[] | null) => void;
+}
+
+function RowView({ row, ...handlers }: { row: Row } & RowHandlers) {
+  return row.kind === 'subagent' ? (
+    <SubagentBlock group={row} {...handlers} />
+  ) : (
+    <TranscriptRow item={row} {...handlers} />
+  );
+}
+
+/**
+ * A subagent's whole thread behind one row, closed by default, as on the web:
+ * the fork, its number and task, and on the right what it has come to — or,
+ * while it runs, what it is doing. Open, the thread hangs off a rail in the
+ * subagent's colour so a nested tool row cannot be mistaken for the main
+ * agent's. The row's own status is derived, never carried: a failure wins,
+ * then a stop, then a clean finish.
+ */
+function SubagentBlock({ group, ...handlers }: { group: SubagentGroup } & RowHandlers) {
+  const { c, status } = useTheme();
+  const [open, setOpen] = useState(false);
+
+  const state = subagentState(group.items);
+  const failure = group.items.find((item): item is Extract<Item, { kind: 'error' }> => item.kind === 'error');
+  const detail =
+    state === 'failed'
+      ? summarize(failure?.message || 'failed', 40)
+      : state === 'cancelled'
+        ? 'stopped'
+        : state === 'done'
+          ? 'done'
+          : subagentDetail(group.items);
+  const tone =
+    state === 'failed'
+      ? c.destructive
+      : state === 'done'
+        ? status.ok
+        : state === 'cancelled'
+          ? c.mutedForeground
+          : status.running;
+
+  return (
+    <View>
+      <Pressable
+        onPress={() => {
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          setOpen(!open);
+        }}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        accessibilityLabel={`Subagent ${group.subagentId}, ${group.task || 'no task'}, ${detail}`}
+        style={({ pressed }) => ({
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8,
+          paddingVertical: 6,
+          paddingHorizontal: 6,
+          borderRadius: radius.md,
+          minHeight: 36,
+          backgroundColor: pressed ? mix(c.mutedForeground, 10) : 'transparent',
+        })}>
+        <View style={{ width: 12, alignItems: 'center' }}>
+          <Fork color={status.subagent} />
+        </View>
+        <Body style={{ flexShrink: 0, fontFamily: font.monoSemiBold, fontSize: 12.5 }}>
+          subagent #{group.subagentId}
+        </Body>
+        <Mono numberOfLines={1} style={{ flex: 1 }}>
+          {[group.model, summarize(group.task)].filter(Boolean).join(' · ')}
+        </Mono>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 1 }}>
+          {state === 'failed' ? (
+            <Body style={{ fontFamily: font.mono, fontSize: 12, color: c.destructive }}>{GLYPHS.error}</Body>
+          ) : (
+            <Dot color={tone} filled={state !== 'cancelled'} size={7} />
+          )}
+          <Mono numberOfLines={1} style={{ fontSize: 11, color: tone, flexShrink: 1 }}>
+            {detail}
+          </Mono>
+        </View>
+        <Mono style={{ transform: [{ rotate: open ? '90deg' : '0deg' }] }}>&gt;</Mono>
+      </Pressable>
+
+      {open ? (
+        <View
+          style={{
+            marginLeft: 11,
+            paddingLeft: 10,
+            borderLeftWidth: 2,
+            borderLeftColor: mix(status.subagent, 45),
+            gap: 4,
+            paddingBottom: 4,
+          }}>
+          {group.items.length === 0 ? (
+            <Mono style={{ paddingVertical: 4 }}>Nothing yet.</Mono>
+          ) : (
+            group.items.map(item => <TranscriptRow key={item.key} item={item} {...handlers} />)
+          )}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function TranscriptRow({
   item,
   pendingApprovals,
   pendingQuestions,
   onApprove,
   onAnswer,
-}: {
-  item: Item;
-  pendingApprovals: string[];
-  pendingQuestions: string[];
-  onApprove: (requestId: string, approved: boolean) => void;
-  onAnswer: (requestId: string, answers: UserQuestionAnswer[] | null) => void;
-}) {
+}: { item: Item } & RowHandlers) {
   const { c, status, isDark } = useTheme();
   const [open, setOpen] = useState(false);
 
@@ -655,14 +761,8 @@ function TranscriptRow({
       );
 
     case 'subagent-start':
-      return (
-        <View style={{ flexDirection: 'row', gap: 8, paddingVertical: 6, alignItems: 'center' }}>
-          <Fork color={status.subagent} />
-          <Meta style={{ flex: 1 }}>
-            subagent #{item.subagentId} · {item.task}
-          </Meta>
-        </View>
-      );
+      // Folded into its SubagentBlock by groupSubagents; nothing stands alone.
+      return null;
 
     case 'divider':
       return (

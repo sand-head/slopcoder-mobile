@@ -2,7 +2,7 @@
  * The fold. The double-encoded payload and the nested subagent envelope are the
  * two shapes most likely to be got wrong, so both are pinned here.
  */
-import { TranscriptFolder, summarize } from '../src/api/transcript';
+import { TranscriptFolder, groupSubagents, subagentDetail, subagentState, summarize } from '../src/api/transcript';
 import type { AgentEventEnvelope } from '../src/api/contracts';
 
 let ordinal = 0;
@@ -156,5 +156,91 @@ describe('summarize', () => {
 
   it('truncates rather than wrapping the row', () => {
     expect(summarize('x'.repeat(200)).length).toBe(80);
+  });
+});
+
+/** A subagent's event, wrapped the way the server nests it. */
+function subEvent(subagentId: number, innerKind: string, inner: unknown): AgentEventEnvelope {
+  return event('SubagentEvent', { subagentId, innerKind, innerPayloadJson: JSON.stringify(inner) });
+}
+
+describe('groupSubagents', () => {
+  it('gathers each subagent under one row anchored where it first appeared', () => {
+    const folder = new TranscriptFolder();
+    folder.fold([
+      event('UserPrompt', { text: 'fan out' }),
+      event('SubagentStarted', { subagentId: 1, task: 'search the tree', model: 'haiku' }),
+      event('SubagentStarted', { subagentId: 2, task: 'read the docs', model: 'haiku' }),
+      subEvent(1, 'ToolCallStarted', { toolName: 'grep', inputJson: '{}' }),
+      subEvent(2, 'ToolCallStarted', { toolName: 'read_file', inputJson: '{}' }),
+      subEvent(1, 'ToolCallFinished', { toolName: 'grep', result: '', isError: false }),
+      event('AssistantText', { text: 'meanwhile, on the main thread' }),
+      subEvent(2, 'AssistantText', { text: 'the docs say…' }),
+      subEvent(1, 'TurnCompleted', {}),
+    ]);
+
+    const rows = groupSubagents(folder.all);
+
+    expect(rows.map(r => r.kind)).toEqual(['user', 'subagent', 'subagent', 'text']);
+    const [, one, two] = rows;
+    expect(one).toMatchObject({ kind: 'subagent', subagentId: 1, task: 'search the tree', model: 'haiku' });
+    expect(two).toMatchObject({ kind: 'subagent', subagentId: 2, task: 'read the docs' });
+    if (one.kind !== 'subagent' || two.kind !== 'subagent') throw new Error('not grouped');
+    // Interleaving does not fragment either thread, and the start row itself
+    // is the group, not an item inside it.
+    expect(one.items.map(i => i.kind)).toEqual(['tool', 'note']);
+    expect(two.items.map(i => i.kind)).toEqual(['tool', 'text']);
+  });
+
+  it('still groups a thread whose start is not in the loaded window', () => {
+    const folder = new TranscriptFolder();
+    folder.fold([subEvent(7, 'AssistantText', { text: 'late' })]);
+
+    const rows = groupSubagents(folder.all);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ kind: 'subagent', subagentId: 7, task: '' });
+  });
+
+  it('keeps a row for a subagent that has said nothing yet', () => {
+    const folder = new TranscriptFolder();
+    folder.fold([event('SubagentStarted', { subagentId: 1, task: 'think', model: 'opus' })]);
+
+    const rows = groupSubagents(folder.all);
+    expect(rows[0]).toMatchObject({ kind: 'subagent', items: [] });
+    expect(subagentState([])).toBe('running');
+  });
+});
+
+describe('subagentState', () => {
+  const thread = (...kinds: string[]) => {
+    const folder = new TranscriptFolder();
+    folder.fold(kinds.map(kind => subEvent(1, kind, kind === 'AgentError' ? { message: 'boom' } : {})));
+    return folder.all;
+  };
+
+  it('is running until the turn ends', () => {
+    expect(subagentState(thread('ThinkingText'))).toBe('running');
+  });
+
+  it('is done on a completed turn', () => {
+    expect(subagentState(thread('ThinkingText', 'TurnCompleted'))).toBe('done');
+  });
+
+  it('lets a failure win over a completion, and a stop over both', () => {
+    expect(subagentState(thread('AgentError', 'TurnCompleted'))).toBe('failed');
+    expect(subagentState(thread('TurnCancelled', 'TurnCompleted'))).toBe('cancelled');
+    expect(subagentState(thread('TurnCancelled', 'AgentError'))).toBe('failed');
+  });
+
+  it('says what a running subagent is doing', () => {
+    const folder = new TranscriptFolder();
+    folder.fold([subEvent(1, 'ToolCallStarted', { toolName: 'grep', inputJson: '{}' })]);
+    expect(subagentDetail(folder.all)).toBe('grep…');
+    folder.fold([
+      subEvent(1, 'ToolCallStarted', { toolName: 'grep', inputJson: '{}' }),
+      subEvent(1, 'ToolCallFinished', { toolName: 'grep', result: '', isError: false }),
+    ]);
+    expect(subagentDetail(folder.all)).toBe('grep');
+    expect(subagentDetail([])).toBe('working…');
   });
 });

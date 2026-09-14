@@ -73,6 +73,8 @@ export interface NoteItem extends BaseItem {
   text: string;
   /** The renderer draws a mark from this; the fold no longer picks a character. */
   tone: 'muted' | 'ok' | 'warn';
+  /** Which turn boundary this is, if it is one — what a subagent's status reduces over. */
+  turn?: 'completed' | 'cancelled';
 }
 
 export interface PlanItem extends BaseItem {
@@ -365,11 +367,11 @@ export class TranscriptFolder {
         break;
 
       case 'TurnCompleted':
-        this.items.push({ ...base, kind: 'note', text: 'done', tone: 'ok' });
+        this.items.push({ ...base, kind: 'note', text: 'done', tone: 'ok', turn: 'completed' });
         break;
 
       case 'TurnCancelled':
-        this.items.push({ ...base, kind: 'note', text: 'stopped (by you)', tone: 'warn' });
+        this.items.push({ ...base, kind: 'note', text: 'stopped (by you)', tone: 'warn', turn: 'cancelled' });
         break;
 
       case 'CompletionRetry':
@@ -443,4 +445,86 @@ export function summarize(input: string, limit = 80): string {
 
   text = text.replace(/\s+/g, ' ').trim();
   return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
+}
+
+/**
+ * One subagent's whole thread, collapsed into a single row anchored where the
+ * subagent first appeared — the port of `TranscriptGrouping.Group`.
+ *
+ * Without this every event a subagent emits lands in the main stream as it
+ * happens, so a fan-out of three reads as one interleaved flood with no way to
+ * tell whose tool call is whose. Here the main thread keeps its order and each
+ * subagent's items are gathered under its own header, however they interleave.
+ */
+export interface SubagentGroup {
+  kind: 'subagent';
+  key: string;
+  subagentId: number;
+  task: string;
+  model: string;
+  items: Item[];
+}
+
+export type Row = Item | SubagentGroup;
+
+/** What a subagent's thread has come to, in the order the web decides it. */
+export type SubagentState = 'running' | 'done' | 'cancelled' | 'failed';
+
+export function groupSubagents(items: readonly Item[]): Row[] {
+  const rows: Row[] = [];
+  const groups = new Map<number, SubagentGroup>();
+
+  const groupFor = (id: number, start?: SubagentStartItem): SubagentGroup => {
+    let group = groups.get(id);
+    if (!group) {
+      group = { kind: 'subagent', key: `sub:${id}`, subagentId: id, task: '', model: '', items: [] };
+      groups.set(id, group);
+      rows.push(group); // anchored at first sight
+    }
+    if (start) {
+      group.task = start.task;
+      group.model = start.model;
+    }
+    return group;
+  };
+
+  for (const item of items) {
+    if (item.kind === 'subagent-start') {
+      // The header is the start event itself; a subagent that has said nothing
+      // yet still gets its row, so the fan-out is visible as it begins.
+      groupFor(item.subagentId, item);
+    } else if (item.sub === null) {
+      rows.push(item);
+    } else {
+      // A thread whose start scrolled out of the loaded window still groups;
+      // it just has no task to show until the earlier page arrives.
+      groupFor(item.sub).items.push(item);
+    }
+  }
+
+  return rows;
+}
+
+/**
+ * A failure dominates, then a stop, then a clean finish; otherwise the thread
+ * is still going — the precedence `TranscriptGrouping.DeriveState` uses.
+ */
+export function subagentState(items: readonly Item[]): SubagentState {
+  let done = false;
+  let cancelled = false;
+  for (const item of items) {
+    if (item.kind === 'error') return 'failed';
+    if (item.kind === 'note' && item.turn === 'cancelled') cancelled = true;
+    if (item.kind === 'note' && item.turn === 'completed') done = true;
+  }
+  return cancelled ? 'cancelled' : done ? 'done' : 'running';
+}
+
+/** What a still-running subagent is doing: its latest tool, else a hint. */
+export function subagentDetail(items: readonly Item[]): string {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i];
+    if (item.kind === 'tool') return item.running ? `${item.name}…` : item.name;
+  }
+  return items.some(item => item.kind === 'think') ? 'thinking…' : 'working…';
 }
