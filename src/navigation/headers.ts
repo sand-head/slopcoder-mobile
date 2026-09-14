@@ -9,18 +9,29 @@
  * These options hand all of it back to UIKit and to Material.
  */
 import type React from 'react';
+import { Platform } from 'react-native';
 import type { NativeStackNavigationOptions } from '@react-navigation/native-stack';
 import { font, type Theme } from '../theme';
 
-/** What every stack shares: the app's type on the platform's bar. */
+/**
+ * What every stack shares: the app's type on the platform's bar.
+ *
+ * On iOS the bar's background is deliberately not set. Any explicit colour
+ * makes UIKit paint an opaque bar; left alone, iOS 26 draws it in glass with
+ * the scroll-edge effect, and earlier versions draw the system material —
+ * the same bar every other app on the phone has. Android's Material bar has
+ * no such material and its default surface is not this palette, so there it
+ * is painted.
+ */
 export function stackOptions({ c }: Theme): NativeStackNavigationOptions {
   return {
     headerTintColor: c.primary,
     headerTitleStyle: { fontFamily: font.sansMedium, color: c.foreground },
     headerLargeTitleStyle: { fontFamily: font.sansMedium, color: c.foreground },
     headerBackTitleStyle: { fontFamily: font.sans },
-    headerStyle: { backgroundColor: c.background },
-    headerLargeStyle: { backgroundColor: c.background },
+    ...(Platform.OS === 'ios'
+      ? {}
+      : { headerStyle: { backgroundColor: c.background }, headerLargeStyle: { backgroundColor: c.background } }),
     headerShadowVisible: false,
     contentStyle: { backgroundColor: c.background },
     // Neither platform's default is "back title in Geist"; the chevron alone
