@@ -1,33 +1,37 @@
 /**
- * The shell: restore the key, then either the login screen or the stack.
+ * The shell: restore the key, then either the sign-in flow or the app.
  *
- * Plain stack navigation. The web cockpit's horizontal pager is a
- * transcript↔workspace carousel *within* one screen, and the workspace panel is
- * not in this app — so there is nothing to page between.
+ * Two stacks. Signed out: the login page and, over it, the scanner as a
+ * full-screen modal — a screen of its own so it has a bar, a close control,
+ * and an Android back button that closes it rather than the app. Signed in:
+ * the tab bar, and over it the screens you *enter* — a session, a routine —
+ * which cover the tabs because each wants the bottom edge for a composer or a
+ * switch. Starting a session is not a screen: the composer on the sessions
+ * page is the launcher, as it is on the web.
+ *
+ * The headers are the platform's. Every option that shapes them is in
+ * `navigation/headers.ts`; nothing here paints a bar.
  */
 import React, { useEffect } from 'react';
-import { StatusBar, useColorScheme } from 'react-native';
+import { StatusBar, useColorScheme, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from './state/auth';
-import { LoginScreen } from './screens/Login';
-import { SessionsScreen } from './screens/Sessions';
+import { LoginScreen, ScanScreen } from './screens/Login';
 import { SessionDetailScreen } from './screens/SessionDetail';
-import { NewSessionScreen } from './screens/NewSession';
-import { SettingsScreen } from './screens/Settings';
-import { RoutinesScreen } from './screens/Routines';
 import { RoutineScreen } from './screens/Routine';
-import { UsageScreen } from './screens/Usage';
+import { Tabs } from './navigation/Tabs';
+import { stackOptions } from './navigation/headers';
 import { useTheme } from './theme';
 import { linking } from './linking';
 
-const Stack = createNativeStackNavigator();
-
+const Root = createNativeStackNavigator();
 
 export default function App() {
   const scheme = useColorScheme();
-  const { c } = useTheme();
+  const theme = useTheme();
+  const { c } = theme;
   const ready = useAuth(s => s.ready);
   const credential = useAuth(s => s.credential);
   const restore = useAuth(s => s.restore);
@@ -41,7 +45,7 @@ export default function App() {
     colors: {
       ...(scheme === 'dark' ? DarkTheme : DefaultTheme).colors,
       background: c.background,
-      card: c.card,
+      card: c.background,
       text: c.foreground,
       border: c.border,
       primary: c.primary,
@@ -49,28 +53,32 @@ export default function App() {
   };
 
   // Hold the shell until the keychain has answered, so a signed-in launch never
-  // flashes the login screen.
-  if (!ready) return null;
+  // flashes the login screen. Painted, not null: a null frame between the
+  // launch image and the first screen is a flash of the window's own colour.
+  if (!ready) return <View style={{ flex: 1, backgroundColor: c.background }} />;
 
   return (
     <SafeAreaProvider>
       <StatusBar barStyle={scheme === 'dark' ? 'light-content' : 'dark-content'} />
       <NavigationContainer theme={navTheme} linking={linking}>
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Root.Navigator screenOptions={stackOptions(theme)}>
           {credential ? (
             <>
-              <Stack.Screen name="Sessions" component={SessionsScreen} />
-              <Stack.Screen name="Session" component={SessionDetailScreen} />
-              <Stack.Screen name="NewSession" component={NewSessionScreen} />
-              <Stack.Screen name="Routines" component={RoutinesScreen} />
-              <Stack.Screen name="Routine" component={RoutineScreen} />
-              <Stack.Screen name="Settings" component={SettingsScreen} />
-              <Stack.Screen name="Usage" component={UsageScreen} />
+              <Root.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
+              <Root.Screen name="Session" component={SessionDetailScreen} options={{ title: '' }} />
+              <Root.Screen name="Routine" component={RoutineScreen} options={{ title: '' }} />
             </>
           ) : (
-            <Stack.Screen name="Login" component={LoginScreen} />
+            <>
+              <Root.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
+              <Root.Screen
+                name="Scan"
+                component={ScanScreen}
+                options={{ title: 'Scan a pairing code', presentation: 'fullScreenModal' }}
+              />
+            </>
           )}
-        </Stack.Navigator>
+        </Root.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>
   );

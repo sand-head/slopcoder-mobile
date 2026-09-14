@@ -98,7 +98,12 @@ jest.mock('../src/state/auth', () => ({
 import { RoutinesScreen } from '../src/screens/Routines';
 import { SheetSegments } from '../src/ui/Sheet';
 
-const navigation = { navigate: jest.fn(), goBack: jest.fn(), addListener: () => () => {} };
+const navigation = {
+  navigate: jest.fn(),
+  goBack: jest.fn(),
+  setOptions: jest.fn(),
+  addListener: () => () => {},
+};
 
 async function mount() {
   let tree: ReturnType<typeof create> | undefined;

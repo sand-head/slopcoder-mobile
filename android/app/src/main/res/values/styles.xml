@@ -1,8 +1,9 @@
 <resources>
 
-    <!-- Base application theme. -->
-    <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
-        <!-- Customize your theme here. -->
+    <!-- Material 3, which is what the native tab bar (react-native-bottom-tabs)
+         draws itself in; the AppCompat theme it replaced left the bar reading
+         its colours from attributes that theme never set. -->
+    <style name="AppTheme" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
     </style>
 

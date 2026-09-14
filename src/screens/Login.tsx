@@ -5,9 +5,14 @@
  * The password is never stored. What is stored is the device-scoped key the
  * server mints in exchange for it, which the owner can revoke from
  * `/settings/api-keys` without changing their password.
+ *
+ * The form is one the OS can fill: `textContentType` and `autoComplete` are
+ * what iCloud Keychain and Google's autofill key off, and the return key walks
+ * server → username → password → sign in, so a thumb never has to find the
+ * next box.
  */
-import React, { useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { KeyboardAvoidingView, Platform, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Camera,
@@ -19,9 +24,10 @@ import {
 import { parsePairingUri } from '../api/seam';
 import { loginMessage, useAuth } from '../state/auth';
 import { Body, Brand, Button, Field, Hint, Meta, Screen } from '../ui/kit';
+import { tapError, tapSuccess } from '../ui/haptics';
 import { radius, useTheme } from '../theme';
 
-export function LoginScreen() {
+export function LoginScreen({ navigation, route }: { navigation: any; route: any }) {
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
   const signInWithPassword = useAuth(s => s.signInWithPassword);
@@ -32,40 +38,43 @@ export function LoginScreen() {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [scanning, setScanning] = useState(false);
+
+  const userField = useRef<React.ComponentRef<typeof TextInput>>(null);
+  const passwordField = useRef<React.ComponentRef<typeof TextInput>>(null);
+
+  const ready = !!server.trim() && !!userName.trim() && !!password;
 
   const submit = async () => {
+    if (!ready || busy) return;
     setBusy(true);
     setError(null);
     try {
       await signInWithPassword(server.trim(), userName.trim(), password);
+      tapSuccess();
     } catch (e) {
+      tapError();
       setError(loginMessage(e));
     } finally {
       setBusy(false);
     }
   };
 
-  const onScanned = async (raw: string) => {
-    const parsed = parsePairingUri(raw);
-    if (!parsed) return;
-
-    setScanning(false);
+  // The scanner is its own screen; it hands the code back through params so
+  // the redeem, and any error, happen on the page that shows errors.
+  const scanned: { server: string; code: string } | undefined = route.params?.scanned;
+  useEffect(() => {
+    if (!scanned) return;
+    navigation.setParams({ scanned: undefined });
     setBusy(true);
     setError(null);
-    try {
-      // The QR carries the server too, so a scan needs nothing typed at all.
-      await signInWithPairingCode(parsed.server, parsed.code);
-    } catch (e) {
-      setError(loginMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  if (scanning) {
-    return <Scanner onScanned={onScanned} onCancel={() => setScanning(false)} />;
-  }
+    signInWithPairingCode(scanned.server, scanned.code)
+      .then(() => tapSuccess())
+      .catch(e => {
+        tapError();
+        setError(loginMessage(e));
+      })
+      .finally(() => setBusy(false));
+  }, [scanned, navigation, signInWithPairingCode]);
 
   return (
     <Screen>
@@ -79,7 +88,8 @@ export function LoginScreen() {
             paddingBottom: insets.bottom + 24,
             gap: 14,
           }}
-          keyboardShouldPersistTaps="handled">
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive">
           <View style={{ marginBottom: 8 }}>
             <Brand size={17} />
           </View>
@@ -90,21 +100,48 @@ export function LoginScreen() {
             onChangeText={setServer}
             placeholder="https://slop.example.com"
             keyboardType="url"
+            textContentType="URL"
+            autoComplete="url"
+            returnKeyType="next"
+            onSubmitEditing={() => userField.current?.focus()}
           />
 
           <Meta>Username</Meta>
-          <Field value={userName} onChangeText={setUserName} placeholder="you" />
+          <Field
+            ref={userField}
+            value={userName}
+            onChangeText={setUserName}
+            placeholder="you"
+            textContentType="username"
+            autoComplete="username"
+            returnKeyType="next"
+            onSubmitEditing={() => passwordField.current?.focus()}
+          />
 
           <Meta>Password</Meta>
-          <Field value={password} onChangeText={setPassword} placeholder="••••••••" secure />
+          <Field
+            ref={passwordField}
+            value={password}
+            onChangeText={setPassword}
+            placeholder="••••••••"
+            secure
+            textContentType="password"
+            autoComplete="current-password"
+            returnKeyType="go"
+            onSubmitEditing={submit}
+          />
 
-          {error ? <Body style={{ color: c.destructive, fontSize: 13 }}>{error}</Body> : null}
+          {error ? (
+            <Body accessibilityLiveRegion="polite" style={{ color: c.destructive, fontSize: 13 }}>
+              {error}
+            </Body>
+          ) : null}
 
           <Button
             label="Sign in"
             onPress={submit}
             busy={busy}
-            disabled={!server.trim() || !userName.trim() || !password}
+            disabled={!ready}
             style={{ marginTop: 6 }}
           />
 
@@ -120,7 +157,12 @@ export function LoginScreen() {
             <View style={{ flex: 1, height: 1, backgroundColor: c.border }} />
           </View>
 
-          <Button label="Scan a pairing code" variant="outline" onPress={() => setScanning(true)} />
+          <Button
+            label="Scan a pairing code"
+            variant="outline"
+            disabled={busy}
+            onPress={() => navigation.navigate('Scan')}
+          />
           <Hint>
             Open Settings → API keys in slopcoder on a computer and choose “Show pairing code”. The
             code works once, for ninety seconds.
@@ -131,17 +173,25 @@ export function LoginScreen() {
   );
 }
 
-function Scanner({
-  onScanned,
-  onCancel,
-}: {
-  onScanned: (value: string) => void;
-  onCancel: () => void;
-}) {
+/**
+ * The camera, as a full-screen modal with a real bar over it: a Cancel the
+ * platform draws, and an Android back button that closes the scanner rather
+ * than the app — which is what happened when this was a state flip inside the
+ * login page.
+ */
+export function ScanScreen({ navigation }: { navigation: any }) {
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
   const { hasPermission, requestPermission } = useCameraPermission();
   const handled = useRef(false);
+
+  useEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => (
+        <Button label="Cancel" variant="ghost" onPress={() => navigation.goBack()} />
+      ),
+    });
+  }, [navigation]);
 
   const preview = usePreviewOutput();
   const codes = useObjectOutput({
@@ -153,8 +203,10 @@ function Scanner({
 
       for (const object of objects) {
         if (!isScannedCode(object) || !object.value) continue;
+        const parsed = parsePairingUri(object.value);
+        if (!parsed) continue;
         handled.current = true;
-        onScanned(object.value);
+        navigation.navigate('Login', { scanned: parsed });
         return;
       }
     },
@@ -163,10 +215,9 @@ function Scanner({
   if (!hasPermission) {
     return (
       <Screen>
-        <View style={{ flex: 1, padding: 20, paddingTop: insets.top + 48, gap: 14 }}>
+        <View style={{ flex: 1, padding: 20, paddingTop: 24, gap: 14 }}>
           <Body>slopcoder needs the camera to scan a pairing code.</Body>
           <Button label="Allow camera" onPress={() => void requestPermission()} />
-          <Button label="Back" variant="outline" onPress={onCancel} />
         </View>
       </Screen>
     );
@@ -182,12 +233,10 @@ function Scanner({
           right: 0,
           bottom: insets.bottom + 24,
           paddingHorizontal: 20,
-          gap: 10,
         }}>
         <View style={{ backgroundColor: c.card, borderRadius: radius.md, padding: 12 }}>
           <Hint>Point the camera at the QR code on the API keys page.</Hint>
         </View>
-        <Button label="Cancel" variant="outline" onPress={onCancel} />
       </View>
     </View>
   );

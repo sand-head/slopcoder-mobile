@@ -22,6 +22,14 @@ export enum SessionStatus {
   Running = 1,
 }
 
+/** The outcome of deleting a session. Mirrors `DeleteResult` on the server. */
+export enum DeleteResult {
+  Deleted = 0,
+  NotFound = 1,
+  /** A turn is in flight; stop it first. */
+  Running = 2,
+}
+
 export enum ApprovalMode {
   /** Ask only for what the classifier escalates. The default. */
   Dangerous = 0,

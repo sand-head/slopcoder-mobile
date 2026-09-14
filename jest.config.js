@@ -13,5 +13,12 @@ module.exports = {
     // The sheet is a Fabric component; the package ships its own stand-in.
     '^@lodev09/react-native-true-sheet$':
       '<rootDir>/node_modules/@lodev09/react-native-true-sheet/lib/module/mocks/index.js',
+    // Native views and modules with nothing to render or fire under jest.
+    '^react-native-inappbrowser-reborn$': '<rootDir>/__mocks__/inappbrowser.js',
+    '^react-native-haptic-feedback$': '<rootDir>/__mocks__/haptics.js',
+    '^@react-native-menu/menu$': '<rootDir>/__mocks__/menu.js',
+    '^@bottom-tabs/react-navigation$': '<rootDir>/__mocks__/bottom-tabs.js',
+    // Tab icons: Metro would hand back an asset id; a number is enough here.
+    '\\.svg$': '<rootDir>/__mocks__/asset.js',
   },
 };

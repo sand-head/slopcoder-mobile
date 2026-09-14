@@ -26,6 +26,8 @@
 		726A6F356B1F403786728043 /* OpenSessionIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C5172448B444669B48F70DF /* OpenSessionIntent.swift */; };
 		647E0CE2503C419198D7B966 /* PushRegistrar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 458EFDFA055C4652907B39D0 /* PushRegistrar.swift */; };
 		75C31551CCE44E2B981563B6 /* PushRegistrar.m in Sources */ = {isa = PBXBuildFile; fileRef = B0945C64A78D4714BBF1242E /* PushRegistrar.m */; };
+		61F3F84215044ED98922229D /* AppInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9D2095A818A4555BEC200C9 /* AppInfo.swift */; };
+		99776B7A36BC44319E5821D9 /* AppInfo.m in Sources */ = {isa = PBXBuildFile; fileRef = DA54F10113BF4025A7C438F0 /* AppInfo.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -54,6 +56,8 @@
 		1C5172448B444669B48F70DF /* OpenSessionIntent.swift */ = {isa = PBXFileReference; name = "OpenSessionIntent.swift"; path = "slopcoder_mobile/Intents/OpenSessionIntent.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 		458EFDFA055C4652907B39D0 /* PushRegistrar.swift */ = {isa = PBXFileReference; name = "PushRegistrar.swift"; path = "slopcoder_mobile/Push/PushRegistrar.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 		B0945C64A78D4714BBF1242E /* PushRegistrar.m */ = {isa = PBXFileReference; name = "PushRegistrar.m"; path = "slopcoder_mobile/Push/PushRegistrar.m"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; explicitFileType = undefined; includeInIndex = 0; };
+		A9D2095A818A4555BEC200C9 /* AppInfo.swift */ = {isa = PBXFileReference; name = "AppInfo.swift"; path = "slopcoder_mobile/AppInfo/AppInfo.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		DA54F10113BF4025A7C438F0 /* AppInfo.m */ = {isa = PBXFileReference; name = "AppInfo.m"; path = "slopcoder_mobile/AppInfo/AppInfo.m"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -107,6 +111,7 @@
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
 				BBD78D7AC51CEA395F1C20DB /* Pods */,
 				8AD3E010F8EC4F32B0D1D46D /* Resources */,
+				F093878925BC48F29552A887 /* AppInfo */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -165,6 +170,15 @@
 				B0945C64A78D4714BBF1242E /* PushRegistrar.m */,
 			);
 			name = Push;
+			sourceTree = "<group>";
+		};
+		F093878925BC48F29552A887 /* AppInfo */ = {
+			isa = PBXGroup;
+			children = (
+				A9D2095A818A4555BEC200C9 /* AppInfo.swift */,
+				DA54F10113BF4025A7C438F0 /* AppInfo.m */,
+			);
+			name = AppInfo;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -330,6 +344,8 @@
 				726A6F356B1F403786728043 /* OpenSessionIntent.swift in Sources */,
 				647E0CE2503C419198D7B966 /* PushRegistrar.swift in Sources */,
 				75C31551CCE44E2B981563B6 /* PushRegistrar.m in Sources */,
+				61F3F84215044ED98922229D /* AppInfo.swift in Sources */,
+				99776B7A36BC44319E5821D9 /* AppInfo.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -361,7 +377,7 @@
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 				VERSIONING_SYSTEM = "apple-generic";
 				CODE_SIGN_ENTITLEMENTS = slopcoder_mobile/slopcoder_mobile.entitlements;
 				CODE_SIGN_STYLE = Automatic;
@@ -391,7 +407,7 @@
 				PRODUCT_NAME = slopcoder_mobile;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 				VERSIONING_SYSTEM = "apple-generic";
 				CODE_SIGN_ENTITLEMENTS = slopcoder_mobile/slopcoder_mobile.release.entitlements;
 				CODE_SIGN_STYLE = Manual;

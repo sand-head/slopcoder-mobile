@@ -7,16 +7,19 @@
  * they are. Liveness comes from `state.pendingApprovalIds`, **never** from the
  * transcript: an approval resolved on the laptop is still in the scrollback here.
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
+  Animated,
   FlatList,
   KeyboardAvoidingView,
+  LayoutAnimation,
   Platform,
   Pressable,
   ScrollView,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useHeaderHeight } from '@react-navigation/elements';
 import Markdown from '@ronradtke/react-native-markdown-display';
 import {
   ApprovalMode,
@@ -32,15 +35,14 @@ import { useSessionHub } from '../state/hub';
 import { useSession } from '../state/session';
 import {
   Bars,
-  BackButton,
   Body,
   Button,
   Dot,
+  Field,
   Fork,
   GLYPHS,
   GlassSurface,
   HalfDot,
-  Hint,
   Meta,
   Mono,
   Screen,
@@ -50,13 +52,14 @@ import { Composer, type TurnOptions } from '../ui/Composer';
 import { Sheet } from '../ui/Sheet';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 import { ToolCard } from '../ui/ToolCard';
-import { useStickBottom } from '../ui/stickBottom';
+import { useAtBottom } from '../ui/atBottom';
+import { tapConfirm, tapRefuse } from '../ui/haptics';
 import { newTokens } from '../api/contracts';
 import { font, mix, radius, useTheme } from '../theme';
 
 export function SessionDetailScreen({ route, navigation }: { route: any; navigation: any }) {
   const { c } = useTheme();
-  const insets = useSafeAreaInsets();
+  const headerHeight = useHeaderHeight();
   const id: string = route.params.id;
 
   const seam = useAuth(s => s.seam);
@@ -77,10 +80,9 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
   const [composerHeight, setComposerHeight] = useState(96);
   const listRef = useRef<FlatList<Item>>(null);
 
-  // Follows the newest line until the reader scrolls away from it. Without this,
-  // every push during a streaming turn drags the view back down while you are
-  // trying to read what happened earlier.
-  const { pinned, toBottom, props: stick } = useStickBottom(listRef);
+  // The list is inverted: index 0 is the newest line, and the platform keeps
+  // it in view as lines arrive. This only says whether the reader is there.
+  const { pinned, toBottom, props: bottom } = useAtBottom(listRef);
   const [usageOpen, setUsageOpen] = useState(false);
 
   useEffect(() => {
@@ -125,25 +127,16 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
   };
 
   const running = state?.status === SessionStatus.Running;
-
-  /**
-   * One button, three meanings — running with an empty box is the only way to
-   * stop, so Enter can never reach Stop by accident.
-   */
-  const action = running ? (draft.trim() ? 'Steer' : 'Stop') : 'Send';
+  const action = running ? 'Steer' : 'Send';
 
   const send = async () => {
     if (!seam || !state) return;
+    const prompt = draft.trim();
+    if (!prompt) return;
     setSending(true);
     try {
-      if (action === 'Stop') {
-        await seam.stop(id);
-        return;
-      }
-
-      const prompt = draft.trim();
-      if (!prompt) return;
       setDraft('');
+      tapConfirm();
 
       // Steering only lands while a turn is in flight; a false means it ended
       // between the render and the tap, so start a new one instead.
@@ -162,6 +155,12 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
     }
   };
 
+  const stop = () => {
+    if (!seam) return;
+    tapRefuse();
+    void seam.stop(id);
+  };
+
   const contextPercent = useMemo(() => {
     const usage = state?.lastUsage;
     if (!usage || usage.contextWindowTokens === 0) return null;
@@ -178,63 +177,88 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
     .filter(Boolean)
     .join(' · ');
 
-  return (
-    <Screen>
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 10,
-          paddingHorizontal: 16,
-          paddingTop: insets.top + 8,
-          paddingBottom: 8,
-          borderBottomWidth: 1,
-          borderBottomColor: c.border,
-        }}>
-        <BackButton onPress={() => navigation.goBack()} />
+  // The bar is the platform's; the title inside it is ours — the session's
+  // name over its status line, and a tap on it opens the usage sheet.
+  const title = state?.title ?? 'Session';
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      title,
+      headerTitle: () => (
         <Pressable
           onPress={() => setUsageOpen(true)}
-          accessibilityLabel="Session usage"
-          style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.6 : 1 })}>
-          <Body numberOfLines={1} style={{ fontFamily: font.sansMedium, fontSize: 14 }}>
-            {state?.title ?? 'Session'}
+          accessibilityRole="button"
+          accessibilityLabel={`${title}. ${subtitle}. Session usage`}
+          style={({ pressed }) => ({ alignItems: 'center', maxWidth: 240, opacity: pressed ? 0.6 : 1 })}>
+          <Body numberOfLines={1} style={{ fontFamily: font.sansMedium, fontSize: 15 }}>
+            {title}
           </Body>
-          {/* The subtitle is already the summary; tapping it opens the rest. */}
           <Mono numberOfLines={1}>{subtitle}</Mono>
         </Pressable>
-      </View>
+      ),
+    });
+  }, [navigation, title, subtitle]);
 
-      <ConnectionBanner />
+  // A gate opening or closing, a question answered: the card changes shape,
+  // and the lines below it move rather than jump.
+  const pendingCount = (state?.pendingApprovalIds.length ?? 0) + (state?.pendingQuestionIds.length ?? 0);
+  useEffect(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+  }, [pendingCount]);
 
+  // Newest first, for the inverted list.
+  const reversed = useMemo(() => [...items].reverse(), [items]);
+
+  // The jump button fades rather than pops.
+  const jump = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(jump, { toValue: pinned ? 0 : 1, duration: 160, useNativeDriver: true }).start();
+  }, [pinned, jump]);
+
+  return (
+    <Screen>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={insets.top + 44}
+        // The bar above is outside this view's own frame, which is all the
+        // avoiding view can measure; this is the one thing it has to be told.
+        keyboardVerticalOffset={headerHeight}
         style={{ flex: 1 }}>
+        <ConnectionBanner />
+
         {error ? (
           <View style={{ padding: 20 }}>
-            <Body style={{ color: c.destructive }}>{error}</Body>
+            <Body accessibilityLiveRegion="polite" style={{ color: c.destructive }}>
+              {error}
+            </Body>
           </View>
         ) : (
           <FlatList
             ref={listRef}
-            data={items as Item[]}
+            data={reversed}
+            inverted
             keyExtractor={item => item.key}
+            // Dragging the transcript down takes the keyboard with it, as
+            // every chat on the platform does.
+            keyboardDismissMode="interactive"
+            keyboardShouldPersistTaps="handled"
             // The composer floats on top, so the transcript scrolls under it
             // rather than stopping short — which is the whole point of a
-            // material that refracts what is behind it.
+            // material that refracts what is behind it. Inverted, so the
+            // container's top is the visual bottom.
             contentContainerStyle={{
-              padding: 16,
-              paddingBottom: composerHeight + 16,
+              paddingHorizontal: 16,
+              paddingTop: composerHeight + 16,
+              paddingBottom: 16,
               gap: 4,
             }}
-            {...stick}
-            ListHeaderComponent={
-              canLoadEarlier ? (
-                <Pressable onPress={loadEarlier} style={{ alignSelf: 'center', paddingVertical: 8 }}>
-                  <Meta>Load earlier</Meta>
-                </Pressable>
-              ) : loading ? (
-                <Hint>Loading…</Hint>
+            {...bottom}
+            // The visual top: reaching it pulls in earlier scrollback.
+            onEndReached={canLoadEarlier ? loadEarlier : undefined}
+            onEndReachedThreshold={0.6}
+            ListFooterComponent={
+              canLoadEarlier || loading ? (
+                <View style={{ paddingVertical: 12, alignItems: 'center' }}>
+                  <ActivityIndicator color={c.mutedForeground} />
+                </View>
               ) : undefined
             }
             renderItem={({ item }) => (
@@ -242,11 +266,19 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
                 item={item}
                 pendingApprovals={state?.pendingApprovalIds ?? []}
                 pendingQuestions={state?.pendingQuestionIds ?? []}
-                onApprove={(requestId, approved) => void seam?.approve(id, { requestId, approved })}
-                onAnswer={(requestId, answers) => void seam?.answer(id, { requestId, answers })}
+                onApprove={(requestId, approved) => {
+                  if (approved) tapConfirm();
+                  else tapRefuse();
+                  void seam?.approve(id, { requestId, approved });
+                }}
+                onAnswer={(requestId, answers) => {
+                  tapConfirm();
+                  void seam?.answer(id, { requestId, answers });
+                }}
               />
             )}
-            ListFooterComponent={
+            // The streaming tail, which in an inverted list is the header.
+            ListHeaderComponent={
               live ? (
                 <View style={{ gap: 6, paddingTop: 6 }}>
                   {live.thinking ? (
@@ -263,29 +295,29 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
           />
         )}
 
-        {!pinned ? (
-          <View
-            pointerEvents="box-none"
-            style={{
-              position: 'absolute',
-              left: 0,
-              right: 0,
-              bottom: composerHeight + 8,
-              alignItems: 'center',
-            }}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Jump to the latest"
-              onPress={toBottom}
-              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
-              <GlassSurface
-                cornerRadius={18}
-                style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}>
-                <Body style={{ fontFamily: font.mono, fontSize: 15, lineHeight: 17 }}>↓</Body>
-              </GlassSurface>
-            </Pressable>
-          </View>
-        ) : null}
+        <Animated.View
+          pointerEvents={pinned ? 'none' : 'box-none'}
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: composerHeight + 8,
+            alignItems: 'center',
+            opacity: jump,
+          }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Jump to the latest"
+            accessibilityElementsHidden={pinned}
+            onPress={toBottom}
+            style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+            <GlassSurface
+              cornerRadius={18}
+              style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}>
+              <Body style={{ fontFamily: font.mono, fontSize: 15, lineHeight: 17 }}>↓</Body>
+            </GlassSurface>
+          </Pressable>
+        </Animated.View>
 
         <View
           onLayout={event => setComposerHeight(event.nativeEvent.layout.height)}
@@ -295,18 +327,20 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
             right: 0,
             bottom: 0,
             paddingHorizontal: 10,
-            paddingBottom: insets.bottom + 10,
+            paddingBottom: 10,
             paddingTop: 4,
           }}>
           <Composer
             value={draft}
             onChangeValue={setDraft}
             placeholder={running ? 'Steer the agent…' : 'Send a message…'}
-            action={state?.stopRequested ? 'Stopping…' : action}
+            action={action}
             onAction={send}
             busy={sending}
-            disabled={state?.stopRequested || (action !== 'Stop' && !draft.trim())}
+            disabled={!draft.trim()}
             running={running}
+            onStop={stop}
+            stopping={state?.stopRequested}
             options={
               options ?? {
                 selection: { auto: true, connectionId: null, modelId: null },
@@ -595,7 +629,12 @@ function TranscriptRow({
             <Body style={{ flex: 1, fontSize: 13, color: c.destructive }}>{item.message}</Body>
           </View>
           {item.detail ? (
-            <Pressable onPress={() => setOpen(!open)}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                setOpen(!open);
+              }}>
               <Meta>{open ? 'hide detail' : 'what the provider said'}</Meta>
             </Pressable>
           ) : null}
@@ -652,8 +691,12 @@ function QuestionCard({
 }) {
   const { c } = useTheme();
   const [picked, setPicked] = useState<Record<number, string>>({});
+  const [typed, setTyped] = useState<Record<number, string>>({});
 
-  const complete = item.questions.every((_, index) => picked[index]);
+  // A typed answer counts once it has words in it; picking an option clears
+  // it, and typing clears the pick, so a question has one answer.
+  const answerFor = (index: number) => picked[index] ?? (typed[index]?.trim() || undefined);
+  const complete = item.questions.every((_, index) => answerFor(index));
 
   return (
     <View
@@ -675,7 +718,12 @@ function QuestionCard({
               {question.options.map(option => (
                 <Pressable
                   key={option}
-                  onPress={() => setPicked({ ...picked, [index]: option })}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: picked[index] === option }}
+                  onPress={() => {
+                    setPicked({ ...picked, [index]: option });
+                    setTyped({ ...typed, [index]: '' });
+                  }}
                   style={{
                     borderWidth: 1,
                     borderColor: picked[index] === option ? c.primary : c.border,
@@ -688,6 +736,22 @@ function QuestionCard({
                   <Body style={{ fontSize: 13 }}>{option}</Body>
                 </Pressable>
               ))}
+              {question.allowFreeText ? (
+                <Field
+                  value={typed[index] ?? ''}
+                  onChangeText={text => {
+                    setTyped({ ...typed, [index]: text });
+                    if (text.trim() && picked[index]) {
+                      const rest = { ...picked };
+                      delete rest[index];
+                      setPicked(rest);
+                    }
+                  }}
+                  placeholder={question.options.length > 0 ? 'Or type an answer…' : 'Type an answer…'}
+                  autoCapitalize="sentences"
+                  accessibilityLabel={`Answer to: ${question.text}`}
+                />
+              ) : null}
             </View>
           ) : (
             <Mono>{item.answers?.[index]?.answer ?? 'dismissed'}</Mono>
@@ -705,7 +769,7 @@ function QuestionCard({
               onAnswer(
                 item.questions.map((question, index) => ({
                   question: question.text,
-                  answer: picked[index],
+                  answer: answerFor(index)!,
                 })),
               )
             }
@@ -735,7 +799,12 @@ function Collapsible({
   return (
     <View>
       <Pressable
-        onPress={onToggle}
+        onPress={() => {
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          onToggle();
+        }}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
         style={({ pressed }) => ({
           flexDirection: 'row',
           alignItems: 'center',

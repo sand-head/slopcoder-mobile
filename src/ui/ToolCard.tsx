@@ -17,7 +17,7 @@
  * device. `__tests__/glyphs.test.ts` scans for it.
  */
 import React, { useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { LayoutAnimation, Pressable, ScrollView, View } from 'react-native';
 import type { DiffLine, ToolBlock, ToolCard as Card } from '../api/toolcard';
 import { Body, Diamond, Dot, GLYPHS, Meta, Mono } from './kit';
 import { font, mix, radius, useTheme } from '../theme';
@@ -68,7 +68,13 @@ export function ToolCard({
       }>
       {hidden ? (
         <Pressable
-          onPress={() => setTapped(!tapped)}
+          onPress={() => {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            setTapped(!tapped);
+          }}
+          accessibilityRole="button"
+          accessibilityState={{ expanded }}
+          accessibilityLabel={`${card.verb} ${card.subject ?? ''}`.trim()}
           style={({ pressed }) => ({
             borderRadius: radius.md,
             backgroundColor: pressed ? mix(c.mutedForeground, 10) : 'transparent',
@@ -297,7 +303,13 @@ function Diff({ lines }: { lines: DiffLine[] }) {
       </View>
 
       {lines.length > DIFF_PREVIEW && !full ? (
-        <Pressable onPress={() => setFull(true)} hitSlop={8}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            setFull(true);
+          }}
+          hitSlop={8}>
           <Mono>show {lines.length - DIFF_PREVIEW} more lines</Mono>
         </Pressable>
       ) : null}

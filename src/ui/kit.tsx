@@ -9,9 +9,11 @@
  * - Anything the web hides until hover is permanently visible here. The web
  *   stylesheet already branches on `@media (hover: hover)`; this is that branch.
  */
-import React from 'react';
+import React, { forwardRef, useEffect, useRef } from 'react';
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Image,
   Pressable,
   StyleSheet,
@@ -19,16 +21,26 @@ import {
   TextInput,
   View,
   type StyleProp,
+  type TextInputProps,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
 import { LiquidGlassView, isLiquidGlassSupported } from '@callstack/liquid-glass';
 import { mix, radius, font, useTheme, type Palette } from '../theme';
 
+/**
+ * How far the mono grammar may grow under Dynamic Type. Body text scales
+ * freely — that is what the setting is for — but an 11px uppercase label at
+ * the largest accessibility size is three lines of shouting inside a row that
+ * was drawn for one, so it stops here.
+ */
+export const META_SCALE_CAP = 1.3;
+
 export function Meta({ children, style }: { children: React.ReactNode; style?: StyleProp<TextStyle> }) {
   const { c } = useTheme();
   return (
     <Text
+      maxFontSizeMultiplier={META_SCALE_CAP}
       style={[
         {
           fontFamily: font.mono,
@@ -62,7 +74,8 @@ export function Mono({
     <Text
       numberOfLines={numberOfLines}
       ellipsizeMode={ellipsizeMode}
-      style={[{ fontFamily: font.mono, fontSize: 11, color: c.mutedForeground }, style]}>
+      maxFontSizeMultiplier={META_SCALE_CAP}
+      style={[{ fontFamily: font.mono, fontSize: 11.5, color: c.mutedForeground }, style]}>
       {children}
     </Text>
   );
@@ -72,47 +85,22 @@ export function Body({
   children,
   style,
   numberOfLines,
+  accessibilityLiveRegion,
 }: {
   children: React.ReactNode;
   style?: StyleProp<TextStyle>;
   numberOfLines?: number;
+  /** 'polite' for an error that appears in place, so a screen reader says it. */
+  accessibilityLiveRegion?: 'none' | 'polite' | 'assertive';
 }) {
   const { c } = useTheme();
   return (
     <Text
       numberOfLines={numberOfLines}
-      style={[{ fontFamily: font.sans, fontSize: 14.5, color: c.foreground }, style]}>
+      accessibilityLiveRegion={accessibilityLiveRegion}
+      style={[{ fontFamily: font.sans, fontSize: 15, color: c.foreground }, style]}>
       {children}
     </Text>
-  );
-}
-
-/**
- * Back, as a chevron rather than the logo.
- *
- * The mark was doing the job on every pushed screen, which read as a home button
- * and told you nothing about where back went. `‹` is what the web's hub bar uses
- * and what a phone user expects at the leading edge.
- */
-export function BackButton({ onPress, label }: { onPress: () => void; label?: string }) {
-  const { c } = useTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label ?? 'Back'}
-      onPress={onPress}
-      // Generous, because the glyph is small and it sits in the corner.
-      hitSlop={{ top: 12, bottom: 12, left: 16, right: 12 }}
-      style={({ pressed }) => ({
-        minWidth: 28,
-        height: 32,
-        justifyContent: 'center',
-        opacity: pressed ? 0.5 : 1,
-      })}>
-      <Text style={{ fontFamily: font.mono, fontSize: 22, lineHeight: 24, color: c.foreground }}>
-        ‹
-      </Text>
-    </Pressable>
   );
 }
 
@@ -351,11 +339,30 @@ export function Fork({ color, size = 10 }: { color: string; size?: number }) {
   );
 }
 
-/** 8px; emerald and pulsing when running, a bare ring when idle. */
+/** 8px; emerald and breathing when running, a bare ring when idle. */
 export function StatusDot({ running, size = 8 }: { running: boolean; size?: number }) {
   const { c, status } = useTheme();
+  const pulse = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (!running) {
+      pulse.setValue(1);
+      return;
+    }
+    // Opacity only, on the native driver, so it keeps time while JS is busy
+    // folding a transcript.
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 0.35, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [running, pulse]);
+
   return (
-    <View
+    <Animated.View
       style={{
         width: size,
         height: size,
@@ -363,8 +370,51 @@ export function StatusDot({ running, size = 8 }: { running: boolean; size?: numb
         backgroundColor: running ? status.ok : 'transparent',
         borderWidth: running ? 0 : 1,
         borderColor: c.border,
+        opacity: pulse,
       }}
     />
+  );
+}
+
+/**
+ * Where a row will be once the server has answered.
+ *
+ * Only for data that is genuinely unknown — a session list, a run log. Chrome
+ * paints for real; a heading does not need a placeholder for itself.
+ */
+export function Skeleton({ rows = 3, height = 44 }: { rows?: number; height?: number }) {
+  const { c } = useTheme();
+  const shimmer = useRef(new Animated.Value(0.5)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmer, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(shimmer, { toValue: 0.5, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [shimmer]);
+
+  return (
+    <View accessibilityLabel="Loading" accessibilityRole="progressbar">
+      {Array.from({ length: rows }, (_, i) => (
+        <Animated.View
+          key={i}
+          style={{
+            minHeight: height,
+            paddingVertical: 12,
+            gap: 8,
+            borderTopWidth: 1,
+            borderTopColor: c.border,
+            opacity: shimmer,
+          }}>
+          <View style={{ height: 12, width: `${55 + ((i * 17) % 30)}%`, borderRadius: 4, backgroundColor: mix(c.mutedForeground, 22) }} />
+          <View style={{ height: 9, width: '38%', borderRadius: 4, backgroundColor: mix(c.mutedForeground, 14) }} />
+        </Animated.View>
+      ))}
+    </View>
   );
 }
 
@@ -453,6 +503,7 @@ export function Button({
   variant = 'primary',
   disabled,
   busy,
+  accessibilityLabel,
   style,
 }: {
   label: string;
@@ -460,6 +511,7 @@ export function Button({
   variant?: ButtonVariant;
   disabled?: boolean;
   busy?: boolean;
+  accessibilityLabel?: string;
   style?: StyleProp<ViewStyle>;
 }) {
   const { c } = useTheme();
@@ -479,13 +531,16 @@ export function Button({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityState={{ disabled: !!off, busy: !!busy }}
       disabled={off}
       onPress={onPress}
       style={({ pressed }) => [
         {
-          height: 40, // 2rem on the web; a thumb wants more.
+          minHeight: 40, // 2rem on the web; a thumb wants more.
           minWidth: 64,
           paddingHorizontal: 14,
+          paddingVertical: 8,
           borderRadius: radius.md,
           alignItems: 'center',
           justifyContent: 'center',
@@ -494,7 +549,7 @@ export function Button({
           borderColor: c.border,
           opacity: off ? 0.45 : pressed ? 0.8 : 1,
           ...(variant === 'link-destructive'
-            ? { minWidth: 0, paddingHorizontal: 0, height: 32, alignItems: 'flex-start' as const }
+            ? { minWidth: 0, paddingHorizontal: 0, minHeight: 32, alignItems: 'flex-start' as const }
             : null),
         },
         style,
@@ -578,26 +633,55 @@ export function SendButton({
   );
 }
 
-export function Field({
-  value,
-  onChangeText,
-  placeholder,
-  secure,
-  autoCapitalize = 'none',
-  keyboardType,
-  style,
-}: {
-  value: string;
-  onChangeText: (next: string) => void;
-  placeholder?: string;
-  secure?: boolean;
-  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
-  keyboardType?: 'default' | 'url' | 'email-address';
-  style?: StyleProp<ViewStyle>;
-}) {
+/**
+ * A text field the OS can fill.
+ *
+ * `textContentType` and `autoComplete` are what iCloud Keychain and Google's
+ * autofill key off; without them a sign-in form is one the password manager
+ * cannot see. The ref is forwarded so a form can chain fields with the return
+ * key rather than making the thumb find the next box.
+ */
+export const Field = forwardRef<
+  React.ComponentRef<typeof TextInput>,
+  {
+    value: string;
+    onChangeText: (next: string) => void;
+    placeholder?: string;
+    secure?: boolean;
+    autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+    keyboardType?: 'default' | 'url' | 'email-address';
+    textContentType?: TextInputProps['textContentType'];
+    autoComplete?: TextInputProps['autoComplete'];
+    returnKeyType?: TextInputProps['returnKeyType'];
+    onSubmitEditing?: () => void;
+    autoFocus?: boolean;
+    selectTextOnFocus?: boolean;
+    accessibilityLabel?: string;
+    style?: StyleProp<ViewStyle>;
+  }
+>(function FieldInner(
+  {
+    value,
+    onChangeText,
+    placeholder,
+    secure,
+    autoCapitalize = 'none',
+    keyboardType,
+    textContentType,
+    autoComplete,
+    returnKeyType,
+    onSubmitEditing,
+    autoFocus,
+    selectTextOnFocus,
+    accessibilityLabel,
+    style,
+  },
+  ref,
+) {
   const { c } = useTheme();
   return (
     <TextInput
+      ref={ref}
       value={value}
       onChangeText={onChangeText}
       placeholder={placeholder}
@@ -606,14 +690,22 @@ export function Field({
       autoCapitalize={autoCapitalize}
       autoCorrect={false}
       keyboardType={keyboardType}
+      textContentType={textContentType}
+      autoComplete={autoComplete}
+      returnKeyType={returnKeyType}
+      onSubmitEditing={onSubmitEditing}
+      // Stay focused after "next"; the handler moves focus on itself.
+      submitBehavior={onSubmitEditing && returnKeyType !== 'done' && returnKeyType !== 'go' ? 'submit' : 'blurAndSubmit'}
+      autoFocus={autoFocus}
+      selectTextOnFocus={selectTextOnFocus}
+      accessibilityLabel={accessibilityLabel ?? placeholder}
       style={[
         {
-          height: 44,
+          minHeight: 44,
           borderWidth: 1,
           borderColor: c.input,
           borderRadius: radius.md,
           paddingHorizontal: 12,
-          // 16px or iOS zooms the page on focus.
           fontSize: 16,
           fontFamily: font.sans,
           color: c.foreground,
@@ -623,7 +715,7 @@ export function Field({
       ]}
     />
   );
-}
+});
 
 /** The hub row grammar: a section label, then hairline-separated 44px rows. */
 export function SectionLabel({ label, count }: { label: string; count?: number }) {
@@ -648,6 +740,7 @@ export function Row({
   return (
     <Pressable
       onPress={onPress}
+      accessibilityRole={onPress ? 'button' : undefined}
       style={({ pressed }) => [
         {
           minHeight: 44,
@@ -702,7 +795,7 @@ export function stamp(iso: string): string {
  */
 export function markdownStyles(c: Palette) {
   return {
-    body: { color: c.foreground, fontFamily: font.sans, fontSize: 14.4, lineHeight: 23 },
+    body: { color: c.foreground, fontFamily: font.sans, fontSize: 15, lineHeight: 23 },
     code_inline: {
       fontFamily: font.mono,
       fontSize: 12.5,

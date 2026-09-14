@@ -37,7 +37,8 @@ src/api/          the seam client — this is the part to read first
   transcript.ts   folding events into renderable items
   routines.ts     how a routine reads — a port of RoutineFormat.cs
 src/state/        auth (keychain), the hub connection, one session's live view
-src/screens/      login, sessions, session detail, new session, routines, settings
+src/screens/      login (+ scanner), sessions (list + launcher), session detail, routines, routine, usage, settings
+src/navigation/   the tab bar and the native-header options every stack shares
 src/theme.ts      the web cockpit's tokens, converted to sRGB
 ```
 

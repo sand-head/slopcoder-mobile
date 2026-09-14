@@ -131,7 +131,7 @@ export function useSession(seam: Seam | null, hub: SessionHub | null, id: string
           else publish(live2);
         }
       } catch (e) {
-        if (!cancelled) setError(String(e));
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
       } finally {
         if (!cancelled) setLoading(false);
       }
