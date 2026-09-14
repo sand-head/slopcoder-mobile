@@ -35,10 +35,11 @@ describe('push entitlements', () => {
 
   it('gives Debug and Release different entitlement files', () => {
     // Both names present is not enough — one configuration pointing at both, or
-    // both pointing at one, is the failure this is here for.
-    const referenced = [...project.matchAll(/CODE_SIGN_ENTITLEMENTS = ([^;]+);/g)].map(m =>
-      m[1].trim().replace(/^"|"$/g, ''),
-    );
+    // both pointing at one, is the failure this is here for. The extension has
+    // one file for both configurations, which is fine: it claims no environment.
+    const referenced = [...project.matchAll(/CODE_SIGN_ENTITLEMENTS = ([^;]+);/g)]
+      .map(m => m[1].trim().replace(/^"|"$/g, ''))
+      .filter(f => f.startsWith('slopcoder_mobile/'));
 
     expect(new Set(referenced).size).toBe(2);
   });

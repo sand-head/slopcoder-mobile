@@ -39,11 +39,22 @@ function resolve(refKey: string): string {
   return path.join(IOS, ...segments);
 }
 
-const compiled: string[] = project
-  .pbxSourcesBuildPhaseObj(project.getFirstTarget().uuid)
-  .files.map((entry: any) => resolve(buildFiles[entry.value].fileRef));
+const targets = project.hash.project.objects.PBXNativeTarget;
+const targetNamed = (name: string) =>
+  Object.entries<any>(targets).find(([, t]) => t && t.name === name)![0];
 
-const cases: [string, string][] = compiled.map(p => [path.basename(p), p]);
+const compiledBy = (target: string): string[] =>
+  project
+    .pbxSourcesBuildPhaseObj(target)
+    .files.map((entry: any) => resolve(buildFiles[entry.value].fileRef));
+
+const compiled: string[] = compiledBy(project.getFirstTarget().uuid);
+const extensionCompiled: string[] = compiledBy(targetNamed('NotificationService'));
+
+const cases: [string, string][] = [...compiled, ...extensionCompiled].map(p => [
+  path.basename(p),
+  p,
+]);
 
 describe('the Xcode project', () => {
   it('compiles the intents', () => {
@@ -62,6 +73,23 @@ describe('the Xcode project', () => {
 
   it.each(cases)('%s resolves to a file that exists', (_name, resolved) => {
     expect(fs.existsSync(resolved)).toBe(true);
+  });
+
+  /**
+   * The keys are made by the app and read by the extension, so the one file
+   * that knows their Keychain item and their derivation is compiled into both.
+   * A second copy would drift; a copy in one target only would leave the other
+   * unable to open what the first wrote.
+   */
+  it('compiles the push keys into the app and the extension alike', () => {
+    expect(compiled.map(p => path.basename(p))).toContain('PushKeys.swift');
+    expect(extensionCompiled.map(p => path.basename(p))).toEqual(
+      expect.arrayContaining(['NotificationService.swift', 'PushKeys.swift']),
+    );
+    // The extension has no React, no bridge and no seam: it must not pull in
+    // anything that imports them.
+    expect(extensionCompiled.map(p => path.basename(p))).not.toContain('PushRegistrar.swift');
+    expect(extensionCompiled.map(p => path.basename(p))).not.toContain('SeamClient.swift');
   });
 
   it('leaves no Swift file in Intents/ out of the build', () => {

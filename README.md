@@ -177,5 +177,12 @@ Since there is no Swift toolchain on Linux, `__tests__/xcode-project.test.ts` ch
 every file the target compiles actually exists at the path the project claims — Xcode
 resolves through the whole group chain, and a doubled path fails only on a macOS runner.
 
-Then **native push**. The server already fires a notification when a turn ends or an
-approval blocks, but over Web Push; APNs and FCM need a sender alongside it.
+**Native push** works without the server ever holding an Apple key. The app trades its
+APNs token for a Web Push endpoint at a *relay* — the slopcoder deployment that publishes
+this app (`SLOPCODER_PUSH_RELAY` at build time) — and subscribes on whichever instance
+it is signed in to with that endpoint and a keypair it made, exactly as a browser would.
+The instance sends ordinary Web Push; the relay forwards the ciphertext to Apple; the
+notification service extension (`ios/NotificationService/`) decrypts it on the phone.
+Anyone can host slopcoder and have this app notify them. Android is still to do: a
+UnifiedPush distributor would need no relay at all, and FCM would need a second relay
+backend.

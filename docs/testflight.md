@@ -11,6 +11,11 @@ read, and the export options the workflow generates. `release-readiness.test.ts`
 fails if any of those drift apart, so change it in one place and the suite tells
 you the rest.
 
+There is a second bundle: the notification service extension,
+**`codes.sand.slopcoder.NotificationService`**, which decrypts pushes before iOS
+shows them. It is its own App ID and its own provisioning profile, signed with
+the same certificate.
+
 ---
 
 ## 1. Apple Developer portal
@@ -27,8 +32,16 @@ App ID once you have made one. Ten characters.
 - Capabilities: tick **Push Notifications**, and nothing else.
 
 The rule is that the profile must cover every entitlement the app *claims*, and
-the app claims exactly one: `aps-environment`. An App ID without Push
-Notifications makes the profile refuse to sign the release build.
+the app claims two: `aps-environment`, and `keychain-access-groups` naming its
+own identifier prefix. The first is the Push Notifications capability. The
+second needs nothing ticked — a team's own prefix is always permitted — and is
+what lets the extension read the push keys the app writes. An App ID without
+Push Notifications makes the profile refuse to sign the release build.
+
+**Extension App ID** — the same page, **+** again → App IDs → App.
+
+- Bundle ID: **Explicit**, `codes.sand.slopcoder.NotificationService`.
+- Capabilities: none. The extension claims only the keychain group.
 
 **Siri is not one of them**, despite the app having Siri intents. That capability
 belongs to SiriKit, which this app does not use — `ios/slopcoder_mobile/Intents/`
@@ -75,11 +88,15 @@ the runner uses — is unreliable with that combination. The 3DES/SHA-1 form is
 what every Apple tool reads. The password you type at the export prompt becomes
 `IOS_CERTIFICATE_PASSWORD`; the file becomes `IOS_CERTIFICATE_BASE64`.
 
-**Provisioning profile** — Profiles → **+** → *App Store Connect* → pick the App
+**Provisioning profiles** — Profiles → **+** → *App Store Connect* → pick the App
 ID and the distribution certificate. Download the `.mobileprovision`. Its name
 does not matter, and neither does knowing your Team ID: the job decodes the
 profile with `security cms -D` and reads both out of it, so neither can drift
 from what the portal actually issued.
+
+Then once more for the extension's App ID, with the same certificate. Two
+profiles, two secrets; the job reads the extension's name out of it the same
+way.
 
 **APNs key** — Keys → **+** → tick *Apple Push Notifications service*. Under
 Configure, leave the environment on **Sandbox & Production**: a token-based key
@@ -101,9 +118,18 @@ holds a sandbox token (`AppDelegate.swift`, from `#if DEBUG`) and the server
 picks the matching APNs host per device (`ApnsSender.cs`). One key covers both.
 
 **The key is for the server, not for CI** — it fills slopcoder's
-`Push:Apns:{KeyId,TeamId,BundleId,PrivateKey}`. Confusing it with the App Store
-Connect key below is the single easiest mistake here; both are `.p8` files from
-different pages, and neither can be downloaded twice.
+`Push:Apns:{KeyId,TeamId,BundleId,PrivateKey}` on the deployment that acts as
+the **push relay**. Confusing it with the App Store Connect key below is the
+single easiest mistake here; both are `.p8` files from different pages, and
+neither can be downloaded twice.
+
+**The relay is yours, not the user's.** The app never sends its APNs token to
+the instance it signs in to. It sends it to the relay — the deployment whose
+address is baked into the build as `SLOPCODER_PUSH_RELAY` — and gets back a
+Web Push endpoint, which it subscribes on its own instance with. So anyone can
+host slopcoder and have this app notify them, with nothing from Apple; only
+the deployment that ships the app holds the key. See `docs/push-relay.md` in
+the slopcoder repo for the protocol.
 
 ## 2. App Store Connect
 
@@ -127,10 +153,23 @@ GitHub → Settings → Secrets and variables → Actions. Base64 with
 |---|---|
 | `IOS_CERTIFICATE_BASE64` | the `.p12`, base64'd |
 | `IOS_CERTIFICATE_PASSWORD` | the password you set exporting it |
-| `IOS_PROVISIONING_PROFILE_BASE64` | the `.mobileprovision`, base64'd |
+| `IOS_PROVISIONING_PROFILE_BASE64` | the app's `.mobileprovision`, base64'd |
+| `IOS_EXTENSION_PROVISIONING_PROFILE_BASE64` | the extension's `.mobileprovision`, base64'd |
 | `APP_STORE_KEY_ID` | App Store Connect API key |
 | `APP_STORE_ISSUER_ID` | App Store Connect API, above the key list |
 | `APP_STORE_KEY_BASE64` | the App Store Connect `.p8`, base64'd |
+
+And one **variable** (Secrets and variables → Actions → Variables), because it
+is a public URL and not a secret:
+
+| Variable | Value |
+|---|---|
+| `SLOPCODER_PUSH_RELAY` | the deployment that holds the APNs key, e.g. `https://slop.example.com` |
+
+Leave it unset and the build is a working app with notifications off, which
+the log says once at launch. It is deliberately not in the project file: a fork
+shipping its own build points it at its own deployment by setting the variable,
+not by editing a checked-in address.
 
 The four `ANDROID_*` secrets are only for the Android job and are not needed to
 reach TestFlight. Without `ANDROID_KEYSTORE_BASE64` that job is skipped rather
@@ -164,10 +203,16 @@ description and a contact email filled in first.
   had, so it cannot be re-downloaded — only replaced, by revoking the
   certificate and making a new one. Back it up somewhere that is not this repo.
 - **A sandbox push token is not a production one.** The debug and release
-  entitlements differ on purpose (`entitlements.test.ts` pins it), and the server
-  records which environment a token came from, because production APNs rejects a
+  entitlements differ on purpose (`entitlements.test.ts` pins it), and the relay
+  is told which environment a token came from, because production APNs rejects a
   sandbox token outright. A TestFlight build is *production*, even though it
   feels like a test.
+- **A notification that shows "You have a new notification."** is the relay's
+  placeholder: the extension did not run, or could not open the message. On a
+  phone that has not been unlocked since it booted, that is expected. Otherwise
+  it means the keys the app wrote are not the keys the extension found —
+  almost always the keychain group differing between the entitlement files,
+  which `push-relay.test.ts` pins.
 - **The first archive is the slow one.** Expect 20–30 minutes on a `macos-15`
   runner with a cold CocoaPods cache.
 - **`exportArchive` errors are usually the keychain, not the profile.** The

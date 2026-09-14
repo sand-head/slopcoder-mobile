@@ -79,10 +79,14 @@ struct SeamClient {
         let selection: ModelSelection
     }
 
-    private struct RegisterDeviceRequest: Encodable {
-        let token: String
-        let sandbox: Bool
-        let deviceName: String?
+    private struct PushSubscribeRequest: Encodable {
+        let endpoint: String
+        let p256dh: String
+        let auth: String
+    }
+
+    private struct PushUnsubscribeRequest: Encodable {
+        let endpoint: String
     }
 
     // MARK: transport
@@ -133,11 +137,18 @@ struct SeamClient {
         try await get("api/seam/sessions/\(id)", as: SessionState.self)
     }
 
-    /// Hand APNs' device token to the server. Called on every launch, because
-    /// the token is not stable across reinstalls, restores or OS upgrades.
-    func registerDevice(token: String, sandbox: Bool, deviceName: String?) async throws {
-        let body = RegisterDeviceRequest(token: token, sandbox: sandbox, deviceName: deviceName)
-        _ = try await send(try request("POST", "api/seam/devices", body: try JSONEncoder().encode(body)))
+    /// Subscribe this phone the way a browser would: the endpoint the relay gave
+    /// it, and the keys it made. Called on every launch, because the APNs token
+    /// behind the endpoint is not stable across reinstalls, restores or OS
+    /// upgrades, and a new token means a new endpoint.
+    func subscribePush(endpoint: String, p256dh: String, auth: String) async throws {
+        let body = PushSubscribeRequest(endpoint: endpoint, p256dh: p256dh, auth: auth)
+        _ = try await send(try request("POST", "api/seam/push/subscribe", body: try JSONEncoder().encode(body)))
+    }
+
+    func unsubscribePush(endpoint: String) async throws {
+        let body = PushUnsubscribeRequest(endpoint: endpoint)
+        _ = try await send(try request("POST", "api/seam/push/unsubscribe", body: try JSONEncoder().encode(body)))
     }
 
     func recentRepos(take: Int = 6) async throws -> [String] {

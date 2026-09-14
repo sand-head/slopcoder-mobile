@@ -28,7 +28,36 @@
 		75C31551CCE44E2B981563B6 /* PushRegistrar.m in Sources */ = {isa = PBXBuildFile; fileRef = B0945C64A78D4714BBF1242E /* PushRegistrar.m */; };
 		61F3F84215044ED98922229D /* AppInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9D2095A818A4555BEC200C9 /* AppInfo.swift */; };
 		99776B7A36BC44319E5821D9 /* AppInfo.m in Sources */ = {isa = PBXBuildFile; fileRef = DA54F10113BF4025A7C438F0 /* AppInfo.m */; };
+		A1B2C3D4E5F60718293A4B5C /* PushKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B2C3D4E5F60718293A4B61 /* PushKeys.swift */; };
+		A1B2C3D4E5F60718293A4B5D /* PushRelayClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B2C3D4E5F60718293A4B62 /* PushRelayClient.swift */; };
+		A1B2C3D4E5F60718293A4B5E /* PushKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B2C3D4E5F60718293A4B61 /* PushKeys.swift */; };
+		A1B2C3D4E5F60718293A4B5F /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B2C3D4E5F60718293A4B63 /* NotificationService.swift */; };
+		A1B2C3D4E5F60718293A4B60 /* NotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B1B2C3D4E5F60718293A4B66 /* NotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		E1B2C3D4E5F60718293A4B6D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D1B2C3D4E5F60718293A4B68;
+			remoteInfo = NotificationService;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		D1B2C3D4E5F60718293A4B6C /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A1B2C3D4E5F60718293A4B60 /* NotificationService.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		13B07F961A680F5B00A75B9A /* slopcoder_mobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = slopcoder_mobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -58,6 +87,12 @@
 		B0945C64A78D4714BBF1242E /* PushRegistrar.m */ = {isa = PBXFileReference; name = "PushRegistrar.m"; path = "slopcoder_mobile/Push/PushRegistrar.m"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; explicitFileType = undefined; includeInIndex = 0; };
 		A9D2095A818A4555BEC200C9 /* AppInfo.swift */ = {isa = PBXFileReference; name = "AppInfo.swift"; path = "slopcoder_mobile/AppInfo/AppInfo.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 		DA54F10113BF4025A7C438F0 /* AppInfo.m */ = {isa = PBXFileReference; name = "AppInfo.m"; path = "slopcoder_mobile/AppInfo/AppInfo.m"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; explicitFileType = undefined; includeInIndex = 0; };
+		B1B2C3D4E5F60718293A4B61 /* PushKeys.swift */ = {isa = PBXFileReference; name = "PushKeys.swift"; path = "slopcoder_mobile/Push/PushKeys.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		B1B2C3D4E5F60718293A4B62 /* PushRelayClient.swift */ = {isa = PBXFileReference; name = "PushRelayClient.swift"; path = "slopcoder_mobile/Push/PushRelayClient.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		B1B2C3D4E5F60718293A4B63 /* NotificationService.swift */ = {isa = PBXFileReference; name = "NotificationService.swift"; path = "NotificationService/NotificationService.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		B1B2C3D4E5F60718293A4B64 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = NotificationService/Info.plist; sourceTree = "<group>"; };
+		B1B2C3D4E5F60718293A4B65 /* NotificationService.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = NotificationService.entitlements; path = NotificationService/NotificationService.entitlements; sourceTree = "<group>"; };
+		B1B2C3D4E5F60718293A4B66 /* NotificationService.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -66,6 +101,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				0C80B921A6F3F58F76C31292 /* libPods-slopcoder_mobile.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D1B2C3D4E5F60718293A4B6A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +154,7 @@
 				BBD78D7AC51CEA395F1C20DB /* Pods */,
 				8AD3E010F8EC4F32B0D1D46D /* Resources */,
 				F093878925BC48F29552A887 /* AppInfo */,
+				C1B2C3D4E5F60718293A4B67 /* NotificationService */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -122,6 +165,7 @@
 			isa = PBXGroup;
 			children = (
 				13B07F961A680F5B00A75B9A /* slopcoder_mobile.app */,
+				B1B2C3D4E5F60718293A4B66 /* NotificationService.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -168,6 +212,8 @@
 			children = (
 				458EFDFA055C4652907B39D0 /* PushRegistrar.swift */,
 				B0945C64A78D4714BBF1242E /* PushRegistrar.m */,
+				B1B2C3D4E5F60718293A4B61 /* PushKeys.swift */,
+				B1B2C3D4E5F60718293A4B62 /* PushRelayClient.swift */,
 			);
 			name = Push;
 			sourceTree = "<group>";
@@ -179,6 +225,16 @@
 				DA54F10113BF4025A7C438F0 /* AppInfo.m */,
 			);
 			name = AppInfo;
+			sourceTree = "<group>";
+		};
+		C1B2C3D4E5F60718293A4B67 /* NotificationService */ = {
+			isa = PBXGroup;
+			children = (
+				B1B2C3D4E5F60718293A4B63 /* NotificationService.swift */,
+				B1B2C3D4E5F60718293A4B64 /* Info.plist */,
+				B1B2C3D4E5F60718293A4B65 /* NotificationService.entitlements */,
+			);
+			name = NotificationService;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -195,15 +251,34 @@
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				00EEFC60759A1932668264C0 /* [CP] Embed Pods Frameworks */,
 				E235C05ADACE081382539298 /* [CP] Copy Pods Resources */,
+				D1B2C3D4E5F60718293A4B6C /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				E1B2C3D4E5F60718293A4B6E /* PBXTargetDependency */,
 			);
 			name = slopcoder_mobile;
 			productName = slopcoder_mobile;
 			productReference = 13B07F961A680F5B00A75B9A /* slopcoder_mobile.app */;
 			productType = "com.apple.product-type.application";
+		};
+		D1B2C3D4E5F60718293A4B68 /* NotificationService */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F1B2C3D4E5F60718293A4B71 /* Build configuration list for PBXNativeTarget "NotificationService" */;
+			buildPhases = (
+				D1B2C3D4E5F60718293A4B69 /* Sources */,
+				D1B2C3D4E5F60718293A4B6A /* Frameworks */,
+				D1B2C3D4E5F60718293A4B6B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = NotificationService;
+			productName = NotificationService;
+			productReference = B1B2C3D4E5F60718293A4B66 /* NotificationService.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -215,6 +290,9 @@
 				TargetAttributes = {
 					13B07F861A680F5B00A75B9A = {
 						LastSwiftMigration = 1120;
+					};
+					D1B2C3D4E5F60718293A4B68 = {
+						CreatedOnToolsVersion = 26.2;
 					};
 				};
 			};
@@ -232,6 +310,7 @@
 			projectRoot = "";
 			targets = (
 				13B07F861A680F5B00A75B9A /* slopcoder_mobile */,
+				D1B2C3D4E5F60718293A4B68 /* NotificationService */,
 			);
 		};
 /* End PBXProject section */
@@ -248,6 +327,13 @@
 				065B936216A043788DFAF0FE /* GeistMono-Regular.ttf in Resources */,
 				6D4323AED4224AC1BF22A922 /* GeistMono-SemiBold.ttf in Resources */,
 				2A733F30C4D64E7482F2AA6C /* Geist-Regular.ttf in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D1B2C3D4E5F60718293A4B6B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -344,12 +430,31 @@
 				726A6F356B1F403786728043 /* OpenSessionIntent.swift in Sources */,
 				647E0CE2503C419198D7B966 /* PushRegistrar.swift in Sources */,
 				75C31551CCE44E2B981563B6 /* PushRegistrar.m in Sources */,
+				A1B2C3D4E5F60718293A4B5C /* PushKeys.swift in Sources */,
+				A1B2C3D4E5F60718293A4B5D /* PushRelayClient.swift in Sources */,
 				61F3F84215044ED98922229D /* AppInfo.swift in Sources */,
 				99776B7A36BC44319E5821D9 /* AppInfo.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D1B2C3D4E5F60718293A4B69 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1B2C3D4E5F60718293A4B5F /* NotificationService.swift in Sources */,
+				A1B2C3D4E5F60718293A4B5E /* PushKeys.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		E1B2C3D4E5F60718293A4B6E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D1B2C3D4E5F60718293A4B68 /* NotificationService */;
+			targetProxy = E1B2C3D4E5F60718293A4B6D /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
@@ -381,6 +486,7 @@
 				VERSIONING_SYSTEM = "apple-generic";
 				CODE_SIGN_ENTITLEMENTS = slopcoder_mobile/slopcoder_mobile.entitlements;
 				CODE_SIGN_STYLE = Automatic;
+				SLOPCODER_PUSH_RELAY = "";
 			};
 			name = Debug;
 		};
@@ -414,6 +520,61 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				PROVISIONING_PROFILE_SPECIFIER = "$(SLOPCODER_PROFILE)";
 				DEVELOPMENT_TEAM = "$(SLOPCODER_TEAM_ID)";
+				SLOPCODER_PUSH_RELAY = "";
+			};
+			name = Release;
+		};
+		F1B2C3D4E5F60718293A4B6F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = NotificationService/NotificationService.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NotificationService/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = codes.sand.slopcoder.NotificationService;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		F1B2C3D4E5F60718293A4B70 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = NotificationService/NotificationService.entitlements;
+				CODE_SIGN_STYLE = Manual;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "$(SLOPCODER_TEAM_ID)";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NotificationService/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = codes.sand.slopcoder.NotificationService;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "$(SLOPCODER_EXTENSION_PROFILE)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -573,6 +734,15 @@
 			buildConfigurations = (
 				83CBBA201A601CBA00E9B192 /* Debug */,
 				83CBBA211A601CBA00E9B192 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F1B2C3D4E5F60718293A4B71 /* Build configuration list for PBXNativeTarget "NotificationService" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F1B2C3D4E5F60718293A4B6F /* Debug */,
+				F1B2C3D4E5F60718293A4B70 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

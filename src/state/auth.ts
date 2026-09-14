@@ -10,7 +10,7 @@ import * as Keychain from 'react-native-keychain';
 import { create } from 'zustand';
 import { OfflineError, Seam, loginWithPassword, redeemPairingCode } from '../api/seam';
 import type { LoginFailure } from '../api/contracts';
-import { enablePush } from '../push';
+import { disablePush, enablePush } from '../push';
 import { useConnection } from './connection';
 
 const SERVICE = 'codes.sand.slopcoder';
@@ -68,6 +68,8 @@ export const useAuth = create<AuthState>((set, get) => ({
   },
 
   async signOut() {
+    // Before the key goes: unsubscribing is a seam call, and it needs the key.
+    await disablePush();
     await Keychain.resetGenericPassword({ service: SERVICE });
     set({ credential: null, seam: null });
   },

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The app's own identifier group, so the extension can read the push keys
+	     the app wrote. No capability to tick in the portal: a team's own prefix
+	     is always permitted. Must match the app's entitlements. -->
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)codes.sand.slopcoder</string>
+	</array>
+</dict>
+</plist>

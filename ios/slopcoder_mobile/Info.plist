@@ -53,6 +53,13 @@
 	     answers the export-compliance question once instead of once per build. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- Where the phone turns its APNs token into a Web Push endpoint: the
+	     slopcoder deployment that holds this app's Apple key, which is the
+	     publisher's and not necessarily the one the user signs in to. Empty
+	     means no notifications, said once in the log. The release workflow
+	     fills it from the SLOPCODER_PUSH_RELAY repository variable. -->
+	<key>SlopcoderPushRelay</key>
+	<string>$(SLOPCODER_PUSH_RELAY)</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIRequiredDeviceCapabilities</key>

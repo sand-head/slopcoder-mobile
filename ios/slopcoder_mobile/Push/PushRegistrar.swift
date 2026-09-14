@@ -1,4 +1,5 @@
 import Foundation
+import React
 import UIKit
 import UserNotifications
 
@@ -37,5 +38,54 @@ final class PushRegistrar: NSObject {
                 UIApplication.shared.registerForRemoteNotifications()
             }
         }
+    }
+
+    /// Drop this phone's subscription on the instance. Sign-out awaits it
+    /// before forgetting the credential, because it is the credential that
+    /// authorises the call. Best-effort: an instance that cannot be reached
+    /// keeps a row that will 410 on its own once the token dies.
+    @objc
+    func disablePush(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        Task {
+            await PushSubscriber.unsubscribe()
+            resolve(nil)
+        }
+    }
+}
+
+/// The subscription, from the app's side: the relay for an endpoint, the
+/// instance for the row, and one remembered endpoint so sign-out can undo it.
+enum PushSubscriber {
+    /// Where the last successful subscription went, so sign-out can remove it.
+    private static let endpointKey = "slopcoder.push.endpoint"
+
+    static func subscribe(token: String, sandbox: Bool) async {
+        // Not signed in yet is the ordinary case on a first launch, not a failure.
+        guard let credential = try? CredentialStore.load() else { return }
+
+        guard let relay = PushRelayClient.configured else {
+            NSLog("slopcoder: no push relay in this build (SLOPCODER_PUSH_RELAY); notifications are off")
+            return
+        }
+
+        do {
+            let keys = try PushKeys.loadOrCreate()
+            let endpoint = try await relay.register(token: token, sandbox: sandbox)
+            try await SeamClient(credential: credential).subscribePush(
+                endpoint: endpoint, p256dh: keys.p256dh, auth: keys.authKey)
+            UserDefaults.standard.set(endpoint, forKey: endpointKey)
+        } catch {
+            // Next launch registers again. There is nothing to tell the user:
+            // the app works without notifications, and this is not their bug.
+            NSLog("slopcoder: push subscription failed — %@", String(describing: error))
+        }
+    }
+
+    static func unsubscribe() async {
+        guard let endpoint = UserDefaults.standard.string(forKey: endpointKey),
+              let credential = try? CredentialStore.load()
+        else { return }
+        try? await SeamClient(credential: credential).unsubscribePush(endpoint: endpoint)
+        UserDefaults.standard.removeObject(forKey: endpointKey)
     }
 }

@@ -43,7 +43,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
 
   // MARK: push
 
-  /// iOS hands the token here, as bytes. The server wants lowercase hex.
+  /// iOS hands the token here, as bytes. From it, a Web Push subscription.
+  ///
+  /// The token never goes to the instance. It goes to the push relay — the
+  /// deployment holding this app's Apple key — which answers with an endpoint;
+  /// the instance gets the endpoint and the phone's own keys, exactly what a
+  /// browser would give it, and sends Web Push. That is what lets a phone be
+  /// notified by an instance whose hoster has nothing from Apple.
   func application(
     _ application: UIApplication,
     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
@@ -58,15 +64,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     let sandbox = false
 #endif
 
-    Task {
-      // Not signed in yet is the ordinary case on a first launch, not a failure.
-      guard let credential = try? CredentialStore.load() else { return }
-      try? await SeamClient(credential: credential).registerDevice(
-        token: token,
-        sandbox: sandbox,
-        deviceName: await UIDevice.current.name
-      )
-    }
+    Task { await PushSubscriber.subscribe(token: token, sandbox: sandbox) }
   }
 
   func application(

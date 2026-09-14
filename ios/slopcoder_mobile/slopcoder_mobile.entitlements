@@ -6,5 +6,13 @@
 	     because production APNs refuses a sandbox token outright. -->
 	<key>aps-environment</key>
 	<string>development</string>
+	<!-- The notification service extension decrypts with keys this app writes.
+	     Naming the app's own identifier group here, and the same one in the
+	     extension's entitlements, is what lets both see one Keychain item. Not a
+	     portal capability: a team's own prefix needs nothing ticked. -->
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)codes.sand.slopcoder</string>
+	</array>
 </dict>
 </plist>

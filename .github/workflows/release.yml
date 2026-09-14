@@ -100,6 +100,7 @@ jobs:
           CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
           CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
           PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          EXTENSION_PROFILE_BASE64: ${{ secrets.IOS_EXTENSION_PROVISIONING_PROFILE_BASE64 }}
         run: |
           # A throwaway keychain, so nothing outlives the job.
           security create-keychain -p runner build.keychain
@@ -131,8 +132,23 @@ jobs:
           echo "SLOPCODER_PROFILE=$PROFILE_NAME" >> "$GITHUB_ENV"
           echo "SLOPCODER_TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
           echo "profile: $PROFILE_NAME, team: $TEAM_ID"
+          # The notification service extension is its own bundle with its own
+          # App ID, so Apple issues it its own profile. Same certificate.
+          echo "$EXTENSION_PROFILE_BASE64" | base64 -d > "$RUNNER_TEMP/extension.mobileprovision"
+          cp "$RUNNER_TEMP/extension.mobileprovision" ~/Library/MobileDevice/Provisioning\ Profiles/
+          security cms -D -i "$RUNNER_TEMP/extension.mobileprovision" > "$RUNNER_TEMP/extension.plist"
+          EXTENSION_PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/extension.plist")
+          echo "SLOPCODER_EXTENSION_PROFILE=$EXTENSION_PROFILE_NAME" >> "$GITHUB_ENV"
+          echo "extension profile: $EXTENSION_PROFILE_NAME"
       - name: Archive and export
         working-directory: ios
+        env:
+          # Where the app turns its APNs token into a Web Push endpoint: the
+          # slopcoder deployment that holds this app's Apple key. A variable
+          # rather than a secret — it is a public URL — and rather than a value
+          # in the project file, because it is the publisher's address and not
+          # a property of the code. Empty builds an app with notifications off.
+          SLOPCODER_PUSH_RELAY: ${{ vars.SLOPCODER_PUSH_RELAY }}
         run: |
           # The date is the version; the run number is the build. App Store Connect
           # rejects a build number it has already seen, so it must never be the
@@ -156,6 +172,7 @@ jobs:
             <key>provisioningProfiles</key>
             <dict>
               <key>codes.sand.slopcoder</key><string>$SLOPCODER_PROFILE</string>
+              <key>codes.sand.slopcoder.NotificationService</key><string>$SLOPCODER_EXTENSION_PROFILE</string>
             </dict>
           </dict>
           </plist>
@@ -168,6 +185,8 @@ jobs:
             CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
             SLOPCODER_TEAM_ID="$SLOPCODER_TEAM_ID" \
             SLOPCODER_PROFILE="$SLOPCODER_PROFILE" \
+            SLOPCODER_EXTENSION_PROFILE="$SLOPCODER_EXTENSION_PROFILE" \
+            SLOPCODER_PUSH_RELAY="$SLOPCODER_PUSH_RELAY" \
             archive
           xcodebuild -exportArchive -archivePath build/slopcoder.xcarchive \
             -exportOptionsPlist ExportOptions.plist -exportPath build/ipa

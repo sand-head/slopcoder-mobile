@@ -27,6 +27,8 @@ const WORKFLOW = fs.readFileSync(
 );
 
 const BUNDLE_ID = 'codes.sand.slopcoder';
+/** The notification service extension: the app's id with one segment appended, as Apple requires. */
+const EXTENSION_BUNDLE_ID = `${BUNDLE_ID}.NotificationService`;
 
 function plistString(key: string): string | undefined {
   return INFO_PLIST.match(new RegExp(`<key>${key}</key>\\s*<string>([^<]*)</string>`))?.[1];
@@ -80,12 +82,14 @@ describe('identity', () => {
     expect(PROJECT).not.toMatch(/org\.reactjs\.native\.example/);
   });
 
-  it('uses the same bundle id in every build configuration', () => {
+  it('uses the app bundle id, and the extension one under it, and nothing else', () => {
     const ids = [...PROJECT.matchAll(/PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);/g)].map(m =>
       m[1].replace(/"/g, '').trim(),
     );
-    expect(ids.length).toBeGreaterThan(1);
-    expect(new Set(ids)).toEqual(new Set([BUNDLE_ID]));
+    // Two configurations per target.
+    expect(ids.filter(id => id === BUNDLE_ID)).toHaveLength(2);
+    expect(ids.filter(id => id === EXTENSION_BUNDLE_ID)).toHaveLength(2);
+    expect(new Set(ids)).toEqual(new Set([BUNDLE_ID, EXTENSION_BUNDLE_ID]));
   });
 
   /**
@@ -133,19 +137,23 @@ describe('Siri', () => {
 
   /**
    * Every entitlement the app claims has to be a capability ticked on the App ID
-   * in Apple's portal, which nothing here can check. Keeping the claimed set to
-   * exactly one makes the portal side a single decision rather than a list to
+   * in Apple's portal, which nothing here can check. Keeping the claimed set
+   * short makes the portal side a single decision rather than a list to
    * reconcile — so a new key here is a deliberate trip to developer.apple.com.
+   *
+   * `keychain-access-groups` naming the team's own prefix is the one entitlement
+   * that needs no portal capability, which is why the push keys share the
+   * app's identifier group rather than an app group.
    */
   it.each(['slopcoder_mobile.entitlements', 'slopcoder_mobile.release.entitlements'])(
-    '%s claims aps-environment and nothing else',
+    '%s claims aps-environment and the keychain group, and nothing else',
     file => {
       const keys = [
         ...fs
           .readFileSync(path.join(IOS, 'slopcoder_mobile', file), 'utf8')
           .matchAll(/<key>([^<]+)<\/key>/g),
       ].map(m => m[1]);
-      expect(keys).toEqual(['aps-environment']);
+      expect(keys).toEqual(['aps-environment', 'keychain-access-groups']);
     },
   );
 });
@@ -154,7 +162,9 @@ describe('release signing', () => {
   /** The block of build settings for one configuration of the app target. */
   function config(name: 'Debug' | 'Release'): string {
     const blocks = [...PROJECT.matchAll(/buildSettings = \{([\s\S]*?)\};\s*name = (Debug|Release);/g)];
-    const match = blocks.find(b => b[2] === name && b[1].includes('PRODUCT_BUNDLE_IDENTIFIER'));
+    const match = blocks.find(
+      b => b[2] === name && b[1].includes(`PRODUCT_BUNDLE_IDENTIFIER = ${BUNDLE_ID};`),
+    );
     expect(match).toBeDefined();
     return match![1];
   }
@@ -335,7 +345,10 @@ describe('App Store Connect chores', () => {
     expect(WORKFLOW).not.toMatch(/GITHUB_REF_NAME/);
   });
 
-  it('exports with the bundle id the project actually builds', () => {
+  it('exports with the bundle ids the project actually builds', () => {
     expect(WORKFLOW).toContain(`<key>${BUNDLE_ID}</key>`);
+    // An extension left out of the export options is signed with nothing and
+    // the export fails after the archive — the slow half of the job.
+    expect(WORKFLOW).toContain(`<key>${EXTENSION_BUNDLE_ID}</key>`);
   });
 });

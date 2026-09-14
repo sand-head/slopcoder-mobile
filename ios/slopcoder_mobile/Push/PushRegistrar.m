@@ -7,5 +7,6 @@
 
 RCT_EXTERN_METHOD(enablePush)
 RCT_EXTERN_METHOD(refreshIfAlreadyAllowed)
+RCT_EXTERN_METHOD(disablePush:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
 
 @end
