@@ -1,6 +1,6 @@
-diff --git anode_modules/react-native-bottom-tabs/ios/RCTTabViewComponentView.mm b/node_modules/react-native-bottom-tabs/ios/RCTTabViewComponentView.mm
+diff --git a/node_modules/react-native-bottom-tabs/ios/RCTTabViewComponentView.mm b/node_modules/react-native-bottom-tabs/ios/RCTTabViewComponentView.mm
 index 09ab604..af3438f 100644
---- anode_modules/react-native-bottom-tabs/ios/RCTTabViewComponentView.mm
+--- a/node_modules/react-native-bottom-tabs/ios/RCTTabViewComponentView.mm
 +++ b/node_modules/react-native-bottom-tabs/ios/RCTTabViewComponentView.mm
 @@ -17,8 +17,18 @@
  #import <React/RCTImageLoader.h>
