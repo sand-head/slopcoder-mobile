@@ -21,6 +21,11 @@ const PROJECT = fs.readFileSync(
   'utf8',
 );
 
+const WORKFLOW = fs.readFileSync(
+  path.join(ROOT, '.github', 'workflows', 'release.yml'),
+  'utf8',
+);
+
 const BUNDLE_ID = 'codes.sand.slopcoder';
 
 function plistString(key: string): string | undefined {
@@ -176,7 +181,6 @@ describe('release signing', () => {
 });
 
 describe('signing material', () => {
-  const WORKFLOW = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'release.yml'), 'utf8');
 
   /**
    * The reason the decoded certificate and profile live in RUNNER_TEMP is that
@@ -246,10 +250,9 @@ describe('signing material', () => {
   });
 
   /** Secrets on a pull_request_target run are readable by any fork. */
-  it('runs only on tags pushed to this repository', () => {
+  it('is started by hand, and never by a pull request', () => {
     const on = WORKFLOW.match(/^on:\n([\s\S]*?)\njobs:/m)?.[1] ?? '';
-    expect(on).toMatch(/tags/);
-    expect(on).not.toMatch(/pull_request/);
+    expect(on.trim()).toBe('workflow_dispatch:');
   });
 });
 
@@ -316,13 +319,23 @@ describe('App Store Connect chores', () => {
    * The workflow passes the run number on the xcodebuild command line.
    */
   it('takes the version and build number from the release workflow', () => {
-    const workflow = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'release.yml'), 'utf8');
-    expect(workflow).toMatch(/MARKETING_VERSION="\$VERSION"/);
-    expect(workflow).toMatch(/CURRENT_PROJECT_VERSION="\$GITHUB_RUN_NUMBER"/);
+    expect(WORKFLOW).toMatch(/MARKETING_VERSION="\$VERSION"/);
+    expect(WORKFLOW).toMatch(/CURRENT_PROJECT_VERSION="\$GITHUB_RUN_NUMBER"/);
+  });
+
+  /**
+   * Nothing about TestFlight needs a version to be *chosen*: the run number is
+   * already unique, and it is the only value Apple enforces. Dating the
+   * marketing version is what lets a release be a button rather than a tag
+   * nobody can reuse, so a `$GITHUB_REF_NAME` creeping back in here would
+   * quietly bring the version bumps back with it.
+   */
+  it('dates the build rather than versioning it', () => {
+    expect(WORKFLOW).toMatch(/VERSION=\$\(date -u \+%Y\.%m\.%d\)/);
+    expect(WORKFLOW).not.toMatch(/GITHUB_REF_NAME/);
   });
 
   it('exports with the bundle id the project actually builds', () => {
-    const workflow = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'release.yml'), 'utf8');
-    expect(workflow).toContain(`<key>${BUNDLE_ID}</key>`);
+    expect(WORKFLOW).toContain(`<key>${BUNDLE_ID}</key>`);
   });
 });

@@ -1,10 +1,15 @@
-# Signed builds. Runs only on a tag pushed to this repository, never on a pull
-# request — fork PRs must never see these secrets.
+# Signed builds. Started by hand from the Actions tab, never on a pull request —
+# fork PRs must never see these secrets.
+#
+# There is no version to choose. App Store Connect enforces uniqueness on the
+# build number and nothing else, and CURRENT_PROJECT_VERSION is the run number,
+# which can never repeat; MARKETING_VERSION is the date the build was cut, so
+# TestFlight reads "2026.09.13 (35)" and says something true without anyone
+# having decided it. Which commit it is comes from the run.
 name: release
 
 on:
-  push:
-    tags: ['v*']
+  workflow_dispatch:
 
 jobs:
   # Android release signing is not configured — the four ANDROID_* secrets are
@@ -34,8 +39,6 @@ jobs:
     needs: android-signing
     if: needs.android-signing.outputs.configured == 'true'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -61,10 +64,13 @@ jobs:
           SLOPCODER_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           SLOPCODER_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: ./gradlew assembleRelease bundleRelease --no-daemon
-      - name: Attach the APK to the release
-        uses: softprops/action-gh-release@v2
+      # A run, not a tag: there is no GitHub release to hang these off, so they
+      # are the run's own artifacts and expire with it.
+      - name: Keep the APK and the bundle
+        uses: actions/upload-artifact@v4
         with:
-          files: |
+          name: android-${{ github.run_number }}
+          path: |
             android/app/build/outputs/apk/release/app-release.apk
             android/app/build/outputs/bundle/release/app-release.aab
 
@@ -128,10 +134,11 @@ jobs:
       - name: Archive and export
         working-directory: ios
         run: |
-          # The tag is the version; the run number is the build. App Store Connect
+          # The date is the version; the run number is the build. App Store Connect
           # rejects a build number it has already seen, so it must never be the
-          # literal 1 that sits in the project file.
-          VERSION="${GITHUB_REF_NAME#v}"
+          # literal 1 that sits in the project file. Two builds on one day differ
+          # by their build number, which is what that number is for.
+          VERSION=$(date -u +%Y.%m.%d)
           echo "version $VERSION build $GITHUB_RUN_NUMBER"
 
           # Generated rather than committed: every value in it comes from a

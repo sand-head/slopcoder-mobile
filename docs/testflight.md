@@ -1,8 +1,9 @@
 # Getting a build into TestFlight
 
-The repo is set up so a tag does the work: `git tag v1.0.0 && git push --tags`
-runs `.github/workflows/release.yml`, which archives, signs, and uploads. What
-follows is the one-time setup on Apple's side that a workflow cannot do for you.
+The repo is set up so a button does the work: **Actions → release → Run
+workflow** runs `.github/workflows/release.yml`, which archives, signs, and
+uploads whatever is on the branch you pick. What follows is the one-time setup
+on Apple's side that a workflow cannot do for you.
 
 The app's bundle identifier is **`codes.sand.slopcoder`**. It appears in the
 Xcode project, the URL type, the Keychain service both TypeScript and Swift
@@ -136,16 +137,17 @@ reach TestFlight. Without `ANDROID_KEYSTORE_BASE64` that job is skipped rather
 than failed, so a release does not go red for a platform nobody is shipping yet;
 adding the secrets turns it back on with nothing to remember to flip.
 
-## 4. Tag it
+## 4. Run it
 
-```
-git tag v1.0.0
-git push --tags
-```
+**Actions → release → Run workflow**, on the branch you want built. There is no
+version to pick and nothing to tag.
 
-The tag is the marketing version (`v1.0.0` → `1.0.0`); the **build** number is
-the workflow run number, because App Store Connect refuses a build number it has
-already accepted and would otherwise reject every upload after the first.
+App Store Connect enforces uniqueness on the **build** number and on nothing
+else, and that number is the workflow run number, which can never repeat. The
+marketing version is simply the date the build was cut, so TestFlight reads
+`2026.09.13 (35)` — true without anyone having decided it. Several builds in one
+day are ordinary: they differ by the build number, which is what it is for.
+Which commit a build is comes from the run that made it.
 
 Processing takes ten minutes or so. **Internal testing** — up to 100 people on
 your team — needs no review and is the fast path to your own phone. **External
