@@ -10,9 +10,11 @@
  * session — a separate new-session screen used to exist with the same composer
  * on it, and there was no telling why.
  *
- * Each row carries a native context menu — a long press, or the `…` — for
- * rename and delete. `Alert.alert` was standing in for that menu, which on iOS
- * is a centred dialog and on Android cannot style a destructive row.
+ * Each row's `…` opens a native menu for rename and delete. `Alert.alert` was
+ * standing in for that menu, which on iOS is a centred dialog and on Android
+ * cannot style a destructive row. The menu is on the button and not on the
+ * row itself: on iOS the menu's native wrapper is a button underneath its
+ * child, and a tap on the row went to it and never reached the row's press.
  */
 import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import {
@@ -490,32 +492,30 @@ function SessionCard({
           paddingVertical: 12,
           minHeight: 44,
         }}>
-        {/* The whole row is the link; a long press on it is the menu. */}
-        <OverflowMenu title={session.title} items={items} longPress style={{ flex: 1 }}>
-          <Pressable
-            onPress={onPress}
-            accessibilityRole="button"
-            accessibilityLabel={`${session.title}, ${running ? 'running' : 'idle'}`}
-            accessibilityHint="Opens the session. Long press for more."
-            style={({ pressed }) => ({
-              flex: 1,
-              flexDirection: 'row',
-              alignItems: 'flex-start',
-              gap: 10,
-              opacity: pressed ? 0.6 : 1,
-            })}>
-            <View style={{ paddingTop: 5 }}>
-              <StatusDot running={running} />
-            </View>
-            <View style={{ flex: 1, gap: 3 }}>
-              <Body numberOfLines={1}>{session.title}</Body>
-              <Mono numberOfLines={1}>
-                {stamp(session.createdAt)} · {session.autoRoute ? 'auto' : session.model}
-              </Mono>
-              {offline ? <Meta style={{ color: c.destructive }}>workspace offline</Meta> : null}
-            </View>
-          </Pressable>
-        </OverflowMenu>
+        {/* The whole row is the link, as on the web. */}
+        <Pressable
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={`${session.title}, ${running ? 'running' : 'idle'}`}
+          accessibilityHint="Opens the session."
+          style={({ pressed }) => ({
+            flex: 1,
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            gap: 10,
+            opacity: pressed ? 0.6 : 1,
+          })}>
+          <View style={{ paddingTop: 5 }}>
+            <StatusDot running={running} />
+          </View>
+          <View style={{ flex: 1, gap: 3 }}>
+            <Body numberOfLines={1}>{session.title}</Body>
+            <Mono numberOfLines={1}>
+              {stamp(session.createdAt)} · {session.autoRoute ? 'auto' : session.model}
+            </Mono>
+            {offline ? <Meta style={{ color: c.destructive }}>workspace offline</Meta> : null}
+          </View>
+        </Pressable>
 
         <OverflowMenu title={session.title} items={items}>
           <Pressable
