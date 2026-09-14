@@ -57,12 +57,21 @@ export function SettingsScreen({ navigation }: { navigation: any }) {
           <NavRow label="tokens and cost" onPress={() => navigation.navigate('Usage')} />
         </View>
 
+        {/* The sessions screen carries a strip of these, but only once there is
+            something to report — so this is the door in for an account that has
+            no routines yet, and the one place the heartbeat can be set up. */}
+        <View>
+          <SectionLabel label="routines" />
+          <NavRow label="schedules, runs and the heartbeat" onPress={() => navigation.navigate('Routines')} />
+        </View>
+
         <View>
           <SectionLabel label="elsewhere" />
           <Hint>
-            Everything else — providers, facets, memory, remote nodes, usage — lives on the server.
-            Open slopcoder in a browser to reach it. Code mode and the terminal are there too; they
-            are not in this app on purpose.
+            Everything else — providers, facets, memory, remote nodes — lives on the server. Open
+            slopcoder in a browser to reach it, and to write a routine: choosing a model, a
+            schedule, triggers and where the answer goes is a form, not a phone screen. Code mode
+            and the terminal are there too; they are not in this app on purpose.
           </Hint>
         </View>
 

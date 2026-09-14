@@ -18,6 +18,8 @@ export const linking: LinkingOptions<Record<string, object | undefined>> = {
       Sessions: 'sessions',
       Session: 'session/:id',
       NewSession: 'new',
+      Routines: 'routines',
+      Routine: 'routines/:id',
       Settings: 'settings',
       Usage: 'usage',
     },

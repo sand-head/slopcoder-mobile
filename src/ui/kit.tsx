@@ -23,7 +23,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { LiquidGlassView, isLiquidGlassSupported } from '@callstack/liquid-glass';
-import { mix, radius, font, useTheme } from '../theme';
+import { mix, radius, font, useTheme, type Palette } from '../theme';
 
 export function Meta({ children, style }: { children: React.ReactNode; style?: StyleProp<TextStyle> }) {
   const { c } = useTheme();
@@ -690,4 +690,50 @@ export function stamp(iso: string): string {
   const date = at.toLocaleDateString(undefined, { year: 'numeric', month: 'numeric', day: 'numeric' });
   const time = at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   return `${date} ${time}`;
+}
+
+/**
+ * How prose renders: an assistant's message in the transcript, and a routine
+ * run's answer, which is the same text arriving by a different road.
+ *
+ * Lives here rather than beside either caller because the two must not drift —
+ * the same paragraph should not read differently depending on which screen it
+ * is on.
+ */
+export function markdownStyles(c: Palette) {
+  return {
+    body: { color: c.foreground, fontFamily: font.sans, fontSize: 14.4, lineHeight: 23 },
+    code_inline: {
+      fontFamily: font.mono,
+      fontSize: 12.5,
+      backgroundColor: mix(c.muted, 60),
+      color: c.foreground,
+    },
+    // Wide code must scroll inside itself, never widen the screen.
+    code_block: {
+      fontFamily: font.mono,
+      fontSize: 12,
+      backgroundColor: mix(c.muted, 40),
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: radius.md,
+      color: c.foreground,
+    },
+    fence: {
+      fontFamily: font.mono,
+      fontSize: 12,
+      backgroundColor: mix(c.muted, 40),
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: radius.md,
+      color: c.foreground,
+    },
+    link: { color: c.primary },
+    blockquote: {
+      backgroundColor: 'transparent',
+      borderLeftWidth: 2,
+      borderLeftColor: c.border,
+      paddingLeft: 10,
+    },
+  };
 }

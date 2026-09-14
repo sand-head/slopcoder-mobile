@@ -107,6 +107,47 @@ const check = (name, ok, extra = '') => (ok ? pass : fail).push(name + (extra ? 
   check('presence is accepted', (await seam.presence(id)) === true);
   check('a command on a missing session is false', (await seam.stop('00000000-0000-0000-0000-000000000000')) === false);
 
+  // --- routines ---
+  //
+  // Fifteen DTOs hand-ported from IAutomationsApi.cs, every one of them read-
+  // only and folded server-side, which is exactly the shape a camelCase slip or
+  // a numeric enum read as a string hides in: the screen renders, and it renders
+  // "undefined".
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const board = await seam.routineBoard(zone);
+  check('the board comes back shaped', Array.isArray(board.routines) && Array.isArray(board.failures),
+    Object.keys(board).join(','));
+  check('the board counts today', typeof board.runsToday === 'number');
+  check('the phone ledger is present (RecentRuns)', board.recentRuns !== undefined,
+    'null means an older host; the cards\' last runs stand in');
+
+  const status = await seam.routineStatus(zone);
+  check('the strip status comes back', typeof status.anyRoutines === 'boolean',
+    JSON.stringify(status).slice(0, 80));
+
+  const beat = await seam.heartbeat();
+  check('the heartbeat is created on demand', Boolean(beat?.id), beat ? `kind=${beat.kind}` : 'null');
+  check('AutomationKind is numeric on the wire', typeof beat?.kind === 'number');
+  check('a TimeOnly is a string, not an object',
+    beat?.activeHoursStart == null || typeof beat.activeHoursStart === 'string',
+    String(beat?.activeHoursStart));
+
+  if (beat) {
+    const detail = await seam.routine(beat.id);
+    check('a routine detail comes back', Boolean(detail?.routine?.id));
+    check('the history strip is padded to 30', detail?.history?.length === 30, `${detail?.history?.length}`);
+    check('triggers carry their own stats', Array.isArray(detail?.triggers));
+
+    const runs = await seam.routineRuns(beat.id, 0, 5);
+    check('a run page comes back', Array.isArray(runs.runs) && typeof runs.total === 'number');
+
+    // A command answers TextResult: null is success, a string is the problem.
+    const problem = await seam.setRoutineEnabled(beat.id, false);
+    check('a command answers null when it worked', problem === null, String(problem));
+    check('a command on a missing routine is a sentence, not silence',
+      (await seam.runRoutineNow('00000000-0000-0000-0000-000000000000')) !== null);
+  }
+
   await hub.stop();
 
   console.log('\n--- PASS ---');

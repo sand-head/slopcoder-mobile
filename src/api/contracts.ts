@@ -424,3 +424,266 @@ export interface ServerProtocol {
   version: string;
   client?: unknown;
 }
+
+// ---- routines ----
+//
+// Ported from `IAutomationsApi.cs`. The entities are called automations and the
+// screens are called Routines; the seam keeps the old word in its paths and the
+// new one in these read-shaped records, and so does this file.
+//
+// Two families over the same rows. `AutomationSummary` is the editable shape —
+// every column, exactly as stored — and the rest are what the screens paint:
+// already folded, already worded, so a phone is not left deriving "3rd failure
+// in a row" or "Every weekday at 07:00" from a run log it would have to page
+// through.
+
+export enum AutomationKind {
+  /** A routine somebody wrote: its prompt is whatever they typed. */
+  Job = 0,
+  /** The one system-owned check-in per user. Its prompt is fixed. */
+  Heartbeat = 1,
+}
+
+export enum DeliveryKind {
+  None = 0,
+  Push = 1,
+  Channel = 2,
+}
+
+export enum AutomationRunStatus {
+  Running = 0,
+  Completed = 1,
+  Failed = 2,
+  /** Not attempted: the session was busy, or the window had closed. */
+  Skipped = 3,
+  /** Completed with nothing to say — the agent answered `NO_REPLY`. */
+  Quiet = 4,
+}
+
+export enum AutomationRunTrigger {
+  Schedule = 0,
+  Manual = 1,
+  ChannelCommand = 2,
+  Email = 3,
+  Webhook = 4,
+  Heartbeat = 5,
+}
+
+export enum AutomationTriggerKind {
+  ChannelCommand = 0,
+  Email = 1,
+  Webhook = 2,
+  Heartbeat = 3,
+}
+
+export enum ChannelKind {
+  Telegram = 0,
+  Ntfy = 1,
+  Discord = 2,
+  Fluxer = 3,
+  Email = 4,
+}
+
+/**
+ * Three outcomes rather than five statuses, because a bar and a dot can only
+ * carry three: did it say something, was it quiet, did it break. A run still
+ * going has no outcome at all.
+ */
+export enum RunOutcome {
+  Notified = 0,
+  Quiet = 1,
+  Failed = 2,
+}
+
+export interface AutomationTrigger {
+  kind: AutomationTriggerKind;
+  channelId?: string | null;
+  match?: string | null;
+  /** Always blank on a read: the server stores the hash, never the secret. */
+  secret?: string | null;
+  id: string;
+  enabled: boolean;
+}
+
+export interface AutomationSummary {
+  id: string;
+  name: string;
+  kind: AutomationKind;
+  prompt: string;
+  cronExpression: string;
+  timeZoneId: string;
+  enabled: boolean;
+  scheduleEnabled: boolean;
+  facet: string | null;
+  model: string | null;
+  repoUrls: string[];
+  nodeIds: string[];
+  continuity: boolean;
+  notepad: string;
+  /** "07:00:00" — a `TimeOnly`, not a timestamp. */
+  activeHoursStart: string | null;
+  activeHoursEnd: string | null;
+  deliveryKind: DeliveryKind;
+  deliveryTargetId: string | null;
+  triggers: AutomationTrigger[];
+  sessionId: string | null;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  lastStatus: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** One run, as every Routines surface shows it. */
+export interface RunSummary {
+  id: string;
+  routineId: string;
+  routineName: string;
+  startedAt: string;
+  finishedAt: string | null;
+  status: AutomationRunStatus;
+  /** Null while it is still running — that is the pulsing dot, not a colour. */
+  outcome: RunOutcome | null;
+  durationMs: number | null;
+  /** The first line of the answer, bounded, or the error when it failed. */
+  said: string | null;
+  error: string | null;
+  delivered: boolean;
+  trigger: AutomationRunTrigger;
+  triggerId: string | null;
+  triggerSource: string | null;
+  retryOfRunId: string | null;
+}
+
+export interface NextFire {
+  routineId: string;
+  name: string;
+  at: string;
+}
+
+export interface RoutineCard {
+  id: string;
+  name: string;
+  kind: AutomationKind;
+  enabled: boolean;
+  scheduleEnabled: boolean;
+  /** The schedule in words, or what starts it when there is no clock. */
+  scheduleSentence: string;
+  /** The mono second line: "0 7 * * 1-5 · Europe/Berlin". */
+  scheduleMeta: string;
+  /** Exactly 14, oldest first, left-padded with nulls. Null is "no run". */
+  history: (RunOutcome | null)[];
+  lastRun: RunSummary | null;
+  nextFire: string | null;
+  lastFailed: boolean;
+  running: boolean;
+  triggerCount: number;
+}
+
+export interface RoutineFailure {
+  routineId: string;
+  name: string;
+  runId: string;
+  at: string;
+  error: string | null;
+  durationMs: number | null;
+  /** Consecutive failures back from the latest finished run. At least 1. */
+  streak: number;
+}
+
+export interface HeartbeatStatus {
+  id: string;
+  enabled: boolean;
+  intervalSentence: string;
+  activeStart: string | null;
+  activeEnd: string | null;
+  nextFire: string | null;
+  notepadItems: string[];
+  quietToday: number;
+  notifiedToday: number;
+  running: boolean;
+}
+
+/** Everything the board paints, in one call. */
+export interface RoutineBoard {
+  routines: RoutineCard[];
+  failures: RoutineFailure[];
+  /** Null until the user has one; the board never creates it by itself. */
+  heartbeat: HeartbeatStatus | null;
+  runsToday: number;
+  notifiedToday: number;
+  quietToday: number;
+  failedToday: number;
+  upcoming: NextFire[];
+  /** The phone's ledger: the last runs across every routine, newest first. */
+  recentRuns?: RunSummary[] | null;
+}
+
+/** The cheap read behind the sessions screen's strip. */
+export interface RoutineStatus {
+  anyRoutines: boolean;
+  anyFailed: boolean;
+  newestFailure: RoutineFailure | null;
+  latestNotified: RunSummary | null;
+  upcoming: NextFire[];
+}
+
+export interface TriggerStats {
+  /** The trigger's own id — or the routine's, for the synthesized schedule. */
+  triggerId: string;
+  /** Null for that synthesized schedule. */
+  kind: AutomationTriggerKind | null;
+  enabled: boolean;
+  summary: string;
+  note: string;
+  lastFired: string | null;
+  lastFiredBy: string | null;
+  fires30d: number;
+  history: (RunOutcome | null)[];
+  channel?: ChannelKind | null;
+}
+
+export interface RoutineDetail {
+  routine: AutomationSummary;
+  scheduleSentence: string;
+  scheduleMeta: string;
+  nextFire: string | null;
+  /** Where an unprompted run's answer goes: "your browser", "nobody (log only)". */
+  notifiesLabel: string;
+  /** Thirty entries, oldest first, left-padded with nulls. */
+  history: (RunOutcome | null)[];
+  runs30d: number;
+  notified30d: number;
+  failed30d: number;
+  medianDurationMs: number | null;
+  triggers: TriggerStats[];
+  lastRun: RunSummary | null;
+  running: boolean;
+}
+
+export interface RunPage {
+  runs: RunSummary[];
+  total: number;
+}
+
+/** One tool call in a run's replayed transcript. */
+export interface RunStep {
+  /** The tool's name. */
+  symbol: string;
+  /** Its most telling argument — a path, a command, a query. */
+  name: string;
+  meta: string | null;
+  ok: boolean;
+}
+
+export interface RunDetail {
+  run: RunSummary;
+  sessionId: string | null;
+  model: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  estimatedCost: number | null;
+  steps: RunStep[];
+  finalMessage: string | null;
+  endedAt: string | null;
+}

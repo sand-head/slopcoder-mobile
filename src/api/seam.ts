@@ -14,6 +14,7 @@
  */
 import type {
   AgentEventEnvelope,
+  AutomationSummary,
   CreateSessionRequest,
   CreateSessionResult,
   DeviceKey,
@@ -26,6 +27,11 @@ import type {
   RemoteNodeSummary,
   ResolveApprovalRequest,
   ResolveQuestionRequest,
+  RoutineBoard,
+  RoutineDetail,
+  RoutineStatus,
+  RunDetail,
+  RunPage,
   ServerProtocol,
   SessionState,
   SessionSummary,
@@ -37,6 +43,32 @@ import type {
   UsageDashboard,
 } from './contracts';
 import { UsageRange } from './contracts';
+
+/** `?tz=Europe/Berlin`, or nothing at all when the phone could not name its zone. */
+function zone(timeZoneId?: string): string {
+  return timeZoneId ? `?tz=${encodeURIComponent(timeZoneId)}` : '';
+}
+
+/** What a 404 on a board means: the user has nothing, not that we failed. */
+const EMPTY_BOARD: RoutineBoard = {
+  routines: [],
+  failures: [],
+  heartbeat: null,
+  runsToday: 0,
+  notifiedToday: 0,
+  quietToday: 0,
+  failedToday: 0,
+  upcoming: [],
+  recentRuns: [],
+};
+
+const EMPTY_STATUS: RoutineStatus = {
+  anyRoutines: false,
+  anyFailed: false,
+  newestFailure: null,
+  latestNotified: null,
+  upcoming: [],
+};
 
 /** The header `SameOriginFilter` demands. Any value works; the web client sends "1". */
 export const CLIENT_HEADER = 'X-Slopcoder-Client';
@@ -174,6 +206,25 @@ export class Seam {
     return status !== 404;
   }
 
+  /**
+   * A command that answers with a validation problem rather than throwing.
+   *
+   * The routines seam returns `TextResult` — `{value}` — where a null value
+   * means it worked and a string is the sentence to show. A bare null body
+   * would be ambiguous with an empty 204, which is why the server wraps it; the
+   * 404 is ours to word, since the seam deliberately cannot tell "no such
+   * routine" from "not yours".
+   */
+  private async problem(path: string, body?: unknown): Promise<string | null> {
+    const { status, value } = await this.request<{ value: string | null }>(
+      'POST',
+      path,
+      body ?? {},
+    );
+    if (status === 404) return 'That routine is gone.';
+    return value?.value ?? null;
+  }
+
   // ---- sessions ----
 
   async sessions(signal?: AbortSignal): Promise<SessionSummary[]> {
@@ -291,6 +342,96 @@ export class Seam {
 
   async nodes(signal?: AbortSignal): Promise<RemoteNodeSummary[]> {
     return (await this.get<RemoteNodeSummary[]>('api/seam/nodes/', signal)) ?? [];
+  }
+
+  // ---- routines ----
+  //
+  // The paths still say `automations`: the entities kept that name and the
+  // screens took the new one (`docs/general-assistant.md`). Every read here is
+  // already folded server-side, so a screen is one call and no arithmetic.
+
+  /**
+   * The whole board. `tz` is the phone's own zone, which is what "today" is
+   * counted in — leave it off and the server counts in UTC, which is somebody
+   * else's midnight.
+   */
+  async routineBoard(tz?: string, signal?: AbortSignal): Promise<RoutineBoard> {
+    return (
+      (await this.get<RoutineBoard>(`api/seam/automations/board${zone(tz)}`, signal)) ?? EMPTY_BOARD
+    );
+  }
+
+  /** The cheap read behind the sessions screen's strip. */
+  async routineStatus(tz?: string, signal?: AbortSignal): Promise<RoutineStatus> {
+    return (
+      (await this.get<RoutineStatus>(`api/seam/automations/status${zone(tz)}`, signal)) ??
+      EMPTY_STATUS
+    );
+  }
+
+  /** Null when it is not the caller's, which is indistinguishable from gone. */
+  routine(id: string, signal?: AbortSignal) {
+    return this.get<RoutineDetail>(`api/seam/automations/${id}/detail`, signal);
+  }
+
+  async routineRuns(id: string, skip: number, take: number, signal?: AbortSignal): Promise<RunPage> {
+    return (
+      (await this.get<RunPage>(
+        `api/seam/automations/${id}/runs/page?skip=${skip}&take=${take}`,
+        signal,
+      )) ?? { runs: [], total: 0 }
+    );
+  }
+
+  routineRun(id: string, runId: string, signal?: AbortSignal) {
+    return this.get<RunDetail>(`api/seam/automations/${id}/runs/${runId}`, signal);
+  }
+
+  setRoutineEnabled(id: string, enabled: boolean) {
+    return this.problem(`api/seam/automations/${id}/enabled/${enabled}`);
+  }
+
+  /** Start a run right now, ignoring active hours. */
+  runRoutineNow(id: string) {
+    return this.problem(`api/seam/automations/${id}/run`);
+  }
+
+  /** Run it again, recording the new run as this one's retry. */
+  retryRoutineRun(id: string, runId: string) {
+    return this.problem(`api/seam/automations/${id}/runs/${runId}/retry`);
+  }
+
+  setTriggerEnabled(id: string, triggerId: string, enabled: boolean) {
+    return this.problem(`api/seam/automations/${id}/triggers/${triggerId}/enabled/${enabled}`);
+  }
+
+  /** Start a manual run tagged with one trigger, as if it had fired. */
+  fireTrigger(id: string, triggerId: string) {
+    return this.problem(`api/seam/automations/${id}/triggers/${triggerId}/fire`);
+  }
+
+  setRoutinePrompt(id: string, prompt: string) {
+    return this.problem(`api/seam/automations/${id}/prompt`, { value: prompt });
+  }
+
+  /** Replace the agent-maintained scratch the heartbeat watches. */
+  setRoutineNotepad(id: string, notepad: string) {
+    return this.problem(`api/seam/automations/${id}/notepad`, { value: notepad });
+  }
+
+  /** False when it was already gone, or was never the caller's. */
+  async deleteRoutine(id: string): Promise<boolean> {
+    const { status } = await this.request<void>('DELETE', `api/seam/automations/${id}`);
+    return status !== 404;
+  }
+
+  /**
+   * The caller's heartbeat, creating it — paused, on the default schedule — the
+   * first time anyone asks. At most one exists per user, so this is safe to
+   * call from a button that says "set it up".
+   */
+  heartbeat(): Promise<AutomationSummary | null> {
+    return this.send<AutomationSummary>('POST', 'api/seam/automations/heartbeat', {});
   }
 
   usage(range: UsageRange, signal?: AbortSignal) {

@@ -11,12 +11,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ApprovalMode,
   SessionStatus,
+  type RoutineStatus,
   type FacetOption,
   type ModelCandidate,
   type RemoteNodeSummary,
   type SessionSummary,
 } from '../api/contracts';
 import { useAuth } from '../state/auth';
+import { clock, deviceZone, firstWords, soon } from '../api/routines';
 import { useOwnedRepos } from '../state/repos';
 import { rowToChoice } from '../api/repoPicker';
 import { useSessionHub } from '../state/hub';
@@ -59,6 +61,7 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
   const [nodes, setNodes] = useState<string[]>([]);
   const [recent, setRecent] = useState<string[]>([]);
   const [allNodes, setAllNodes] = useState<RemoteNodeSummary[]>([]);
+  const [routines, setRoutines] = useState<RoutineStatus | null>(null);
   const owned = useOwnedRepos(seam);
   const [options, setOptions] = useState<TurnOptions>({
     selection: { auto: true, connectionId: null, modelId: null },
@@ -121,6 +124,13 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
     try {
       setSessions(await seam.sessions());
       setError(null);
+      // The strip's one read, and a cheap one: it says whether anything needs
+      // you without the board's aggregation. A failure here is not the session
+      // list's problem, so it is caught on its own.
+      seam
+        .routineStatus(deviceZone())
+        .then(setRoutines)
+        .catch(() => {});
     } catch (e) {
       // OfflineError already carries the useful sentence; the banner says the
       // rest, so this only needs to explain a server that answered badly.
@@ -294,6 +304,18 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
             ))}
           </View>
         ) : null}
+
+        {routines?.anyRoutines ? (
+          <RoutineStrip
+            status={routines}
+            onAll={() => navigation.navigate('Routines')}
+            onOpen={(id, run) => navigation.navigate('Routine', { id, run })}
+            onRetry={async (id, run) => {
+              await seam?.retryRoutineRun(id, run);
+              setRoutines(await seam!.routineStatus(deviceZone()));
+            }}
+          />
+        ) : null}
       </ScrollView>
 
       <Modal visible={renaming !== null} transparent animationType="fade" onRequestClose={() => setRenaming(null)}>
@@ -407,6 +429,85 @@ function SessionCard({
           </Body>
         </Pressable>
       </View>
+    </View>
+  );
+}
+
+/**
+ * What the routines have been doing, at the foot of the page you land on: what
+ * broke, what one of them last said, what is next. Nothing at all until there
+ * is a routine to report on — the same rule the cockpit's strip follows, and
+ * the reason an account with no routines never learns the feature exists from
+ * an empty box.
+ */
+function RoutineStrip({
+  status,
+  onAll,
+  onOpen,
+  onRetry,
+}: {
+  status: RoutineStatus;
+  onAll: () => void;
+  onOpen: (routineId: string, runId?: string) => void;
+  onRetry: (routineId: string, runId: string) => Promise<void>;
+}) {
+  const theme = useTheme();
+  const { c } = theme;
+  const [retrying, setRetrying] = useState(false);
+
+  return (
+    <View style={{ gap: 8, paddingTop: 4, borderTopWidth: 1, borderTopColor: c.border }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 10 }}>
+        {status.anyFailed ? (
+          <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: c.destructive }} />
+        ) : null}
+        <Meta style={{ flex: 1 }}>routines</Meta>
+        <Pressable onPress={onAll} hitSlop={10}>
+          <Mono style={{ color: c.primary }}>all routines ›</Mono>
+        </Pressable>
+      </View>
+
+      {status.newestFailure ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Pressable
+            style={{ flex: 1 }}
+            onPress={() => onOpen(status.newestFailure!.routineId, status.newestFailure!.runId)}>
+            <Mono numberOfLines={1} style={{ color: c.destructive }}>
+              {status.newestFailure.name} failed {clock(status.newestFailure.at)}
+            </Mono>
+          </Pressable>
+          <Pressable
+            disabled={retrying}
+            hitSlop={10}
+            onPress={async () => {
+              setRetrying(true);
+              try {
+                await onRetry(status.newestFailure!.routineId, status.newestFailure!.runId);
+              } finally {
+                setRetrying(false);
+              }
+            }}>
+            <Mono style={{ color: c.primary, textDecorationLine: 'underline' }}>retry</Mono>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {status.latestNotified ? (
+        <Pressable
+          onPress={() => onOpen(status.latestNotified!.routineId, status.latestNotified!.id)}>
+          <Mono numberOfLines={1}>
+            <Mono style={{ color: theme.status.ok }}>{status.latestNotified.routineName}</Mono>{' '}
+            {clock(status.latestNotified.startedAt)}
+            {status.latestNotified.said ? ` · ${firstWords(status.latestNotified.said)}` : ''}
+          </Mono>
+        </Pressable>
+      ) : null}
+
+      {status.upcoming.length > 0 ? (
+        <Mono numberOfLines={1}>
+          next · {status.upcoming.map(u => `${u.name} ${soon(u.at)}`).join(' · ')}
+        </Mono>
+      ) : null}
     </View>
   );
 }

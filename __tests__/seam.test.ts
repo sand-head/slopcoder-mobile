@@ -164,3 +164,85 @@ describe('parsePairingUri', () => {
     expect(parsePairingUri('slopcoder://pair?code=ONLY')).toBeNull();
   });
 });
+
+/**
+ * The routines half of the seam, whose paths still say `automations` — the
+ * entities kept that name when the screens took the new one.
+ *
+ * Two shapes here are easy to get wrong and silent when you do: a command
+ * answers `TextResult`, where a *null* value is success and a string is the
+ * problem to show, and the enable/disable routes carry the boolean in the path
+ * behind a `:bool` constraint.
+ */
+describe('routines', () => {
+  const seam = () => new Seam({ baseUrl: 'https://s', apiKey: 'slop_k' });
+  const url = () => fetchMock.mock.calls[0][0] as string;
+
+  it('asks for the board in the phone own zone, so "today" means today here', async () => {
+    fetchMock.mockReturnValue(reply(200, { routines: [], failures: [] }));
+    await seam().routineBoard('Europe/Berlin');
+
+    expect(url()).toBe('https://s/api/seam/automations/board?tz=Europe%2FBerlin');
+  });
+
+  /** No zone at all beats a wrong one: the server then counts in UTC and says so. */
+  it('leaves the zone off entirely when the phone could not name it', async () => {
+    fetchMock.mockReturnValue(reply(200, {}));
+    await seam().routineStatus(undefined);
+
+    expect(url()).toBe('https://s/api/seam/automations/status');
+  });
+
+  it('answers an empty board rather than null when there is nothing', async () => {
+    fetchMock.mockReturnValue(reply(404));
+
+    await expect(seam().routineBoard()).resolves.toEqual(
+      expect.objectContaining({ routines: [], failures: [], heartbeat: null }),
+    );
+  });
+
+  /** `{value: null}` is the server saying it worked, not saying nothing. */
+  it('reads a command answer as the problem or as silence', async () => {
+    fetchMock.mockReturnValue(reply(200, { value: null }));
+    await expect(seam().runRoutineNow('r1')).resolves.toBeNull();
+
+    fetchMock.mockReturnValue(reply(200, { value: 'The session is busy.' }));
+    await expect(seam().runRoutineNow('r1')).resolves.toBe('The session is busy.');
+  });
+
+  /**
+   * A 404 here is "no such routine, or not yours" — deliberately the same
+   * answer. Letting it fall through as a null would report a routine that does
+   * not exist as having been started.
+   */
+  it('does not report a missing routine as a command that worked', async () => {
+    fetchMock.mockReturnValue(reply(404));
+    await expect(seam().runRoutineNow('gone')).resolves.toBe('That routine is gone.');
+  });
+
+  it('puts the switch position in the path, where the route expects it', async () => {
+    fetchMock.mockReturnValue(reply(200, { value: null }));
+    await seam().setRoutineEnabled('r1', false);
+
+    expect(url()).toBe('https://s/api/seam/automations/r1/enabled/false');
+  });
+
+  it('sends a prompt in the body, not in a URL', async () => {
+    fetchMock.mockReturnValue(reply(200, { value: null }));
+    await seam().setRoutinePrompt('r1', 'Check the queue.');
+
+    expect(url()).toBe('https://s/api/seam/automations/r1/prompt');
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ value: 'Check the queue.' });
+  });
+
+  it('pages a run log, and the run under one of its rows', async () => {
+    fetchMock.mockReturnValue(reply(200, { runs: [], total: 0 }));
+    await seam().routineRuns('r1', 30, 30);
+    expect(url()).toBe('https://s/api/seam/automations/r1/runs/page?skip=30&take=30');
+
+    fetchMock.mockReset();
+    fetchMock.mockReturnValue(reply(200, {}));
+    await seam().routineRun('r1', 'run9');
+    expect(url()).toBe('https://s/api/seam/automations/r1/runs/run9');
+  });
+});

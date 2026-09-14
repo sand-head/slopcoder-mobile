@@ -44,6 +44,7 @@ import {
   Meta,
   Mono,
   Screen,
+  markdownStyles,
 } from '../ui/kit';
 import { Composer, type TurnOptions } from '../ui/Composer';
 import { Sheet } from '../ui/Sheet';
@@ -54,7 +55,7 @@ import { newTokens } from '../api/contracts';
 import { font, mix, radius, useTheme } from '../theme';
 
 export function SessionDetailScreen({ route, navigation }: { route: any; navigation: any }) {
-  const { c, isDark } = useTheme();
+  const { c } = useTheme();
   const insets = useSafeAreaInsets();
   const id: string = route.params.id;
 
@@ -254,7 +255,7 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
                     </Body>
                   ) : null}
                   {live.text ? (
-                    <Markdown style={markdownStyles(c, isDark)}>{live.text}</Markdown>
+                    <Markdown style={markdownStyles(c)}>{live.text}</Markdown>
                   ) : null}
                 </View>
               ) : undefined
@@ -440,7 +441,7 @@ function TranscriptRow({
 
     case 'text':
       // No bubble, no border: assistant prose is the page.
-      return <Markdown style={markdownStyles(c, isDark)}>{item.text}</Markdown>;
+      return <Markdown style={markdownStyles(c)}>{item.text}</Markdown>;
 
     case 'think':
       return (
@@ -784,40 +785,3 @@ function Pre({ text, error }: { text: string; error?: boolean }) {
   );
 }
 
-function markdownStyles(c: ReturnType<typeof useTheme>['c'], _isDark: boolean) {
-  return {
-    body: { color: c.foreground, fontFamily: font.sans, fontSize: 14.4, lineHeight: 23 },
-    code_inline: {
-      fontFamily: font.mono,
-      fontSize: 12.5,
-      backgroundColor: mix(c.muted, 60),
-      color: c.foreground,
-    },
-    // Wide code must scroll inside itself, never widen the screen.
-    code_block: {
-      fontFamily: font.mono,
-      fontSize: 12,
-      backgroundColor: mix(c.muted, 40),
-      borderWidth: 1,
-      borderColor: c.border,
-      borderRadius: radius.md,
-      color: c.foreground,
-    },
-    fence: {
-      fontFamily: font.mono,
-      fontSize: 12,
-      backgroundColor: mix(c.muted, 40),
-      borderWidth: 1,
-      borderColor: c.border,
-      borderRadius: radius.md,
-      color: c.foreground,
-    },
-    link: { color: c.primary },
-    blockquote: {
-      backgroundColor: 'transparent',
-      borderLeftWidth: 2,
-      borderLeftColor: c.border,
-      paddingLeft: 10,
-    },
-  };
-}
