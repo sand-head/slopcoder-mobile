@@ -10,8 +10,8 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Animated,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   LayoutAnimation,
   Platform,
@@ -20,6 +20,7 @@ import {
   View,
 } from 'react-native';
 import { useHeaderHeight } from '@react-navigation/elements';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Markdown from '@ronradtke/react-native-markdown-display';
 import {
   ApprovalMode,
@@ -60,7 +61,21 @@ import { font, mix, radius, useTheme } from '../theme';
 export function SessionDetailScreen({ route, navigation }: { route: any; navigation: any }) {
   const { c } = useTheme();
   const headerHeight = useHeaderHeight();
+  const insets = useSafeAreaInsets();
   const id: string = route.params.id;
+
+  // The composer clears the home indicator when the keyboard is down, and
+  // sits straight on the keyboard when it is up — the inset is the phone's
+  // bottom edge, and with the keyboard there the bottom edge is the keyboard.
+  const [keyboardUp, setKeyboardUp] = useState(false);
+  useEffect(() => {
+    const shown = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardUp(true));
+    const hidden = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardUp(false));
+    return () => {
+      shown.remove();
+      hidden.remove();
+    };
+  }, []);
 
   const seam = useAuth(s => s.seam);
   const { hub } = useSessionHub();
@@ -208,12 +223,6 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
   // Newest first, for the inverted list.
   const reversed = useMemo(() => [...items].reverse(), [items]);
 
-  // The jump button fades rather than pops.
-  const jump = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.timing(jump, { toValue: pinned ? 0 : 1, duration: 160, useNativeDriver: true }).start();
-  }, [pinned, jump]);
-
   return (
     <Screen>
       <KeyboardAvoidingView
@@ -295,29 +304,32 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
           />
         )}
 
-        <Animated.View
-          pointerEvents={pinned ? 'none' : 'box-none'}
-          style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: composerHeight + 8,
-            alignItems: 'center',
-            opacity: jump,
-          }}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Jump to the latest"
-            accessibilityElementsHidden={pinned}
-            onPress={toBottom}
-            style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
-            <GlassSurface
-              cornerRadius={18}
-              style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}>
-              <Body style={{ fontFamily: font.mono, fontSize: 15, lineHeight: 17 }}>↓</Body>
-            </GlassSurface>
-          </Pressable>
-        </Animated.View>
+        {/* Mounted, never faded: the glass is a UIVisualEffectView, and an
+            ancestor animating its opacity leaves it drawing nothing at all —
+            the arrow floated on its own with no circle behind it. */}
+        {!pinned ? (
+          <View
+            pointerEvents="box-none"
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: composerHeight + 8,
+              alignItems: 'center',
+            }}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Jump to the latest"
+              onPress={toBottom}
+              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+              <GlassSurface
+                cornerRadius={18}
+                style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}>
+                <Body style={{ fontFamily: font.mono, fontSize: 15, lineHeight: 17 }}>↓</Body>
+              </GlassSurface>
+            </Pressable>
+          </View>
+        ) : null}
 
         <View
           onLayout={event => setComposerHeight(event.nativeEvent.layout.height)}
@@ -327,7 +339,7 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
             right: 0,
             bottom: 0,
             paddingHorizontal: 10,
-            paddingBottom: 10,
+            paddingBottom: (keyboardUp ? 0 : insets.bottom) + 10,
             paddingTop: 4,
           }}>
           <Composer

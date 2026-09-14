@@ -13,6 +13,7 @@
  * fix a sentence in the prompt, close one door without touching the others.
  */
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Alert,
   Pressable,
@@ -77,6 +78,7 @@ const TABS = [
 export function RoutineScreen({ route, navigation }: { route: any; navigation: any }) {
   const theme = useTheme();
   const { c } = theme;
+  const insets = useSafeAreaInsets();
   const seam = useAuth(s => s.seam);
   const server = useAuth(s => s.credential?.server);
 
@@ -283,7 +285,10 @@ export function RoutineScreen({ route, navigation }: { route: any; navigation: a
       <ConnectionBanner onRetry={load} />
 
       <ScrollView
-        contentContainerStyle={{ padding: 20, paddingBottom: 24, gap: 16 }}
+        contentInsetAdjustmentBehavior="automatic"
+        // A pushed screen has no tab bar under it, so the page's own foot has
+        // to clear the home indicator.
+        contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 24, gap: 16 }}
         keyboardShouldPersistTaps="handled"
         // The prompt editor sits at the foot of this page; without these the
         // keyboard covered it and the Save row, and the page could not scroll

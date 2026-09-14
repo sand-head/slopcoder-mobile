@@ -193,6 +193,7 @@ export function RoutinesScreen({ navigation }: { navigation: any }) {
 
       <ScrollView
         ref={page}
+        contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{ padding: 20, paddingTop: 8, paddingBottom: 24, gap: 16 }}
         refreshControl={
           <RefreshControl
