@@ -419,6 +419,29 @@ export function Skeleton({ rows = 3, height = 44 }: { rows?: number; height?: nu
 }
 
 /**
+ * The bar over a pushed page, in glass: the whole strip the platform's
+ * navigation bar occupies, status bar included, refracting whatever scrolls
+ * under it. Handed to the navigator as `headerBackground`, which lays it
+ * under the native title and buttons and over the page.
+ *
+ * A transparent bar alone was not this. iOS 26 keeps a title legible over a
+ * scrolling page with a scroll-edge effect the scroll view draws itself, and
+ * the cockpit's inverted list — flipped by a transform — never drew one, so
+ * the transcript ran straight through the title. Glass is what was asked
+ * for anyway.
+ */
+export function GlassBar() {
+  const { c } = useTheme();
+  return (
+    <GlassSurface
+      cornerRadius={0}
+      style={[StyleSheet.absoluteFill, { borderWidth: 0, borderBottomWidth: 1, borderBottomColor: c.border }]}>
+      <View />
+    </GlassSurface>
+  );
+}
+
+/**
  * A surface that is glass where the OS has it, and the card we already had
  * everywhere else.
  *

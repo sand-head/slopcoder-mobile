@@ -9,8 +9,9 @@
  * These options hand all of it back to UIKit and to Material.
  */
 import type React from 'react';
+import { useContext } from 'react';
 import { Platform } from 'react-native';
-import { useHeaderHeight } from '@react-navigation/elements';
+import { HeaderHeightContext } from '@react-navigation/elements';
 import type { NativeStackNavigationOptions } from '@react-navigation/native-stack';
 import { font, type Theme } from '../theme';
 
@@ -61,7 +62,9 @@ export function stackOptions({ c }: Theme): NativeStackNavigationOptions {
  * and needs no room made for it.
  */
 export function useHeaderInset(): number {
-  const height = useHeaderHeight();
+  // The context, not `useHeaderHeight`: that throws outside a navigator,
+  // and a screen with no bar over it simply has nothing to clear.
+  const height = useContext(HeaderHeightContext) ?? 0;
   return Platform.OS === 'ios' ? height : 0;
 }
 

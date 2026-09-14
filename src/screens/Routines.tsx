@@ -55,6 +55,7 @@ import { Body, Button, Hint, Meta, Mono, Screen, Skeleton, StatusDot } from '../
 import { HistoryStrip, outcomeColor } from '../ui/HistoryStrip';
 import { SheetSegments } from '../ui/Sheet';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
+import { useHeaderInset } from '../navigation/headers';
 import { barButton } from '../navigation/headers';
 import { cockpitUrl, openInApp } from '../ui/browser';
 import { tapSelect } from '../ui/haptics';
@@ -79,6 +80,7 @@ export function RoutinesScreen({ navigation }: { navigation: any }) {
   const server = useAuth(s => s.credential?.server);
   const setFailed = useRoutineAlert(s => s.setFailed);
   const page = useRef<React.ComponentRef<typeof ScrollView>>(null);
+  const headerInset = useHeaderInset();
 
   const newRoutine = useCallback(() => {
     if (server) void openInApp(cockpitUrl(server, 'routines/new'), c.primary);
@@ -174,7 +176,13 @@ export function RoutinesScreen({ navigation }: { navigation: any }) {
 
   return (
     <Screen>
-      <ConnectionBanner onRetry={load} />
+      {/* The bar is transparent and the screen runs under it; the segments
+          are not a scroll view that insets itself, so they start below it
+          by hand. The list beneath them then sits clear of the bar already
+          and its own automatic inset adds nothing. */}
+      <View style={{ paddingTop: headerInset }}>
+        <ConnectionBanner onRetry={load} />
+      </View>
 
       <View style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: 6 }}>
         <SheetSegments

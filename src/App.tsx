@@ -13,7 +13,7 @@
  * `navigation/headers.ts`; nothing here paints a bar.
  */
 import React, { useEffect } from 'react';
-import { StatusBar, useColorScheme, View } from 'react-native';
+import { Platform, StatusBar, useColorScheme, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -23,10 +23,17 @@ import { SessionDetailScreen } from './screens/SessionDetail';
 import { RoutineScreen } from './screens/Routine';
 import { Tabs } from './navigation/Tabs';
 import { stackOptions } from './navigation/headers';
+import { GlassBar } from './ui/kit';
 import { useTheme } from './theme';
 import { linking } from './linking';
 
 const Root = createNativeStackNavigator();
+
+/**
+ * A pushed page's bar in glass, over the page. Only where the bar is
+ * transparent — Android paints its own.
+ */
+const glassBar = Platform.OS === 'ios' ? { headerBackground: () => <GlassBar /> } : {};
 
 export default function App() {
   const scheme = useColorScheme();
@@ -65,8 +72,8 @@ export default function App() {
           {credential ? (
             <>
               <Root.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
-              <Root.Screen name="Session" component={SessionDetailScreen} options={{ title: '' }} />
-              <Root.Screen name="Routine" component={RoutineScreen} options={{ title: '' }} />
+              <Root.Screen name="Session" component={SessionDetailScreen} options={{ title: '', ...glassBar }} />
+              <Root.Screen name="Routine" component={RoutineScreen} options={{ title: '', ...glassBar }} />
             </>
           ) : (
             <>
