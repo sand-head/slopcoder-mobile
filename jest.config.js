@@ -1,5 +1,9 @@
 module.exports = {
   preset: '@react-native/jest-preset',
+  // The first screen a suite mounts pays for loading every native mock on a
+  // cold CI runner; the routines board hit 7s once. Five seconds is jest's
+  // default, not a budget anyone chose.
+  testTimeout: 20_000,
   // These ship untransformed ESM. @react-navigation because the deep-link test
   // parses a URL with its real router; @callstack because the kit imports the
   // glass view, so every suite that touches a component pulls it in;
