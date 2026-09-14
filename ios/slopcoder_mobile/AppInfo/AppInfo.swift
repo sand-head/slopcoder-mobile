@@ -12,7 +12,7 @@ final class AppInfo: NSObject {
     @objc static func requiresMainQueueSetup() -> Bool { false }
 
     @objc
-    func constantsToExport() -> [String: Any] {
+    func constantsToExport() -> [String: Any]! {
         let info = Bundle.main.infoDictionary ?? [:]
         return [
             "version": info["CFBundleShortVersionString"] as? String ?? "",
