@@ -17,9 +17,10 @@
  * device. `__tests__/glyphs.test.ts` scans for it.
  */
 import React, { useState } from 'react';
-import { LayoutAnimation, Pressable, ScrollView, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 import type { DiffLine, ToolBlock, ToolCard as Card } from '../api/toolcard';
 import { Body, Diamond, Dot, GLYPHS, Meta, Mono } from './kit';
+import { animateNextLayout } from './motion';
 import { font, mix, radius, useTheme } from '../theme';
 
 /**
@@ -69,7 +70,7 @@ export function ToolCard({
       {hidden ? (
         <Pressable
           onPress={() => {
-            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            animateNextLayout();
             setTapped(!tapped);
           }}
           accessibilityRole="button"
@@ -311,7 +312,7 @@ function Diff({ lines }: { lines: DiffLine[] }) {
         <Pressable
           accessibilityRole="button"
           onPress={() => {
-            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            animateNextLayout();
             setFull(true);
           }}
           hitSlop={8}>

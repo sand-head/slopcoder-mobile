@@ -11,7 +11,6 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import {
   ActivityIndicator,
   FlatList,
-  LayoutAnimation,
   Pressable,
   ScrollView,
   View,
@@ -53,6 +52,7 @@ import {
   Screen,
   markdownStyles,
 } from '../ui/kit';
+import { animateNextLayout } from '../ui/motion';
 import { Composer, type TurnOptions } from '../ui/Composer';
 import { Sheet } from '../ui/Sheet';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
@@ -219,7 +219,7 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
   // and the lines below it move rather than jump.
   const pendingCount = (state?.pendingApprovalIds.length ?? 0) + (state?.pendingQuestionIds.length ?? 0);
   useEffect(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    animateNextLayout();
   }, [pendingCount]);
 
   // Each subagent's thread folded under its own row, then newest first for
@@ -502,7 +502,7 @@ function SubagentBlock({ group, ...handlers }: { group: SubagentGroup } & RowHan
     <View>
       <Pressable
         onPress={() => {
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          animateNextLayout();
           setOpen(!open);
         }}
         accessibilityRole="button"
@@ -750,7 +750,7 @@ function TranscriptRow({
             <Pressable
               accessibilityRole="button"
               onPress={() => {
-                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                animateNextLayout();
                 setOpen(!open);
               }}>
               <Meta>{open ? 'hide detail' : 'what the provider said'}</Meta>
@@ -912,7 +912,7 @@ function Collapsible({
     <View>
       <Pressable
         onPress={() => {
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          animateNextLayout();
           onToggle();
         }}
         accessibilityRole="button"

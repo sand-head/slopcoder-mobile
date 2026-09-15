@@ -14,7 +14,8 @@
  * there the answer is always zero.
  */
 import { useEffect, useState } from 'react';
-import { Keyboard, LayoutAnimation, Platform } from 'react-native';
+import { Keyboard, Platform } from 'react-native';
+import { animateNextLayout, withKeyboard } from './motion';
 
 export function useKeyboardHeight(): number {
   const [height, setHeight] = useState(0);
@@ -23,16 +24,11 @@ export function useKeyboardHeight(): number {
     if (Platform.OS !== 'ios') return;
 
     const shown = Keyboard.addListener('keyboardWillShow', event => {
-      // Move with the keyboard, on its curve, rather than jumping ahead of it.
-      LayoutAnimation.configureNext(
-        LayoutAnimation.create(event.duration || 250, 'keyboard', 'opacity'),
-      );
+      animateNextLayout(withKeyboard(event.duration));
       setHeight(event.endCoordinates.height);
     });
     const hidden = Keyboard.addListener('keyboardWillHide', event => {
-      LayoutAnimation.configureNext(
-        LayoutAnimation.create(event.duration || 250, 'keyboard', 'opacity'),
-      );
+      animateNextLayout(withKeyboard(event.duration));
       setHeight(0);
     });
     return () => {

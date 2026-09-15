@@ -19,7 +19,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import {
   Alert,
-  LayoutAnimation,
   Platform,
   Pressable,
   RefreshControl,
@@ -55,6 +54,7 @@ import {
   StatusDot,
   stamp,
 } from '../ui/kit';
+import { animateNextLayout } from '../ui/motion';
 import { Composer, shortRepo, type TurnOptions } from '../ui/Composer';
 import { OverflowMenu } from '../ui/menu';
 import { Sheet } from '../ui/Sheet';
@@ -168,7 +168,7 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
     try {
       const next = await seam.sessions();
       // Rows that appear, leave or change section slide rather than snap.
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      animateNextLayout();
       setSessions(next);
       setError(null);
       // The strip's one read, and a cheap one: it says whether anything needs
