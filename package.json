@@ -8,6 +8,7 @@
     "lint": "eslint .",
     "start": "react-native start",
     "test": "jest",
+    "bundle:check": "react-native bundle --platform ios --dev false --entry-file index.js --bundle-output build/bundle-check/main.jsbundle --assets-dest build/bundle-check/assets",
     "postinstall": "patch-package"
   },
   "dependencies": {
