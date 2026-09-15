@@ -163,11 +163,22 @@ export interface AttachedNode {
   username: string;
 }
 
-export interface ActiveSubagent {
-  id: number;
-  task: string;
+/**
+ * A sub-session this session's agent has opened: a whole session of its own,
+ * driven by the agent instead of the user. The parent lists it; its
+ * transcript is read from the sub-session itself.
+ */
+export interface SubSessionInfo {
+  id: string;
+  name: string;
   model: string;
-  startedAt: string;
+  profile: string;
+  status: SessionStatus;
+  /** Prompts the driving agent has sent so far. */
+  turns: number;
+  /** The driving agent is done with it; it will not be prompted again. */
+  closed: boolean;
+  openedAt: string;
 }
 
 /**
@@ -204,10 +215,15 @@ export interface SessionState {
   sandboxState: SandboxState;
   lastActivityAt: string;
   attachedNodes: AttachedNode[];
-  activeSubagents: ActiveSubagent[];
+  subSessions: SubSessionInfo[];
   backgroundJobCount: number;
   effectiveThinkingLevel?: ThinkingLevel | null;
   clientWorkspace?: ClientWorkspace | null;
+  /** Set on a sub-session: the session whose agent drives it. No composer there. */
+  parentSessionId?: string | null;
+  subSessionProfile?: string | null;
+  /** A sub-session its driving agent has closed. */
+  closed?: boolean;
 }
 
 /**

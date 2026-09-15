@@ -404,7 +404,19 @@ function compose(tool: string, input: Json | undefined, result: string | null, i
       return webSearch(input, result, isError);
 
     // ---- agent ----
-    case 'run_subagent':
+    case 'open_subsession':
+      return subSession('Open sub-session', str(input, 'name'), input, result, isError);
+    case 'prompt_subsession':
+      return subSession(
+        'Prompt sub-session',
+        subSessionName(result) ?? shortId(str(input, 'subsession_id')),
+        input,
+        result,
+        isError,
+      );
+    case 'close_subsession':
+      return named('Close sub-session', shortId(str(input, 'subsession_id')), result, isError);
+    case 'run_subagent': // legacy transcripts
       return subagent(input, result, isError);
     case 'skill':
       return named('Skill', str(input, 'name'), result, isError);
@@ -749,6 +761,54 @@ function webSearch(input: Json | undefined, result: string | null, isError: bool
 }
 
 // ---------------------------------------------------------------- agent
+
+/**
+ * One prompt to a sub-session and its reply: the parent's own record of what
+ * it said and heard. The live card above the stream shows the conversation.
+ */
+function subSession(
+  verb: string,
+  subject: string | null,
+  input: Json | undefined,
+  result: string | null,
+  isError: boolean,
+): ToolCard {
+  const facets: string[] = [];
+  const profile = str(input, 'profile');
+  if (profile) facets.push(profile);
+  const model = str(input, 'model');
+  if (model) facets.push(model);
+
+  const blocks: ToolBlock[] = [];
+  const prompt = str(input, 'prompt');
+  if (prompt) blocks.push({ type: 'text', label: 'prompt', open: false, tone: 'plain', text: prompt });
+  appendResult(blocks, stripSubSessionHeader(result), isError, 'text');
+  return { verb, subject, subjectStyle: 'plain', facets, blocks };
+}
+
+const SUB_SESSION_HEADER = '[sub-session "';
+
+/** The sub-session's name, read off the reply header — the input only carries the id. */
+function subSessionName(result: string | null): string | null {
+  if (result === null) return null;
+  const at = result.indexOf(SUB_SESSION_HEADER);
+  if (at < 0) return null;
+  const start = at + SUB_SESSION_HEADER.length;
+  const end = result.indexOf('"', start);
+  return end > start ? result.slice(start, end) : null;
+}
+
+/** The reply without its header line, which the card's head already says. */
+function stripSubSessionHeader(result: string | null): string | null {
+  if (result === null || !result.startsWith(SUB_SESSION_HEADER)) return result;
+  const newline = result.indexOf('\n');
+  return newline < 0 ? '' : result.slice(newline + 1);
+}
+
+/** The first block of a UUID, enough to tell sub-sessions apart in a row. */
+function shortId(id: string | null): string | null {
+  return id !== null && id.length > 8 ? id.slice(0, 8) : id;
+}
 
 function subagent(input: Json | undefined, result: string | null, isError: boolean): ToolCard {
   const facets: string[] = [];

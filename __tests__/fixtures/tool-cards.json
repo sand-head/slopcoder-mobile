@@ -1420,5 +1420,127 @@
         }
       ]
     }
+  },
+  {
+    "name": "open a sub-session",
+    "tool": "open_subsession",
+    "input": {
+      "name": "push relay tests",
+      "prompt": "Add tests for the push relay.\nReport the files you touched.",
+      "profile": "coder",
+      "model": "claude-sonnet-5"
+    },
+    "result": "[sub-session \u0022push relay tests\u0022 \u00B7 id 0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b \u00B7 turn 1 \u00B7 claude-sonnet-5]\nAdded tests/PushRelayTests.cs with 4 facts. Build green.",
+    "expected": {
+      "verb": "Open sub-session",
+      "subject": "push relay tests",
+      "subjectStyle": "plain",
+      "facets": [
+        "coder",
+        "claude-sonnet-5"
+      ],
+      "blocks": [
+        {
+          "type": "text",
+          "label": "prompt",
+          "open": false,
+          "tone": "plain",
+          "text": "Add tests for the push relay.\nReport the files you touched."
+        },
+        {
+          "type": "text",
+          "label": "result",
+          "open": false,
+          "tone": "plain",
+          "text": "Added tests/PushRelayTests.cs with 4 facts. Build green."
+        }
+      ]
+    }
+  },
+  {
+    "name": "prompt a sub-session",
+    "tool": "prompt_subsession",
+    "input": {
+      "subsession_id": "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
+      "prompt": "Now cover the duplicate-subscriber case."
+    },
+    "result": "[sub-session \u0022push relay tests\u0022 \u00B7 id 0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b \u00B7 turn 2 \u00B7 claude-sonnet-5]\nAdded one more fact; all 5 pass.",
+    "expected": {
+      "verb": "Prompt sub-session",
+      "subject": "push relay tests",
+      "subjectStyle": "plain",
+      "facets": [],
+      "blocks": [
+        {
+          "type": "text",
+          "label": "prompt",
+          "open": false,
+          "tone": "plain",
+          "text": "Now cover the duplicate-subscriber case."
+        },
+        {
+          "type": "text",
+          "label": "result",
+          "open": false,
+          "tone": "plain",
+          "text": "Added one more fact; all 5 pass."
+        }
+      ]
+    }
+  },
+  {
+    "name": "prompt a sub-session that failed",
+    "tool": "prompt_subsession",
+    "input": {
+      "subsession_id": "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
+      "prompt": "Continue."
+    },
+    "result": "Error: sub-session \u0022push relay tests\u0022 is closed; open a new one.",
+    "isError": true,
+    "expected": {
+      "verb": "Prompt sub-session",
+      "subject": "0199a1b2",
+      "subjectStyle": "plain",
+      "facets": [],
+      "blocks": [
+        {
+          "type": "text",
+          "label": "prompt",
+          "open": false,
+          "tone": "plain",
+          "text": "Continue."
+        },
+        {
+          "type": "text",
+          "label": "error",
+          "open": true,
+          "tone": "error",
+          "text": "Error: sub-session \u0022push relay tests\u0022 is closed; open a new one."
+        }
+      ]
+    }
+  },
+  {
+    "name": "close a sub-session",
+    "tool": "close_subsession",
+    "input": {
+      "subsession_id": "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
+    },
+    "result": "Closed sub-session 0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b.",
+    "expected": {
+      "verb": "Close sub-session",
+      "subject": "0199a1b2",
+      "subjectStyle": "plain",
+      "facets": [],
+      "blocks": [
+        {
+          "type": "text",
+          "label": "result",
+          "open": false,
+          "tone": "plain",
+          "text": "Closed sub-session 0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b."
+        }
+      ]
+    }
   }
 ]

@@ -4,7 +4,7 @@
  *
  * Events are not polymorphic JSON. Each envelope carries `kind` (the bare C#
  * type name) and `payloadJson` — a JSON *string* holding the event, so parsing
- * happens twice. `SubagentEvent` nests a second envelope inside the first.
+ * happens twice. `SubagentEvent` (legacy) nests a second envelope inside the first.
  *
  * The fold is incremental: it consumes only what is new, because a 75ms push
  * must not refold a thousand-event transcript. Unknown kinds are skipped
@@ -24,7 +24,8 @@ export type ItemKind =
   | 'question'
   | 'error'
   | 'divider'
-  | 'subagent-start';
+  | 'subagent-start'
+  | 'subsession';
 
 export interface PlanStep {
   text: string;
@@ -114,11 +115,26 @@ export interface DividerItem extends BaseItem {
   label: string;
 }
 
+/** Legacy: a nested subagent's header (transcripts persisted before sub-sessions). */
 export interface SubagentStartItem extends BaseItem {
   kind: 'subagent-start';
   subagentId: number;
   task: string;
   model: string;
+}
+
+/**
+ * A sub-session the agent opened: a whole session of its own, driven by this
+ * agent. Only the anchor lives here — the card reads the sub-session's own
+ * transcript.
+ */
+export interface SubSessionItem extends BaseItem {
+  kind: 'subsession';
+  subSessionId: string;
+  name: string;
+  model: string;
+  profile: string;
+  routeReason: string | null;
 }
 
 export type Item =
@@ -132,7 +148,8 @@ export type Item =
   | QuestionItem
   | ErrorItem
   | DividerItem
-  | SubagentStartItem;
+  | SubagentStartItem
+  | SubSessionItem;
 
 /**
  * These two tools render as their own thing — the plan checklist, the question
@@ -405,6 +422,23 @@ export class TranscriptFolder {
           task: str('task'),
           model: str('model'),
         });
+        break;
+
+      case 'SubSessionOpened':
+        this.items.push({
+          ...base,
+          kind: 'subsession',
+          subSessionId: str('subSessionId'),
+          name: str('name'),
+          model: str('model'),
+          profile: str('profile') || 'general',
+          routeReason: (payload.routeReason as string | null) ?? null,
+        });
+        break;
+
+      // The card reads its closed state off the sub-session itself; the close
+      // tool's own row already marks the moment in the stream.
+      case 'SubSessionClosed':
         break;
 
       case 'SubagentEvent': {

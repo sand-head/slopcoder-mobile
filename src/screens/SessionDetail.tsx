@@ -59,6 +59,7 @@ import { MAX_IMAGES, pickImages, type ImageSource, type PendingImage } from '../
 import { Sheet } from '../ui/Sheet';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 import { ToolCard } from '../ui/ToolCard';
+import { SubSessionCard } from '../ui/SubSessionCard';
 import { useAtBottom } from '../ui/atBottom';
 import { useKeyboardHeight } from '../ui/keyboard';
 import { useHeaderInset } from '../navigation/headers';
@@ -149,6 +150,9 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
 
   const running = state?.status === SessionStatus.Running;
   const action = running ? 'Steer' : 'Send';
+  // A sub-session's prompts come from the agent that opened it: there is no
+  // composer, and the prompts in the transcript are not the user's words.
+  const parentDriven = !!state?.parentSessionId;
 
   const send = async () => {
     if (!seam || !state) return;
@@ -212,6 +216,7 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
   }, [state?.lastUsage]);
 
   const subtitle = [
+    parentDriven ? (state?.closed ? 'sub-session · closed' : 'sub-session') : null,
     running ? 'running' : 'idle',
     contextPercent === null ? null : `${contextPercent}%`,
     state?.usage.estimatedCost == null ? null : `$${state.usage.estimatedCost.toFixed(2)}`,
@@ -294,8 +299,10 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
             renderItem={({ item }) => (
               <RowView
                 row={item}
+                parentDriven={parentDriven}
                 pendingApprovals={state?.pendingApprovalIds ?? []}
                 pendingQuestions={state?.pendingQuestionIds ?? []}
+                onOpenSubSession={subId => navigation.push('Session', { id: subId })}
                 onApprove={(requestId, approved) => {
                   if (approved) tapConfirm();
                   else tapRefuse();
@@ -370,6 +377,9 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
             paddingBottom: (keyboardUp ? 0 : insets.bottom) + 10,
             paddingTop: 4,
           }}>
+          {parentDriven ? (
+            <SubSessionNote closed={state?.closed === true} />
+          ) : (
           <Composer
             value={draft}
             onChangeValue={setDraft}
@@ -402,6 +412,7 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
             models={models}
             facets={facets}
           />
+          )}
         </View>
       </View>
 
@@ -487,10 +498,36 @@ function ContextBar({ percent }: { percent: number }) {
 }
 
 interface RowHandlers {
+  /** A sub-session: the prompts are the driving agent's, not the user's. */
+  parentDriven: boolean;
   pendingApprovals: string[];
   pendingQuestions: string[];
   onApprove: (requestId: string, approved: boolean) => void;
   onAnswer: (requestId: string, answers: UserQuestionAnswer[] | null) => void;
+  onOpenSubSession: (id: string) => void;
+}
+
+/**
+ * Where the composer would be on a sub-session: the reason there isn't one.
+ * The way back to the parent is the bar's own back button — the card that
+ * opened this screen is on the parent.
+ */
+function SubSessionNote({ closed }: { closed: boolean }) {
+  const { c, status } = useTheme();
+  return (
+    <GlassSurface cornerRadius={radius.xl} style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
+      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+        <View style={{ width: 12, alignItems: 'center', paddingTop: 3 }}>
+          <Fork color={status.subagent} />
+        </View>
+        <Body style={{ flex: 1, fontSize: 13, color: c.mutedForeground }}>
+          This is a sub-session: its prompts come from the agent in its parent session
+          {closed ? ', which has closed it' : ''}. Watch it work and approve what it asks — the
+          conversation is the parent's.
+        </Body>
+      </View>
+    </GlassSurface>
+  );
 }
 
 function RowView({ row, ...handlers }: { row: Row } & RowHandlers) {
@@ -643,10 +680,12 @@ function PromptImages({ images }: { images: readonly { mediaType: string; base64
 
 function TranscriptRow({
   item,
+  parentDriven,
   pendingApprovals,
   pendingQuestions,
   onApprove,
   onAnswer,
+  onOpenSubSession,
 }: { item: Item } & RowHandlers) {
   const { c, status, isDark } = useTheme();
   const [open, setOpen] = useState(false);
@@ -665,7 +704,7 @@ function TranscriptRow({
             gap: 4,
           }}>
           <Meta style={{ color: c.primary, fontSize: 10.5 }}>
-            {item.steering ? 'you · steering' : 'you'}
+            {parentDriven ? 'parent agent' : item.steering ? 'you · steering' : 'you'}
           </Meta>
           {item.images.length > 0 ? <PromptImages images={item.images} /> : null}
           {item.text ? <Body style={{ fontSize: 14 }}>{item.text}</Body> : null}
@@ -844,6 +883,9 @@ function TranscriptRow({
     case 'subagent-start':
       // Folded into its SubagentBlock by groupSubagents; nothing stands alone.
       return null;
+
+    case 'subsession':
+      return <SubSessionCard item={item} onOpen={onOpenSubSession} />;
 
     case 'divider':
       return (

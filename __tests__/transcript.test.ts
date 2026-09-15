@@ -104,6 +104,32 @@ describe('TranscriptFolder', () => {
     expect(folder.all[0]).toMatchObject({ kind: 'text', sub: 3, text: 'from the subagent' });
   });
 
+  it('anchors a sub-session where it was opened and lets its close pass', () => {
+    const folder = new TranscriptFolder();
+
+    folder.fold([
+      event('SubSessionOpened', {
+        subSessionId: '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b',
+        name: 'relay tests',
+        model: 'claude-sonnet-5',
+        profile: 'coder',
+        routeReason: null,
+      }),
+      event('SubSessionClosed', { subSessionId: '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b' }),
+    ]);
+
+    expect(folder.all).toHaveLength(1);
+    expect(folder.all[0]).toMatchObject({
+      kind: 'subsession',
+      sub: null,
+      subSessionId: '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b',
+      name: 'relay tests',
+      profile: 'coder',
+    });
+    // Its own item, never grouped: the card reads the sub-session's own stream.
+    expect(groupSubagents(folder.all).map(r => r.kind)).toEqual(['subsession']);
+  });
+
   it('folds a resolution into the approval card it belongs to', () => {
     const folder = new TranscriptFolder();
 
