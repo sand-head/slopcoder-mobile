@@ -54,10 +54,30 @@ final class PushRegistrar: NSObject {
 }
 
 /// The subscription, from the app's side: the relay for an endpoint, the
-/// instance for the row, and one remembered endpoint so sign-out can undo it.
+/// instance for the row, and what was last done so it is not done twice.
+///
+/// iOS hands over the device token on every launch, and the relay mints a
+/// different endpoint each time it is asked — the registration is sealed with
+/// a random nonce — so going back to the relay every launch would leave the
+/// instance a row per launch and the phone a notification per row. The
+/// endpoint is kept together with the token it was minted for, and the relay
+/// is only asked again when Apple hands over a different token (or the
+/// endpoint is old enough to be worth refreshing). Subscribing on the instance
+/// still happens every launch: it is idempotent there, and it is what puts the
+/// row back after a sign-in to another instance.
 enum PushSubscriber {
     /// Where the last successful subscription went, so sign-out can remove it.
     private static let endpointKey = "slopcoder.push.endpoint"
+    /// The device token that endpoint was minted for; a different one means a new endpoint.
+    private static let tokenKey = "slopcoder.push.token"
+    /// When the endpoint was minted, so a stale one is eventually replaced.
+    private static let mintedAtKey = "slopcoder.push.mintedAt"
+
+    /// Past this age the relay is asked for a fresh endpoint even for the same
+    /// token. Cheap insurance against a relay that lost the keys the endpoint
+    /// was sealed with: the instance treats the device's keypair as its
+    /// identity, so the refresh replaces the row rather than adding one.
+    private static let refreshAfter: TimeInterval = 30 * 24 * 60 * 60
 
     static func subscribe(token: String, sandbox: Bool) async {
         // Not signed in yet is the ordinary case on a first launch, not a failure.
@@ -70,10 +90,31 @@ enum PushSubscriber {
 
         do {
             let keys = try PushKeys.loadOrCreate()
-            let endpoint = try await relay.register(token: token, sandbox: sandbox)
-            try await SeamClient(credential: credential).subscribePush(
-                endpoint: endpoint, p256dh: keys.p256dh, auth: keys.authKey)
-            UserDefaults.standard.set(endpoint, forKey: endpointKey)
+            let instance = SeamClient(credential: credential)
+            let defaults = UserDefaults.standard
+            let previous = defaults.string(forKey: endpointKey)
+
+            let endpoint: String
+            if let previous, defaults.string(forKey: tokenKey) == token, !isStale(defaults) {
+                endpoint = previous
+            } else {
+                endpoint = try await relay.register(token: token, sandbox: sandbox)
+                // The old endpoint still points at this phone, so the instance
+                // would keep sending to it; take it away before adding the new
+                // one. Best-effort: the instance also collapses rows that share
+                // this phone's keys, so a miss here costs nothing.
+                if let previous, previous != endpoint {
+                    try? await instance.unsubscribePush(endpoint: previous)
+                }
+            }
+
+            try await instance.subscribePush(endpoint: endpoint, p256dh: keys.p256dh, auth: keys.authKey)
+
+            if endpoint != previous {
+                defaults.set(endpoint, forKey: endpointKey)
+                defaults.set(token, forKey: tokenKey)
+                defaults.set(Date().timeIntervalSince1970, forKey: mintedAtKey)
+            }
         } catch {
             // Next launch registers again. There is nothing to tell the user:
             // the app works without notifications, and this is not their bug.
@@ -86,6 +127,18 @@ enum PushSubscriber {
               let credential = try? CredentialStore.load()
         else { return }
         try? await SeamClient(credential: credential).unsubscribePush(endpoint: endpoint)
-        UserDefaults.standard.removeObject(forKey: endpointKey)
+        forget()
+    }
+
+    private static func isStale(_ defaults: UserDefaults) -> Bool {
+        let minted = defaults.double(forKey: mintedAtKey)
+        return minted == 0 || Date().timeIntervalSince1970 - minted > refreshAfter
+    }
+
+    private static func forget() {
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: endpointKey)
+        defaults.removeObject(forKey: tokenKey)
+        defaults.removeObject(forKey: mintedAtKey)
     }
 }

@@ -183,6 +183,9 @@ this app (`SLOPCODER_PUSH_RELAY` at build time) — and subscribes on whichever 
 it is signed in to with that endpoint and a keypair it made, exactly as a browser would.
 The instance sends ordinary Web Push; the relay forwards the ciphertext to Apple; the
 notification service extension (`ios/NotificationService/`) decrypts it on the phone.
+The endpoint is kept with the token it was minted for and reused across launches; the
+relay is only asked again when Apple rotates the token, so an instance holds one row
+per phone rather than one per launch.
 Anyone can host slopcoder and have this app notify them. Android is still to do: a
 UnifiedPush distributor would need no relay at all, and FCM would need a second relay
 backend.
