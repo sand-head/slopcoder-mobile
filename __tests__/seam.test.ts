@@ -84,6 +84,67 @@ describe('Seam', () => {
     await expect(seam.steer('abc', { prompt: 'x' })).resolves.toBe(false);
   });
 
+  /**
+   * A save answers with a result rather than a TextResult, because it may
+   * mint a webhook secret and this is the one moment it is readable.
+   */
+  it('reads a create as the save result it is, secrets and all', async () => {
+    const result = { error: null, webhooks: [{ automationId: 'a', triggerId: 't', secret: 's3' }] };
+    fetchMock.mockReturnValue(reply(200, result));
+    const seam = new Seam({ baseUrl: 'https://s', apiKey: 'slop_k' });
+
+    const draft = { name: 'x', prompt: 'y', triggers: [] } as never;
+    await expect(seam.createRoutine(draft)).resolves.toEqual(result);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://s/api/seam/automations/');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ name: 'x', prompt: 'y', triggers: [] });
+  });
+
+  it('words a 404 on an update rather than saving into the void', async () => {
+    fetchMock.mockReturnValue(reply(404));
+    const seam = new Seam({ baseUrl: 'https://s', apiKey: 'slop_k' });
+
+    await expect(seam.updateRoutine('gone', {} as never)).resolves.toEqual({
+      error: 'That routine is gone.',
+      webhooks: [],
+    });
+    expect(fetchMock.mock.calls[0][1].method).toBe('PUT');
+  });
+
+  it('sends a schedule to be read in the phone zone', async () => {
+    fetchMock.mockReturnValue(reply(200, { ok: true, cron: '0 7 * * 1-5' }));
+    const seam = new Seam({ baseUrl: 'https://s', apiKey: 'slop_k' });
+
+    await seam.parseSchedule('every weekday at 7am', 'Europe/Berlin');
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://s/api/seam/automations/schedule');
+    expect(JSON.parse(init.body)).toEqual({ text: 'every weekday at 7am', timeZoneId: 'Europe/Berlin' });
+  });
+
+  it('sends a description to be drafted', async () => {
+    fetchMock.mockReturnValue(reply(200, { ok: false, error: 'no model' }));
+    const seam = new Seam({ baseUrl: 'https://s', apiKey: 'slop_k' });
+
+    const result = await seam.draftRoutine('check the deploy each morning');
+
+    expect(result.ok).toBe(false);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      description: 'check the deploy each morning',
+      timeZoneId: null,
+    });
+  });
+
+  it('rotates a webhook secret at the trigger, not the routine', async () => {
+    fetchMock.mockReturnValue(reply(200, { error: null, webhooks: [] }));
+    const seam = new Seam({ baseUrl: 'https://s', apiKey: 'slop_k' });
+
+    await seam.rotateWebhookSecret('a', 't');
+
+    expect(fetchMock.mock.calls[0][0]).toBe('https://s/api/seam/automations/a/webhooks/t/rotate');
+  });
+
   it('signs out on a 401 rather than retrying', async () => {
     fetchMock.mockReturnValue(reply(401));
     const onSignedOut = jest.fn();

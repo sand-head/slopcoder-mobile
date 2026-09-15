@@ -7,7 +7,9 @@
  * the tab bar, and over it the screens you *enter* — a session, a routine —
  * which cover the tabs because each wants the bottom edge for a composer or a
  * switch. Starting a session is not a screen: the composer on the sessions
- * page is the launcher, as it is on the web.
+ * page is the launcher, as it is on the web. Writing a routine is a form, and
+ * a form the platform presents as a sheet: Cancel on the left, Create on the
+ * right, a swipe down to leave.
  *
  * The headers are the platform's. Every option that shapes them is in
  * `navigation/headers.ts`; nothing here paints a bar.
@@ -21,6 +23,7 @@ import { useAuth } from './state/auth';
 import { LoginScreen, ScanScreen } from './screens/Login';
 import { SessionDetailScreen } from './screens/SessionDetail';
 import { RoutineScreen } from './screens/Routine';
+import { RoutineEditorScreen } from './screens/RoutineEditor';
 import { Tabs } from './navigation/Tabs';
 import { stackOptions } from './navigation/headers';
 import { GlassBar } from './ui/kit';
@@ -74,6 +77,11 @@ export default function App() {
               <Root.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
               <Root.Screen name="Session" component={SessionDetailScreen} options={{ title: '', ...glassBar }} />
               <Root.Screen name="Routine" component={RoutineScreen} options={{ title: '', ...glassBar }} />
+              <Root.Screen
+                name="RoutineEditor"
+                component={RoutineEditorScreen}
+                options={{ title: '', presentation: 'modal', ...glassBar }}
+              />
             </>
           ) : (
             <>

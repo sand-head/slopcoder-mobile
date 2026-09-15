@@ -10,10 +10,9 @@
  * one call and no arithmetic: "3rd failure in a row" and "Every weekday at
  * 07:00" arrive as sentences rather than as a run log to derive them from.
  *
- * Authoring is not here. Writing a routine means picking a model, repositories,
- * a schedule, triggers and where the answer goes — a form the cockpit already
- * has and a phone has no business reproducing — so "New routine" opens that
- * page in an in-app browser over this one, rather than offering a worse copy.
+ * "New routine" presents the editor as a sheet over this screen; a saved
+ * routine lands on its own detail screen, and the board re-reads itself when
+ * it is focused again.
  *
  * The three tabs are pinned under the bar rather than scrolling with the
  * page, as a tab strip is, and the page starts at the top when they change.
@@ -57,7 +56,6 @@ import { SheetSegments } from '../ui/Sheet';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 import { useHeaderInset } from '../navigation/headers';
 import { barButton } from '../navigation/headers';
-import { cockpitUrl, openInApp } from '../ui/browser';
 import { tapSelect } from '../ui/haptics';
 import { font, mix, radius, useTheme } from '../theme';
 
@@ -77,24 +75,21 @@ const TABS = [
 export function RoutinesScreen({ navigation }: { navigation: any }) {
   const { c } = useTheme();
   const seam = useAuth(s => s.seam);
-  const server = useAuth(s => s.credential?.server);
   const setFailed = useRoutineAlert(s => s.setFailed);
   const page = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const headerInset = useHeaderInset();
 
-  const newRoutine = useCallback(() => {
-    if (server) void openInApp(cockpitUrl(server, 'routines/new'), c.primary);
-  }, [server, c.primary]);
+  const newRoutine = useCallback(() => navigation.navigate('RoutineEditor'), [navigation]);
 
   useLayoutEffect(() => {
     navigation.setOptions({
       title: 'Routines',
       ...barButton(
-        { label: 'New routine', symbol: 'plus', onPress: newRoutine, disabled: !server },
-        ({ onPress, disabled }) => <Button label="New" variant="ghost" onPress={onPress} disabled={disabled} />,
+        { label: 'New routine', symbol: 'plus', onPress: newRoutine },
+        ({ onPress }) => <Button label="New" variant="ghost" onPress={onPress} />,
       ),
     });
-  }, [navigation, newRoutine, server]);
+  }, [navigation, newRoutine]);
 
   const [board, setBoard] = useState<RoutineBoard | null>(null);
   const [tab, setTab] = useState('runs');
@@ -227,12 +222,11 @@ export function RoutinesScreen({ navigation }: { navigation: any }) {
             <Body style={{ fontFamily: font.sansMedium, fontSize: 16 }}>No routines yet</Body>
             <Hint>
               A routine is a prompt that runs itself — a morning triage, a digest on /digest, a
-              webhook from CI — and only messages you when it has something to say. Writing one
-              means choosing a model, a schedule and where the answer goes, so that form lives in
-              the cockpit.
+              webhook from CI — and only messages you when it has something to say. Describe one
+              in a sentence and the form fills itself in.
             </Hint>
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              {server ? <Button label="New routine" variant="outline" onPress={newRoutine} /> : null}
+              <Button label="New routine" variant="outline" onPress={newRoutine} />
               <Button
                 label="Set up the heartbeat"
                 variant="ghost"

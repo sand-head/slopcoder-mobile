@@ -695,3 +695,126 @@ export interface RunDetail {
   finalMessage: string | null;
   endedAt: string | null;
 }
+
+// ---- authoring a routine ----
+//
+// The editable half, ported from the same file. `AutomationDraft` is what a
+// create or an update sends; the server answers with the problem to show or
+// the webhook secrets that write minted, which is the one moment they are
+// readable.
+
+/** A `Guid.Empty`: what a trigger the user just added carries until the server assigns one. */
+export const EMPTY_GUID = '00000000-0000-0000-0000-000000000000';
+
+/**
+ * The editable half of a routine. `cronExpression` may be blank when
+ * `triggers` holds at least one; the heartbeat's `prompt` is ignored.
+ * `activeHoursStart`/`End` are `TimeOnly`s: "07:00:00", never a timestamp.
+ */
+export interface AutomationDraft {
+  name: string;
+  prompt: string;
+  cronExpression: string;
+  timeZoneId: string;
+  enabled: boolean;
+  facet: string | null;
+  model: string | null;
+  repoUrls: string[];
+  continuity: boolean;
+  activeHoursStart: string | null;
+  activeHoursEnd: string | null;
+  deliveryKind: DeliveryKind;
+  deliveryTargetId: string | null;
+  triggers: AutomationTrigger[];
+  scheduleEnabled: boolean;
+  nodeIds: string[];
+}
+
+/** A webhook secret, handed back exactly once by the write that minted it. */
+export interface AutomationWebhookSecret {
+  automationId: string;
+  triggerId: string;
+  secret: string;
+}
+
+/** The outcome of a create or an update: a problem, or the secrets it minted. */
+export interface AutomationSaveResult {
+  error: string | null;
+  webhooks: AutomationWebhookSecret[];
+}
+
+/** What the server made of a schedule somebody typed. */
+export interface ScheduleParse {
+  ok: boolean;
+  cron: string | null;
+  zone: string | null;
+  /** The cron read back in words, for the ✓ line. */
+  sentence: string | null;
+  /** When it would next fire, ignoring active hours. */
+  firstRun: string | null;
+  error: string | null;
+}
+
+export interface ScheduleParseRequest {
+  text: string;
+  timeZoneId: string | null;
+}
+
+export interface RoutineDraftRequest {
+  description: string;
+  timeZoneId: string | null;
+}
+
+/** One trigger a draft proposes; a null `kind` is the schedule, and `when` its English. */
+export interface RoutineDraftTrigger {
+  kind: AutomationTriggerKind | null;
+  when: string | null;
+  channelId: string | null;
+  match: string | null;
+}
+
+/**
+ * A routine drafted from a description. Best-effort by construction: `ok` is
+ * false and the form simply stays as it was when no model could draft it.
+ */
+export interface RoutineDraftResult {
+  ok: boolean;
+  error: string | null;
+  name: string | null;
+  prompt: string | null;
+  model: string | null;
+  triggers: RoutineDraftTrigger[];
+  deliveryKind: DeliveryKind;
+  deliveryTargetId: string | null;
+  /** The "the agent read this as" lines, already worded. */
+  reading: string[];
+  elapsedMs: number;
+  draftedBy: string | null;
+}
+
+// ---- channels ----
+//
+// Ported from `IChannelsApi.cs`. The editor needs them twice: a chat command
+// or an email trigger listens on one, and a run's answer can be delivered to
+// one. Never carries the bot token — only whether one is set.
+
+export interface PendingPairing {
+  peerId: string;
+  code: string;
+  issuedAt: string;
+}
+
+export interface ChannelSummary {
+  id: string;
+  kind: ChannelKind;
+  displayName: string;
+  enabled: boolean;
+  hasSecret: boolean;
+  settings: string;
+  pairedPeers: string[];
+  pendingPairings: PendingPairing[];
+  mainSessionId: string | null;
+  lastError: string | null;
+  lastSeenAt: string | null;
+  createdAt: string;
+}

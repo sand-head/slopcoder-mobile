@@ -124,46 +124,6 @@ export function Composer({
   const { c, status } = useTheme();
   const reachable = useConnection(s => s.reachable);
   const [sheet, setSheet] = useState<'model' | 'turn' | 'attach' | null>(null);
-  const [query, setQuery] = useState('');
-  const [found, setFound] = useState<AttachOption[]>([]);
-  const [searching, setSearching] = useState(false);
-
-  const owned = attachments?.ownedRepos ?? [];
-  const ownedLoaded = attachments?.ownedLoaded ?? false;
-  const willSearch = attachments != null && shouldSearch(owned, query, ownedLoaded);
-
-  // The one call here that leaves the device, and the only one worth waiting
-  // for the typing to stop. It runs when nothing of yours matched — see
-  // `repoPicker.ts` for why that is the condition rather than the query alone.
-  useEffect(() => {
-    setFound([]);
-    if (!attachments || !willSearch) {
-      setSearching(false);
-      return;
-    }
-
-    setSearching(true);
-    let live = true;
-    const timer = setTimeout(() => {
-      void attachments
-        .searchRepos(query.trim())
-        .then(rows => live && setFound(rows))
-        .finally(() => live && setSearching(false));
-    }, 300);
-
-    return () => {
-      live = false;
-      clearTimeout(timer);
-    };
-  }, [attachments, query, willSearch]);
-
-  const offered = offer({
-    query,
-    recent: attachments?.recentRepos ?? [],
-    owned,
-    found,
-    searching,
-  });
 
   const current = models.find(
     m => !options.selection.auto && m.modelId === options.selection.modelId,
@@ -327,43 +287,111 @@ export function Composer({
       </Sheet>
 
       {attachments ? (
-        <Sheet visible={sheet === 'attach'} title="Attach" onClose={() => setSheet(null)}>
-          <Field value={query} onChangeText={setQuery} placeholder="Search repositories…" />
-          {/* A forge that failed to answer would otherwise look like a forge
-              with nothing on it. */}
-          {attachments.ownedError ? (
-            <Mono style={{ color: c.destructive }}>{attachments.ownedError}</Mono>
-          ) : null}
-          <SheetMultiGroup
-            label={offered.label}
-            options={offered.options}
-            selected={attachments.repos}
-            onToggle={key =>
-              attachments.onChange({
-                repos: attachments.repos.includes(key)
-                  ? attachments.repos.filter(r => r !== key)
-                  : [...attachments.repos, key],
-                nodes: attachments.nodes,
-              })
-            }
-            empty={offered.empty}
-          />
-          <SheetMultiGroup
-            label="remote nodes"
-            options={attachments.availableNodes}
-            selected={attachments.nodes}
-            onToggle={key =>
-              attachments.onChange({
-                repos: attachments.repos,
-                nodes: attachments.nodes.includes(key)
-                  ? attachments.nodes.filter(n => n !== key)
-                  : [...attachments.nodes, key],
-              })
-            }
-          />
-        </Sheet>
+        <AttachSheet visible={sheet === 'attach'} onClose={() => setSheet(null)} attachments={attachments} />
       ) : null}
     </View>
+  );
+}
+
+/**
+ * The `+ add` sheet: repositories to clone into the workspace, nodes the
+ * turn may shell into. The launcher's, and the routine editor's — a routine
+ * grants exactly what a session attaches, so it is the same picker with the
+ * same search and the same wording.
+ */
+export function AttachSheet({
+  visible,
+  onClose,
+  attachments,
+  nodeDescription,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  attachments: Attachments;
+  /** What granting a node means here; the editor's runs are unattended. */
+  nodeDescription?: string;
+}) {
+  const { c } = useTheme();
+  const [query, setQuery] = useState('');
+  const [found, setFound] = useState<AttachOption[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  const owned = attachments.ownedRepos;
+  const willSearch = shouldSearch(owned, query, attachments.ownedLoaded);
+
+  // The one call here that leaves the device, and the only one worth waiting
+  // for the typing to stop. It runs when nothing of yours matched — see
+  // `repoPicker.ts` for why that is the condition rather than the query alone.
+  useEffect(() => {
+    setFound([]);
+    if (!willSearch) {
+      setSearching(false);
+      return;
+    }
+
+    setSearching(true);
+    let live = true;
+    const timer = setTimeout(() => {
+      void attachments
+        .searchRepos(query.trim())
+        .then(rows => live && setFound(rows))
+        .finally(() => live && setSearching(false));
+    }, 300);
+
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [attachments, query, willSearch]);
+
+  const offered = offer({
+    query,
+    recent: attachments.recentRepos,
+    owned,
+    found,
+    searching,
+  });
+
+  return (
+    <Sheet visible={visible} title="Attach" onClose={onClose}>
+      <Field value={query} onChangeText={setQuery} placeholder="Search repositories…" />
+      {/* A forge that failed to answer would otherwise look like a forge
+          with nothing on it. */}
+      {attachments.ownedError ? (
+        <Mono style={{ color: c.destructive }}>{attachments.ownedError}</Mono>
+      ) : null}
+      <SheetMultiGroup
+        label={offered.label}
+        options={offered.options}
+        selected={attachments.repos}
+        onToggle={key =>
+          attachments.onChange({
+            repos: attachments.repos.includes(key)
+              ? attachments.repos.filter(r => r !== key)
+              : [...attachments.repos, key],
+            nodes: attachments.nodes,
+          })
+        }
+        empty={offered.empty}
+      />
+      <SheetMultiGroup
+        label="remote nodes"
+        options={
+          nodeDescription
+            ? attachments.availableNodes.map(n => ({ ...n, description: nodeDescription }))
+            : attachments.availableNodes
+        }
+        selected={attachments.nodes}
+        onToggle={key =>
+          attachments.onChange({
+            repos: attachments.repos,
+            nodes: attachments.nodes.includes(key)
+              ? attachments.nodes.filter(n => n !== key)
+              : [...attachments.nodes, key],
+          })
+        }
+      />
+    </Sheet>
   );
 }
 
@@ -372,7 +400,7 @@ export function Composer({
  * Absent entirely when there is nothing, so an empty composer stays empty
  * rather than carrying a row that only ever said "add".
  */
-function AttachChips({ attachments }: { attachments: Attachments }) {
+export function AttachChips({ attachments }: { attachments: Attachments }) {
   const { c } = useTheme();
 
   const picked = [

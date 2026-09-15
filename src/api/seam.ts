@@ -14,7 +14,10 @@
  */
 import type {
   AgentEventEnvelope,
+  AutomationDraft,
+  AutomationSaveResult,
   AutomationSummary,
+  ChannelSummary,
   CreateSessionRequest,
   CreateSessionResult,
   DeviceKey,
@@ -29,9 +32,11 @@ import type {
   ResolveQuestionRequest,
   RoutineBoard,
   RoutineDetail,
+  RoutineDraftResult,
   RoutineStatus,
   RunDetail,
   RunPage,
+  ScheduleParse,
   ServerProtocol,
   SessionState,
   SessionSummary,
@@ -68,6 +73,35 @@ const EMPTY_STATUS: RoutineStatus = {
   newestFailure: null,
   latestNotified: null,
   upcoming: [],
+};
+
+/** A write that came back with no body at all, which a save never should. */
+const SAVE_UNANSWERED: AutomationSaveResult = {
+  error: 'The server did not say whether that was saved.',
+  webhooks: [],
+};
+
+const PARSE_UNANSWERED: ScheduleParse = {
+  ok: false,
+  cron: null,
+  zone: null,
+  sentence: null,
+  firstRun: null,
+  error: 'the server did not answer',
+};
+
+const DRAFT_UNANSWERED: RoutineDraftResult = {
+  ok: false,
+  error: 'The server did not answer.',
+  name: null,
+  prompt: null,
+  model: null,
+  triggers: [],
+  deliveryKind: 1,
+  deliveryTargetId: null,
+  reading: [],
+  elapsedMs: 0,
+  draftedBy: null,
 };
 
 /** The header `SameOriginFilter` demands. Any value works; the web client sends "1". */
@@ -344,6 +378,11 @@ export class Seam {
     return (await this.get<RemoteNodeSummary[]>('api/seam/nodes/', signal)) ?? [];
   }
 
+  /** Every channel connection the caller owns: what a trigger listens on, where an answer goes. */
+  async channels(signal?: AbortSignal): Promise<ChannelSummary[]> {
+    return (await this.get<ChannelSummary[]>('api/seam/channels/', signal)) ?? [];
+  }
+
   // ---- routines ----
   //
   // The paths still say `automations`: the entities kept that name and the
@@ -432,6 +471,76 @@ export class Seam {
    */
   heartbeat(): Promise<AutomationSummary | null> {
     return this.send<AutomationSummary>('POST', 'api/seam/automations/heartbeat', {});
+  }
+
+  // ---- authoring ----
+  //
+  // A create or an update answers with a result rather than a TextResult: a
+  // write may mint a webhook secret, and that is the one moment it is ever
+  // readable. `error` null means it worked.
+
+  /** Every routine, in the editable shape. */
+  async routines(signal?: AbortSignal): Promise<AutomationSummary[]> {
+    return (await this.get<AutomationSummary[]>('api/seam/automations/', signal)) ?? [];
+  }
+
+  async createRoutine(draft: AutomationDraft): Promise<AutomationSaveResult> {
+    return (
+      (await this.send<AutomationSaveResult>('POST', 'api/seam/automations/', draft)) ??
+      SAVE_UNANSWERED
+    );
+  }
+
+  /** A 404 is worded here: the seam cannot tell "no such routine" from "not yours". */
+  async updateRoutine(id: string, draft: AutomationDraft): Promise<AutomationSaveResult> {
+    const { status, value } = await this.request<AutomationSaveResult>(
+      'PUT',
+      `api/seam/automations/${id}`,
+      draft,
+    );
+    if (status === 404) return { error: 'That routine is gone.', webhooks: [] };
+    return value ?? SAVE_UNANSWERED;
+  }
+
+  /**
+   * Mint a fresh secret for one webhook trigger, invalidating the old one at
+   * once. The URL keeps its trigger id; what changes is the credential.
+   */
+  async rotateWebhookSecret(id: string, triggerId: string): Promise<AutomationSaveResult> {
+    const { status, value } = await this.request<AutomationSaveResult>(
+      'POST',
+      `api/seam/automations/${id}/webhooks/${triggerId}/rotate`,
+      {},
+    );
+    if (status === 404) return { error: 'That routine is gone.', webhooks: [] };
+    return value ?? SAVE_UNANSWERED;
+  }
+
+  /**
+   * Read a typed schedule as a cron, server-side and deterministically, so the
+   * ✓ line says the same thing whether the schedule was drafted or typed.
+   */
+  async parseSchedule(text: string, timeZoneId?: string, signal?: AbortSignal): Promise<ScheduleParse> {
+    return (
+      (await this.send<ScheduleParse>(
+        'POST',
+        'api/seam/automations/schedule',
+        { text, timeZoneId: timeZoneId ?? null },
+        signal,
+      )) ?? PARSE_UNANSWERED
+    );
+  }
+
+  /** Draft a routine from a description. Never throws for a model's failure; see `ok`. */
+  async draftRoutine(description: string, timeZoneId?: string, signal?: AbortSignal): Promise<RoutineDraftResult> {
+    return (
+      (await this.send<RoutineDraftResult>(
+        'POST',
+        'api/seam/automations/draft',
+        { description, timeZoneId: timeZoneId ?? null },
+        signal,
+      )) ?? DRAFT_UNANSWERED
+    );
   }
 
   usage(range: UsageRange, signal?: AbortSignal) {

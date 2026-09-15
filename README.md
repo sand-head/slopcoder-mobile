@@ -14,17 +14,16 @@ Sessions it creates run in the server's Docker sandbox, the same as the web cock
 - Watch a turn stream in, steer it mid-flight, stop it
 - Answer permission approvals and agent questions
 - Keep an eye on routines: what has run, what failed, what is next — pause one, run it
-  now, retry a failure, fix its prompt, close a trigger
+  now, retry a failure, fix its prompt, close a trigger, rotate a webhook's secret
+- Write a routine: describe it in a sentence and the model drafts the form, or fill it in
+  yourself — schedule in English, triggers, model, repositories and nodes, where the
+  answer goes; edit an existing one; set the heartbeat's cadence, hours and model
 
 ## What it deliberately does not do
 
 Code mode, the terminal, and the workspace diff panel. All three are SkiaSharp canvases
 over WebAssembly in the web app and have no native path short of a rewrite. If you need
 them, open the session on a computer.
-
-Writing a routine, too. Choosing a model, a schedule, repositories, triggers and where the
-answer goes is a form — the cockpit has a good one, and "New routine" opens it rather than
-offering a worse copy on a 390pt screen.
 
 ## Layout
 
@@ -36,8 +35,9 @@ src/api/          the seam client — this is the part to read first
   stream.ts       reassembling a transcript from deltas
   transcript.ts   folding events into renderable items
   routines.ts     how a routine reads — a port of RoutineFormat.cs
+  routineEditor.ts what the editor decides — a port of TriggerEdit.cs and Editor.razor's draft
 src/state/        auth (keychain), the hub connection, one session's live view
-src/screens/      login (+ scanner), sessions (list + launcher), session detail, routines, routine, usage, settings
+src/screens/      login (+ scanner), sessions (list + launcher), session detail, routines, routine, routine editor, usage, settings
 src/navigation/   the tab bar and the native-header options every stack shares
 src/theme.ts      the web cockpit's tokens, converted to sRGB
 ```

@@ -31,10 +31,17 @@ const check = (name, ok, extra = '') => (ok ? pass : fail).push(name + (extra ? 
   check('the device key reaches the seam', Array.isArray(await seam.sessions()));
 
   const models = await seam.models();
-  check('model candidates come back', models.length > 0, `${models.length} candidate(s)`);
-  check('ModelCandidate fields are camelCase', models[0] && 'connectionId' in models[0] && 'modelId' in models[0],
-    models[0] ? Object.keys(models[0]).join(',') : 'none');
+  check('model candidates come back as a list', Array.isArray(models), `${models.length} candidate(s)`);
+  if (CONNECTION) {
+    check('model candidates come back', models.length > 0, `${models.length} candidate(s)`);
+    check('ModelCandidate fields are camelCase', models[0] && 'connectionId' in models[0] && 'modelId' in models[0],
+      models[0] ? Object.keys(models[0]).join(',') : 'none');
+  }
 
+  // A provider connection is the argument; without one the session half is
+  // skipped and the routines half — which needs no model — still runs.
+  let hub = null;
+  if (CONNECTION) {
   // --- create a session the way the app does: no clientWorkspace ---
   const selection = { auto: false, connectionId: CONNECTION, modelId: 'fake-model' };
   const id = await seam.createSession({ selection, initialPrompt: 'say hello' });
@@ -51,7 +58,7 @@ const check = (name, ok, extra = '') => (ok ? pass : fail).push(name + (extra ? 
   // --- the live channel ---
   const deltas = [];
   let arity = null;
-  const hub = new SessionHub({ baseUrl: BASE, apiKey: KEY });
+  hub = new SessionHub({ baseUrl: BASE, apiKey: KEY });
   hub.addListener(id, (sessionId, state, events, patch) => {
     if (arity === null) arity = arguments_length(sessionId, state, events, patch);
     deltas.push({ state, events, patch });
@@ -106,6 +113,7 @@ const check = (name, ok, extra = '') => (ok ? pass : fail).push(name + (extra ? 
   check('steer on an idle session is false, not an error', (await seam.steer(id, { prompt: 'x' })) === false);
   check('presence is accepted', (await seam.presence(id)) === true);
   check('a command on a missing session is false', (await seam.stop('00000000-0000-0000-0000-000000000000')) === false);
+  }
 
   // --- routines ---
   //
@@ -148,7 +156,76 @@ const check = (name, ok, extra = '') => (ok ? pass : fail).push(name + (extra ? 
       (await seam.runRoutineNow('00000000-0000-0000-0000-000000000000')) !== null);
   }
 
-  await hub.stop();
+  // --- authoring ---
+  //
+  // The editor's writes are where a shape slip costs the most: a TimeOnly the
+  // server will not parse, a new trigger sent with "" for an id, an enum as a
+  // word. Create one with a schedule and a webhook, read it back, update it,
+  // rotate the secret, delete it.
+  const read = await seam.parseSchedule('every weekday at 7am', zone);
+  check('a schedule is read server-side', read.ok === true && typeof read.cron === 'string', JSON.stringify(read).slice(0, 80));
+  check('a schedule nobody can read says why', (await seam.parseSchedule('whenever', zone)).ok === false);
+
+  const channels = await seam.channels();
+  check('channels come back as a list', Array.isArray(channels));
+
+  const draft = {
+    name: 'wire-check routine',
+    prompt: 'say NO_REPLY',
+    cronExpression: read.cron,
+    timeZoneId: read.zone ?? zone,
+    enabled: false,
+    facet: 'execute',
+    model: null,
+    repoUrls: [],
+    continuity: false,
+    activeHoursStart: '08:00:00',
+    activeHoursEnd: '22:30:00',
+    deliveryKind: 0,
+    deliveryTargetId: null,
+    triggers: [
+      { kind: 2, channelId: null, match: '', secret: null, id: '00000000-0000-0000-0000-000000000000', enabled: true },
+    ],
+    scheduleEnabled: true,
+    nodeIds: [],
+  };
+  const created = await seam.createRoutine(draft);
+  check('a create is accepted', created.error === null, String(created.error));
+  check('a new webhook mints a secret, readable once', created.webhooks.length === 1 && typeof created.webhooks[0].secret === 'string');
+  const createdId = created.webhooks[0]?.automationId;
+  if (createdId) {
+    const stored = (await seam.routines()).find(a => a.id === createdId);
+    check('the routine reads back', Boolean(stored));
+    check('a TimeOnly round-trips as HH:mm:ss', stored?.activeHoursStart === '08:00:00', String(stored?.activeHoursStart));
+    check('the trigger got an id', stored?.triggers[0]?.id && stored.triggers[0].id !== draft.triggers[0].id);
+
+    const updated = await seam.updateRoutine(createdId, {
+      ...draft,
+      name: 'wire-check routine (edited)',
+      triggers: stored.triggers.map(t => ({ ...t, secret: null })),
+    });
+    check('an update is accepted', updated.error === null, String(updated.error));
+    check('an update keeps the webhook, minting nothing', updated.webhooks.length === 0);
+
+    const rotated = await seam.rotateWebhookSecret(createdId, stored.triggers[0].id);
+    check('rotating mints one secret', rotated.error === null && rotated.webhooks.length === 1, String(rotated.error));
+
+    check('a refused draft is a sentence', (await seam.updateRoutine(createdId, { ...draft, name: '' })).error !== null);
+    check('the routine deletes', (await seam.deleteRoutine(createdId)) === true);
+    check('deleting again is false, not an error', (await seam.deleteRoutine(createdId)) === false);
+  }
+  // The server words this one itself ("No such automation."), as a result
+  // rather than a 404; the client's own wording is for a 404 it never sends.
+  const missing = await seam.updateRoutine('00000000-0000-0000-0000-000000000000', draft);
+  check('an update of a missing routine is a sentence', typeof missing.error === 'string', String(missing.error));
+
+  // The describe-first draft needs a model; with none the answer is an
+  // honest ok:false, which is the shape the editor handles.
+  const drafted = await seam.draftRoutine('every weekday morning say hello', zone);
+  check('a draft answers with its shape', typeof drafted.ok === 'boolean' && Array.isArray(drafted.triggers),
+    drafted.ok ? `drafted by ${drafted.draftedBy}` : String(drafted.error));
+
+  if (hub) await hub.stop();
 
   console.log('\n--- PASS ---');
   for (const p of pass) console.log('  ✓ ' + p);

@@ -6,11 +6,14 @@
  * triggers. Tapping a run opens it in a sheet, which is where the desktop's
  * right-hand panel goes on a phone.
  *
- * What is *not* here is editing the shape of a routine: its schedule, its
- * model, its repositories, its delivery target and the triggers themselves.
- * Those are the editor's, in the browser. What this screen writes is what you
- * would reasonably change one-handed — pause it, run it now, retry a failure,
- * fix a sentence in the prompt, close one door without touching the others.
+ * What this screen writes is what you would reasonably change one-handed —
+ * pause it, run it now, retry a failure, fix a sentence in the prompt, close
+ * one door without touching the others, rotate a webhook's secret. The shape
+ * of a routine — its schedule, its model, its repositories, where the answer
+ * goes, the triggers themselves — is the editor's, which Edit and "+ add
+ * trigger" present as a sheet over this screen. The heartbeat has no editor:
+ * its cadence, hours and model are four fields on its Prompt tab, as on the
+ * web.
  */
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,6 +30,9 @@ import Markdown from '@ronradtke/react-native-markdown-display';
 import {
   AutomationKind,
   AutomationRunStatus,
+  AutomationTriggerKind,
+  type AutomationWebhookSecret,
+  type ModelCandidate,
   type RoutineDetail,
   type RunDetail,
   type RunSummary,
@@ -35,6 +41,7 @@ import {
 import {
   clock,
   duration,
+  hhmm,
   nextLabel,
   runNote,
   spend,
@@ -42,10 +49,12 @@ import {
   triggerKindName,
   when,
 } from '../api/routines';
+import { HEARTBEAT_INTERVALS, heartbeatDraft, timeOk } from '../api/routineEditor';
 import { useAuth } from '../state/auth';
 import {
   Body,
   Button,
+  Field,
   GLYPHS,
   Hint,
   Meta,
@@ -56,11 +65,11 @@ import {
   markdownStyles,
 } from '../ui/kit';
 import { HistoryStrip, outcomeColor } from '../ui/HistoryStrip';
-import { Sheet, SheetSegments } from '../ui/Sheet';
+import { Sheet, SheetGroup, SheetSegments } from '../ui/Sheet';
+import { SecretSheet } from '../ui/SecretSheet';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 import { useHeaderInset } from '../navigation/headers';
 import { OverflowMenu } from '../ui/menu';
-import { cockpitUrl, openInApp } from '../ui/browser';
 import { tapConfirm, tapRefuse, tapSelect } from '../ui/haptics';
 import { font, mix, radius, useTheme } from '../theme';
 
@@ -109,6 +118,17 @@ export function RoutineScreen({ route, navigation }: { route: any; navigation: a
   const [notepad, setNotepad] = useState('');
   const [storedNotepad, setStoredNotepad] = useState('');
 
+  // The heartbeat's own four controls, and what the server last said they
+  // were. Written as a full draft, so saving the interval cannot quietly
+  // clear anything else.
+  const [beatSettings, setBeatSettings] = useState({ interval: '', activeStart: '', activeEnd: '', model: '' });
+  const [storedBeat, setStoredBeat] = useState(beatSettings);
+  const [models, setModels] = useState<ModelCandidate[]>([]);
+  const [modelSheet, setModelSheet] = useState(false);
+
+  // A rotated webhook secret, readable exactly once.
+  const [rotated, setRotated] = useState<AutomationWebhookSecret[]>([]);
+
   const load = useCallback(async () => {
     if (!seam) return;
     try {
@@ -135,14 +155,46 @@ export function RoutineScreen({ route, navigation }: { route: any; navigation: a
         if (found.routine.notepad !== current) setNotepad(found.routine.notepad);
         return found.routine.notepad;
       });
+      if (found.routine.kind === AutomationKind.Heartbeat) {
+        const next = {
+          interval: found.routine.cronExpression,
+          activeStart: found.routine.activeHoursStart ? hhmm(found.routine.activeHoursStart) : '',
+          activeEnd: found.routine.activeHoursEnd ? hhmm(found.routine.activeHoursEnd) : '',
+          model: found.routine.model ?? '',
+        };
+        setStoredBeat(current => {
+          const same =
+            current.interval === next.interval &&
+            current.activeStart === next.activeStart &&
+            current.activeEnd === next.activeEnd &&
+            current.model === next.model;
+          if (!same) setBeatSettings(next);
+          return same ? current : next;
+        });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
   }, [seam, id]);
 
+  // On mount, and again whenever the editor's sheet comes down over it.
   useEffect(() => {
     void load();
-  }, [load]);
+    return navigation.addListener('focus', load);
+  }, [load, navigation]);
+
+  // The model list is only for the heartbeat's picker, and only a convenience.
+  useEffect(() => {
+    if (!seam || detail?.routine.kind !== AutomationKind.Heartbeat) return;
+    let live = true;
+    seam
+      .models()
+      .then(m => live && setModels(m))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [seam, detail?.routine.kind]);
 
   const running = detail?.running ?? false;
   const loadRef = useRef(load);
@@ -215,6 +267,14 @@ export function RoutineScreen({ route, navigation }: { route: any; navigation: a
   const routine = detail?.routine;
   const beat = routine?.kind === AutomationKind.Heartbeat;
   const paused = !routine?.enabled || !routine?.scheduleEnabled;
+  const beatModelLabel = beatSettings.model
+    ? models.find(m => m.modelId === beatSettings.model)?.modelDisplayName ?? beatSettings.model
+    : 'auto';
+  const beatDirty =
+    beatSettings.interval !== storedBeat.interval ||
+    beatSettings.activeStart !== storedBeat.activeStart ||
+    beatSettings.activeEnd !== storedBeat.activeEnd ||
+    beatSettings.model !== storedBeat.model;
 
   // The bar: the routine's name, its switch, and the menu the cockpit's
   // card carries — open the session, edit it (in the browser, over this
@@ -244,8 +304,8 @@ export function RoutineScreen({ route, navigation }: { route: any; navigation: a
                 ...(sessionId
                   ? [{ key: 'session', title: 'Open session', symbol: 'bubble.left', onPress: () => navigation.navigate('Session', { id: sessionId }) }]
                   : []),
-                ...(server
-                  ? [{ key: 'edit', title: 'Edit in the cockpit', symbol: 'pencil', onPress: () => void openInApp(cockpitUrl(server, `routines/${id}/edit`), c.primary) }]
+                ...(!beat
+                  ? [{ key: 'edit', title: 'Edit', symbol: 'pencil', onPress: () => navigation.navigate('RoutineEditor', { id }) }]
                   : []),
                 { key: 'delete', title: 'Delete', symbol: 'trash', destructive: true, onPress: remove },
               ]}>
@@ -269,7 +329,7 @@ export function RoutineScreen({ route, navigation }: { route: any; navigation: a
     // `act` and `routine` change identity every render; the values the bar
     // reads are listed instead.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigation, name, enabled, busy, sessionId, server, id, remove, c.primary, c.mutedForeground, !!routine]);
+  }, [navigation, name, enabled, busy, sessionId, beat, id, remove, c.primary, c.mutedForeground, !!routine]);
 
   if (missing) {
     return (
@@ -423,10 +483,73 @@ export function RoutineScreen({ route, navigation }: { route: any; navigation: a
                     label="Save notepad"
                     onSave={() => void act(() => seam!.setRoutineNotepad(id, notepad))}
                   />
-                  <Hint>
-                    Its cadence, active hours and model are the editor's, in the browser — they are
-                    four fields that only make sense together.
-                  </Hint>
+                  <Meta style={{ paddingTop: 6 }}>schedule</Meta>
+                  <SheetSegments
+                    label="every"
+                    options={HEARTBEAT_INTERVALS}
+                    selected={beatSettings.interval}
+                    onSelect={key => {
+                      tapSelect();
+                      setBeatSettings(b => ({ ...b, interval: key }));
+                    }}
+                  />
+                  <View style={{ gap: 6 }}>
+                    <Meta>active hours</Meta>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Field
+                        value={beatSettings.activeStart}
+                        onChangeText={text => setBeatSettings(b => ({ ...b, activeStart: text }))}
+                        placeholder="any"
+                        keyboardType="numbers-and-punctuation"
+                        accessibilityLabel="Active from"
+                        style={{ flex: 1 }}
+                      />
+                      <Mono>–</Mono>
+                      <Field
+                        value={beatSettings.activeEnd}
+                        onChangeText={text => setBeatSettings(b => ({ ...b, activeEnd: text }))}
+                        placeholder="any"
+                        keyboardType="numbers-and-punctuation"
+                        accessibilityLabel="Active until"
+                        style={{ flex: 1 }}
+                      />
+                    </View>
+                    <Hint>Beats may only start inside this window, as HH:MM. Blank means any time.</Hint>
+                  </View>
+                  <Pressable
+                    onPress={() => setModelSheet(true)}
+                    disabled={busy}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Model: ${beatModelLabel}`}
+                    style={({ pressed }) => ({
+                      minHeight: 44,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 10,
+                      paddingHorizontal: 12,
+                      borderWidth: 1,
+                      borderColor: c.input,
+                      borderRadius: radius.md,
+                      backgroundColor: pressed ? mix(c.mutedForeground, 8) : c.background,
+                    })}>
+                    <Meta>model</Meta>
+                    <Body numberOfLines={1} style={{ flex: 1, fontSize: 15, textAlign: 'right' }}>
+                      {beatModelLabel}
+                    </Body>
+                    <Mono style={{ fontSize: 13 }}>›</Mono>
+                  </Pressable>
+                  <SaveRow
+                    dirty={beatDirty}
+                    busy={busy}
+                    label="Save schedule"
+                    onSave={() => {
+                      if (!timeOk(beatSettings.activeStart) || !timeOk(beatSettings.activeEnd)) {
+                        setError('Active hours read as HH:MM.');
+                        return;
+                      }
+                      void act(async () => (await seam!.updateRoutine(id, heartbeatDraft(routine, beatSettings))).error);
+                    }}
+                  />
                 </View>
               ) : (
                 <View style={{ gap: 10 }}>
@@ -452,7 +575,11 @@ export function RoutineScreen({ route, navigation }: { route: any; navigation: a
                   {detail.triggers.reduce((sum, t) => sum + t.fires30d, 0)} fires in 30d
                 </Meta>
                 {detail.triggers.length === 0 ? (
-                  <Hint>Nothing starts this yet — give it a schedule, or a trigger, in the editor.</Hint>
+                  <Hint>
+                    {beat
+                      ? 'The heartbeat has no triggers of its own — it is what other routines ride.'
+                      : 'Nothing starts this yet — add a schedule, or a trigger.'}
+                  </Hint>
                 ) : null}
                 {detail.triggers.map(trigger => (
                   <TriggerRow
@@ -463,18 +590,60 @@ export function RoutineScreen({ route, navigation }: { route: any; navigation: a
                     onToggle={on =>
                       void act(() => seam!.setTriggerEnabled(id, trigger.triggerId, on))
                     }
+                    onRotate={
+                      trigger.kind === AutomationTriggerKind.Webhook
+                        ? () =>
+                            Alert.alert(
+                              'Rotate the secret?',
+                              'The old one stops working at once; the URL keeps its address.',
+                              [
+                                { text: 'Cancel', style: 'cancel' },
+                                {
+                                  text: 'Rotate',
+                                  style: 'destructive',
+                                  onPress: () =>
+                                    void act(async () => {
+                                      const result = await seam!.rotateWebhookSecret(id, trigger.triggerId);
+                                      if (!result.error) setRotated(result.webhooks);
+                                      return result.error;
+                                    }),
+                                },
+                              ],
+                            )
+                        : undefined
+                    }
                   />
                 ))}
-                <Hint>
-                  Adding a trigger, editing what it matches, or rotating a webhook secret happens in
-                  the cockpit: a secret is shown once, and a phone is the wrong place to be handed
-                  one.
-                </Hint>
+                {!beat ? (
+                  <View style={{ paddingTop: 10, alignItems: 'flex-start' }}>
+                    <Button
+                      label="+ Add trigger"
+                      variant="outline"
+                      onPress={() => navigation.navigate('RoutineEditor', { id, add: true })}
+                    />
+                  </View>
+                ) : null}
               </View>
             ) : null}
           </>
         ) : null}
       </ScrollView>
+
+      <Sheet visible={modelSheet} title="Model" onClose={() => setModelSheet(false)}>
+        <SheetGroup
+          options={[
+            { key: '', label: 'Auto', description: 'Let the router pick per beat' },
+            ...models.map(m => ({ key: m.modelId, label: m.modelDisplayName || m.modelId, description: m.connectionName })),
+          ]}
+          selected={beatSettings.model}
+          onSelect={key => {
+            setBeatSettings(b => ({ ...b, model: key }));
+            setModelSheet(false);
+          }}
+        />
+      </Sheet>
+
+      <SecretSheet secrets={rotated} server={server} onContinue={() => setRotated([])} />
 
       <Sheet
         visible={selected !== null}
@@ -557,11 +726,14 @@ function TriggerRow({
   busy,
   onFire,
   onToggle,
+  onRotate,
 }: {
   trigger: TriggerStats;
   busy: boolean;
   onFire: () => void;
   onToggle: (on: boolean) => void;
+  /** A webhook's only other verb: mint a new secret, shown once. */
+  onRotate?: () => void;
 }) {
   const { c } = useTheme();
 
@@ -601,6 +773,14 @@ function TriggerRow({
         <View style={{ flex: 1 }}>
           <HistoryStrip history={trigger.history} height={12} />
         </View>
+        {onRotate ? (
+          <Pressable onPress={onRotate} disabled={busy} hitSlop={10} accessibilityRole="button" accessibilityLabel="Rotate secret">
+            <Mono
+              style={{ color: c.primary, textDecorationLine: 'underline', opacity: busy ? 0.5 : 1 }}>
+              rotate secret
+            </Mono>
+          </Pressable>
+        ) : null}
         <Pressable onPress={onFire} disabled={busy} hitSlop={10} accessibilityRole="button" accessibilityLabel="Fire trigger">
           <Mono
             style={{ color: c.primary, textDecorationLine: 'underline', opacity: busy ? 0.5 : 1 }}>

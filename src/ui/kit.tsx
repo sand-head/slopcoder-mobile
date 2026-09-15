@@ -62,18 +62,22 @@ export function Mono({
   style,
   numberOfLines,
   ellipsizeMode,
+  selectable,
 }: {
   children: React.ReactNode;
   style?: StyleProp<TextStyle>;
   numberOfLines?: number;
   /** Which end to cut. A file path is worth more from its tail, so it takes 'head'. */
   ellipsizeMode?: 'head' | 'middle' | 'tail' | 'clip';
+  /** A URL or a path the reader may want to long-press and copy. */
+  selectable?: boolean;
 }) {
   const { c } = useTheme();
   return (
     <Text
       numberOfLines={numberOfLines}
       ellipsizeMode={ellipsizeMode}
+      selectable={selectable}
       maxFontSizeMultiplier={META_SCALE_CAP}
       style={[{ fontFamily: font.mono, fontSize: 11.5, color: c.mutedForeground }, style]}>
       {children}
@@ -672,7 +676,7 @@ export const Field = forwardRef<
     placeholder?: string;
     secure?: boolean;
     autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
-    keyboardType?: 'default' | 'url' | 'email-address';
+    keyboardType?: 'default' | 'url' | 'email-address' | 'numbers-and-punctuation';
     textContentType?: TextInputProps['textContentType'];
     autoComplete?: TextInputProps['autoComplete'];
     returnKeyType?: TextInputProps['returnKeyType'];

@@ -167,6 +167,14 @@ describe('the routines board', () => {
     expect(rendered).toContain('last ');
   });
 
+  /** Writing a routine is a form of our own now, not a page in a browser. */
+  it('presents the editor for a new routine', async () => {
+    await mount();
+    const options = navigation.setOptions.mock.calls.at(-1)![0];
+    options.unstable_headerRightItems()[0].onPress();
+    expect(navigation.navigate).toHaveBeenCalledWith('RoutineEditor');
+  });
+
   /** "today" is counted on the reader's clock, so the phone has to say which. */
   it('asks for the board in this phone zone', async () => {
     await mount();
