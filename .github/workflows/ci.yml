@@ -62,8 +62,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ios/Pods
-          key: pods-${{ hashFiles('ios/Podfile.lock') }}
-          restore-keys: pods-
+          key: pods-${{ hashFiles('package-lock.json', 'ios/Podfile') }}
       - uses: ruby/setup-ruby@v1
         # Version comes from .ruby-version. The Gemfile works on 3.4 too, but
         # pinning means a runner image bump cannot change the CocoaPods that
