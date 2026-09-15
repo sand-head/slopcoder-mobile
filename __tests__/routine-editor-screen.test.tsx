@@ -155,7 +155,7 @@ function bar(navigation: ReturnType<typeof navigator>) {
   const calls = navigation.setOptions.mock.calls;
   return calls[calls.length - 1][0] as {
     title: string;
-    unstable_headerRightItems: () => { label: string; disabled?: boolean }[];
+    unstable_headerRightItems: () => { label: string; disabled?: boolean; onPress: () => void }[];
     unstable_headerLeftItems: () => { label: string }[];
   };
 }
@@ -210,7 +210,7 @@ describe('the routine editor', () => {
   it('saves an edit as an update and returns to the routine', async () => {
     const { navigation } = await mount({ id: 'r-1' });
     await act(async () => {
-      (bar(navigation).unstable_headerRightItems()[0] as { onPress: () => void }).onPress();
+      bar(navigation).unstable_headerRightItems()[0].onPress();
     });
     await act(async () => {});
 
