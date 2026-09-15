@@ -161,17 +161,36 @@ const FOLDED_TOOLS = new Set(['update_plan', 'ask_user_question']);
 export class TranscriptFolder {
   private items: Item[] = [];
   private processed = 0;
-  /** Open tool calls, keyed by subagent then name, awaiting their result. */
-  private openTools = new Map<string, ToolItem>();
+  /**
+   * Open tool calls, keyed by subagent then name, awaiting their result. The
+   * value is the slot in {@link items}, not the item — the item is replaced
+   * when the result lands, so holding it would be holding the stale one.
+   */
+  private openTools = new Map<string, number>();
+  private version = 0;
 
   get all(): readonly Item[] {
     return this.items;
+  }
+
+  /**
+   * Bumped whenever an item is added or replaced, and never otherwise.
+   *
+   * Every push from the hub re-folds, and almost none of them change anything
+   * here — a turn's text streams through the accumulator and only lands as an
+   * event when it is finished. Without a way to tell the difference, the screen
+   * published a fresh array per push, which re-grouped the whole transcript and
+   * re-rendered every mounted row. This is that way.
+   */
+  get revision(): number {
+    return this.version;
   }
 
   reset(): void {
     this.items = [];
     this.processed = 0;
     this.openTools.clear();
+    this.version++;
   }
 
   /**
@@ -192,6 +211,26 @@ export class TranscriptFolder {
     return this.fold(events);
   }
 
+  /** Append, and say so. Returns the slot, for the things that come back to it. */
+  private add(item: Item): number {
+    this.version++;
+    return this.items.push(item) - 1;
+  }
+
+  /**
+   * Replace a slot rather than write through the item in it.
+   *
+   * A tool row that filled in its own `result`, an approval card that set its
+   * own `approved`, kept the identity React had already rendered, so a memoized
+   * row had no way to know it had changed and the result never appeared. The
+   * rule this buys is worth more than the allocation: an item's identity
+   * changes exactly when the item does.
+   */
+  private replace(index: number, item: Item): void {
+    this.version++;
+    this.items[index] = item;
+  }
+
   private consume(envelope: AgentEventEnvelope, sub: number | null): void {
     let payload: Record<string, unknown>;
     try {
@@ -206,7 +245,7 @@ export class TranscriptFolder {
     switch (envelope.kind) {
       case 'UserPrompt':
       case 'SteeringPrompt':
-        this.items.push({
+        this.add({
           ...base,
           kind: 'user',
           text: str('text'),
@@ -216,7 +255,7 @@ export class TranscriptFolder {
         break;
 
       case 'AssistantText':
-        this.items.push({
+        this.add({
           ...base,
           kind: 'text',
           text: str('text'),
@@ -225,7 +264,7 @@ export class TranscriptFolder {
         break;
 
       case 'ThinkingText':
-        this.items.push({
+        this.add({
           ...base,
           kind: 'think',
           text: str('text'),
@@ -246,8 +285,7 @@ export class TranscriptFolder {
           isError: false,
           running: true,
         };
-        this.openTools.set(`${sub ?? 'main'}:${name}`, item);
-        this.items.push(item);
+        this.openTools.set(`${sub ?? 'main'}:${name}`, this.add(item));
         break;
       }
 
@@ -256,17 +294,16 @@ export class TranscriptFolder {
         const open = this.openTools.get(`${sub ?? 'main'}:${name}`);
         const isError = Boolean(payload.isError);
 
-        if (open) {
-          open.result = str('result');
-          open.isError = isError;
-          open.running = false;
+        if (open !== undefined) {
+          const started = this.items[open] as ToolItem;
+          this.replace(open, { ...started, result: str('result'), isError, running: false });
           this.openTools.delete(`${sub ?? 'main'}:${name}`);
           break;
         }
 
         // A folded tool that failed: show it after all, since nothing else will.
         if (FOLDED_TOOLS.has(name) && isError) {
-          this.items.push({
+          this.add({
             ...base,
             kind: 'tool',
             name,
@@ -282,7 +319,7 @@ export class TranscriptFolder {
       // Both reuse the tool row — a command is a tool call with a shell on the
       // other end, and setup output is one with the sandbox on it.
       case 'CommandExecuted':
-        this.items.push({
+        this.add({
           ...base,
           kind: 'tool',
           name: 'command',
@@ -294,7 +331,7 @@ export class TranscriptFolder {
         break;
 
       case 'SetupOutput':
-        this.items.push({
+        this.add({
           ...base,
           kind: 'tool',
           name: str('label') || 'setup',
@@ -306,7 +343,7 @@ export class TranscriptFolder {
         break;
 
       case 'PlanUpdated':
-        this.items.push({
+        this.add({
           ...base,
           kind: 'plan',
           steps: ((payload.steps as PlanStep[]) ?? []).map(step => ({
@@ -318,7 +355,7 @@ export class TranscriptFolder {
         break;
 
       case 'ApprovalRequested':
-        this.items.push({
+        this.add({
           ...base,
           kind: 'approval',
           requestId: str('requestId'),
@@ -332,15 +369,18 @@ export class TranscriptFolder {
 
       case 'ApprovalResolved': {
         const requestId = str('requestId');
-        const card = this.items.find(
+        const at = this.items.findIndex(
           (item): item is ApprovalItem => item.kind === 'approval' && item.requestId === requestId,
         );
-        if (card) card.approved = Boolean(payload.approved);
+        if (at >= 0) {
+          const card = this.items[at] as ApprovalItem;
+          this.replace(at, { ...card, approved: Boolean(payload.approved) });
+        }
         break;
       }
 
       case 'QuestionAsked':
-        this.items.push({
+        this.add({
           ...base,
           kind: 'question',
           requestId: str('requestId'),
@@ -352,18 +392,22 @@ export class TranscriptFolder {
 
       case 'QuestionAnswered': {
         const requestId = str('requestId');
-        const card = this.items.find(
+        const at = this.items.findIndex(
           (item): item is QuestionItem => item.kind === 'question' && item.requestId === requestId,
         );
-        if (card) {
-          card.answers = (payload.answers as UserQuestionAnswer[]) ?? null;
-          card.resolved = true;
+        if (at >= 0) {
+          const card = this.items[at] as QuestionItem;
+          this.replace(at, {
+            ...card,
+            answers: (payload.answers as UserQuestionAnswer[]) ?? null,
+            resolved: true,
+          });
         }
         break;
       }
 
       case 'AgentError':
-        this.items.push({
+        this.add({
           ...base,
           kind: 'error',
           message: str('message'),
@@ -373,7 +417,7 @@ export class TranscriptFolder {
         break;
 
       case 'ModelSelected':
-        this.items.push({
+        this.add({
           ...base,
           kind: 'divider',
           label: payload.autoRouted ? `${str('model')} · auto` : str('model'),
@@ -381,19 +425,19 @@ export class TranscriptFolder {
         break;
 
       case 'ContextCompacted':
-        this.items.push({ ...base, kind: 'divider', label: 'context compacted' });
+        this.add({ ...base, kind: 'divider', label: 'context compacted' });
         break;
 
       case 'TurnCompleted':
-        this.items.push({ ...base, kind: 'note', text: 'done', tone: 'ok', turn: 'completed' });
+        this.add({ ...base, kind: 'note', text: 'done', tone: 'ok', turn: 'completed' });
         break;
 
       case 'TurnCancelled':
-        this.items.push({ ...base, kind: 'note', text: 'stopped (by you)', tone: 'warn', turn: 'cancelled' });
+        this.add({ ...base, kind: 'note', text: 'stopped (by you)', tone: 'warn', turn: 'cancelled' });
         break;
 
       case 'CompletionRetry':
-        this.items.push({
+        this.add({
           ...base,
           kind: 'note',
           text: `retrying (${payload.attempt}/${payload.maxAttempts}) — ${str('reason')}`,
@@ -402,11 +446,11 @@ export class TranscriptFolder {
         break;
 
       case 'SandboxStatus':
-        this.items.push({ ...base, kind: 'note', text: str('message'), tone: 'muted' });
+        this.add({ ...base, kind: 'note', text: str('message'), tone: 'muted' });
         break;
 
       case 'CheckpointRestored':
-        this.items.push({
+        this.add({
           ...base,
           kind: 'note',
           text: `rewound to checkpoint ${payload.number}`,
@@ -415,7 +459,7 @@ export class TranscriptFolder {
         break;
 
       case 'SubagentStarted':
-        this.items.push({
+        this.add({
           ...base,
           kind: 'subagent-start',
           subagentId: (payload.subagentId as number) ?? 0,
@@ -425,7 +469,7 @@ export class TranscriptFolder {
         break;
 
       case 'SubSessionOpened':
-        this.items.push({
+        this.add({
           ...base,
           kind: 'subsession',
           subSessionId: str('subSessionId'),

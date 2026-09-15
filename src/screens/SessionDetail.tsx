@@ -7,7 +7,7 @@
  * they are. Liveness comes from `state.pendingApprovalIds`, **never** from the
  * transcript: an approval resolved on the laptop is still in the scrollback here.
  */
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -253,8 +253,70 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
   }, [pendingCount]);
 
   // Each subagent's thread folded under its own row, then newest first for
-  // the inverted list.
+  // the inverted list. `items` only changes identity when the fold changed, so
+  // this holds still through a whole streaming turn.
   const reversed = useMemo(() => groupSubagents(items).reverse(), [items]);
+
+  // Everything a row is given, as one object that holds still.
+  //
+  // Rows are memoized, and a memoized row is only as good as the props handed
+  // to it: `pendingApprovalIds` arrives as a fresh array on every push from the
+  // hub, and an arrow written in the JSX is a new function on every render.
+  // Either one alone would re-render every mounted row for the whole length of
+  // a turn, which is the lag this screen had.
+  const pendingApprovals = useStableIds(state?.pendingApprovalIds);
+  const pendingQuestions = useStableIds(state?.pendingQuestionIds);
+
+  const onOpenSubSession = useCallback(
+    (subId: string) => navigation.push('Session', { id: subId }),
+    [navigation],
+  );
+  const onApprove = useCallback(
+    (requestId: string, approved: boolean) => {
+      if (approved) tapConfirm();
+      else tapRefuse();
+      void seam?.approve(id, { requestId, approved });
+    },
+    [seam, id],
+  );
+  const onAnswer = useCallback(
+    (requestId: string, answers: UserQuestionAnswer[] | null) => {
+      tapConfirm();
+      void seam?.answer(id, { requestId, answers });
+    },
+    [seam, id],
+  );
+
+  const handlers = useMemo<RowHandlers>(
+    () => ({
+      parentDriven,
+      pendingApprovals,
+      pendingQuestions,
+      onApprove,
+      onAnswer,
+      onOpenSubSession,
+    }),
+    [parentDriven, pendingApprovals, pendingQuestions, onApprove, onAnswer, onOpenSubSession],
+  );
+
+  const renderRow = useCallback(
+    ({ item }: { item: Row }) => <RowView row={item} handlers={handlers} />,
+    [handlers],
+  );
+
+  const transcriptStyle = useMemo(
+    () => ({
+      paddingHorizontal: 16,
+      // The composer floats on top, so the transcript scrolls under it rather
+      // than stopping short — which is the whole point of a material that
+      // refracts what is behind it. Inverted, so the container's top is the
+      // visual bottom.
+      paddingTop: composerHeight + keyboardHeight + 16,
+      paddingBottom: headerInset + 16,
+      gap: 4,
+    }),
+    [composerHeight, keyboardHeight, headerInset],
+  );
 
   return (
     <Screen>
@@ -270,21 +332,23 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
             ref={listRef}
             data={reversed}
             inverted
-            keyExtractor={item => item.key}
+            keyExtractor={keyOf}
             // Dragging the transcript down takes the keyboard with it, as
             // every chat on the platform does.
             keyboardDismissMode="interactive"
             keyboardShouldPersistTaps="handled"
-            // The composer floats on top, so the transcript scrolls under it
-            // rather than stopping short — which is the whole point of a
-            // material that refracts what is behind it. Inverted, so the
-            // container's top is the visual bottom.
-            contentContainerStyle={{
-              paddingHorizontal: 16,
-              paddingTop: composerHeight + keyboardHeight + 16,
-              paddingBottom: headerInset + 16,
-              gap: 4,
-            }}
+            contentContainerStyle={transcriptStyle}
+            // How much of a long run is mounted at once. The default window is
+            // ten screens either side of the viewport, and a row here is not a
+            // row — it is a whole markdown document, a diff, a subagent's
+            // folded thread. Four either side is still more than a fast flick
+            // covers, and it is the difference between a hundred mounted cells
+            // and four hundred. The batch numbers keep the fill from landing in
+            // one frame when it does have to happen.
+            windowSize={9}
+            initialNumToRender={12}
+            maxToRenderPerBatch={8}
+            updateCellsBatchingPeriod={50}
             {...bottom}
             // The visual top: reaching it pulls in earlier scrollback.
             onEndReached={canLoadEarlier ? loadEarlier : undefined}
@@ -296,24 +360,7 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
                 </View>
               ) : undefined
             }
-            renderItem={({ item }) => (
-              <RowView
-                row={item}
-                parentDriven={parentDriven}
-                pendingApprovals={state?.pendingApprovalIds ?? []}
-                pendingQuestions={state?.pendingQuestionIds ?? []}
-                onOpenSubSession={subId => navigation.push('Session', { id: subId })}
-                onApprove={(requestId, approved) => {
-                  if (approved) tapConfirm();
-                  else tapRefuse();
-                  void seam?.approve(id, { requestId, approved });
-                }}
-                onAnswer={(requestId, answers) => {
-                  tapConfirm();
-                  void seam?.answer(id, { requestId, answers });
-                }}
-              />
-            )}
+            renderItem={renderRow}
             // The streaming tail, which in an inverted list is the header.
             ListHeaderComponent={
               live ? (
@@ -500,8 +547,8 @@ function ContextBar({ percent }: { percent: number }) {
 interface RowHandlers {
   /** A sub-session: the prompts are the driving agent's, not the user's. */
   parentDriven: boolean;
-  pendingApprovals: string[];
-  pendingQuestions: string[];
+  pendingApprovals: readonly string[];
+  pendingQuestions: readonly string[];
   onApprove: (requestId: string, approved: boolean) => void;
   onAnswer: (requestId: string, answers: UserQuestionAnswer[] | null) => void;
   onOpenSubSession: (id: string) => void;
@@ -530,13 +577,46 @@ function SubSessionNote({ closed }: { closed: boolean }) {
   );
 }
 
-function RowView({ row, ...handlers }: { row: Row } & RowHandlers) {
-  return row.kind === 'subagent' ? (
-    <SubagentBlock group={row} {...handlers} />
-  ) : (
-    <TranscriptRow item={row} {...handlers} />
-  );
+/** The list's key, out here so the list is not handed a new one each render. */
+function keyOf(row: Row): string {
+  return row.key;
 }
+
+const NO_IDS: readonly string[] = [];
+
+/**
+ * The same array until its contents change.
+ *
+ * The session state arrives whole off the wire, so its id arrays are new
+ * objects on every push even when nobody's approval changed. A memoized row
+ * compares by identity and would see every one of those as news.
+ */
+function useStableIds(ids: readonly string[] | undefined): readonly string[] {
+  const held = useRef<readonly string[]>(NO_IDS);
+  const next = ids ?? NO_IDS;
+  if (next.length !== held.current.length || next.some((value, at) => value !== held.current[at])) {
+    held.current = next;
+  }
+  return held.current;
+}
+
+/**
+ * One row of the transcript, and the reason a long run stays smooth.
+ *
+ * Memoized on `row` and on the one handlers object, which together is the whole
+ * contract: `TranscriptFolder` replaces an item rather than writing through it,
+ * so a row's identity changes exactly when the row changed. Without that this
+ * memo would be a bug — a tool call's result would land in an item React had no
+ * reason to look at again.
+ */
+const RowView = React.memo(({ row, handlers }: { row: Row; handlers: RowHandlers }) =>
+  row.kind === 'subagent' ? (
+    <SubagentBlock group={row} handlers={handlers} />
+  ) : (
+    <TranscriptRow item={row} handlers={handlers} />
+  ),
+);
+RowView.displayName = 'RowView';
 
 /**
  * A subagent's whole thread behind one row, closed by default, as on the web:
@@ -546,7 +626,7 @@ function RowView({ row, ...handlers }: { row: Row } & RowHandlers) {
  * agent's. The row's own status is derived, never carried: a failure wins,
  * then a stop, then a clean finish.
  */
-function SubagentBlock({ group, ...handlers }: { group: SubagentGroup } & RowHandlers) {
+function SubagentBlock({ group, handlers }: { group: SubagentGroup; handlers: RowHandlers }) {
   const { c, status } = useTheme();
   const [open, setOpen] = useState(false);
 
@@ -624,7 +704,9 @@ function SubagentBlock({ group, ...handlers }: { group: SubagentGroup } & RowHan
           {group.items.length === 0 ? (
             <Mono style={{ paddingVertical: 4 }}>Nothing yet.</Mono>
           ) : (
-            group.items.map(item => <TranscriptRow key={item.key} item={item} {...handlers} />)
+            group.items.map(item => (
+              <TranscriptRow key={item.key} item={item} handlers={handlers} />
+            ))
           )}
         </View>
       ) : null}
@@ -678,15 +760,13 @@ function PromptImages({ images }: { images: readonly { mediaType: string; base64
   );
 }
 
-function TranscriptRow({
+const TranscriptRow = React.memo(function Transcript({
   item,
-  parentDriven,
-  pendingApprovals,
-  pendingQuestions,
-  onApprove,
-  onAnswer,
-  onOpenSubSession,
-}: { item: Item } & RowHandlers) {
+  handlers: { parentDriven, pendingApprovals, pendingQuestions, onApprove, onAnswer, onOpenSubSession },
+}: {
+  item: Item;
+  handlers: RowHandlers;
+}) {
   const { c, status, isDark } = useTheme();
   const [open, setOpen] = useState(false);
 
@@ -913,7 +993,8 @@ function TranscriptRow({
     default:
       return null;
   }
-}
+});
+TranscriptRow.displayName = 'TranscriptRow';
 
 function QuestionCard({
   item,

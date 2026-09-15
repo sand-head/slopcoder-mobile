@@ -148,6 +148,53 @@ describe('TranscriptFolder', () => {
     expect(folder.all[0]).toMatchObject({ kind: 'approval', refused: true, approved: false });
   });
 
+  /**
+   * The contract the transcript's memoized rows are built on. A row is only
+   * re-rendered when its item is a different object, so an item that changed
+   * while keeping its identity is a result that never reaches the screen.
+   */
+  it('gives an item a new identity when it changes, and leaves the rest alone', () => {
+    const folder = new TranscriptFolder();
+
+    folder.fold([
+      event('AssistantText', { text: 'working on it' }),
+      event('ToolCallStarted', { toolName: 'Read', inputJson: '{}' }),
+    ]);
+    const [textBefore, toolBefore] = folder.all;
+
+    folder.fold([
+      event('AssistantText', { text: 'working on it' }),
+      event('ToolCallStarted', { toolName: 'Read', inputJson: '{}' }),
+      event('ToolCallFinished', { toolName: 'Read', result: 'contents', isError: false }),
+    ]);
+
+    expect(folder.all[1]).not.toBe(toolBefore);
+    expect(folder.all[1]).toMatchObject({ kind: 'tool', running: false, result: 'contents' });
+    // The row above it did not change, so nothing should think it did.
+    expect(folder.all[0]).toBe(textBefore);
+    // And the item the screen already rendered is not rewritten under it.
+    expect(toolBefore).toMatchObject({ running: true, result: null });
+  });
+
+  /**
+   * Every push from the hub re-folds. Almost none of them add an event, and the
+   * screen needs to be able to tell, or it re-renders the whole window.
+   */
+  it('only moves its revision when the fold actually changed', () => {
+    const folder = new TranscriptFolder();
+    const events = [event('UserPrompt', { text: 'go' })];
+
+    folder.fold(events);
+    const settled = folder.revision;
+
+    folder.fold(events);
+    folder.fold(events);
+    expect(folder.revision).toBe(settled);
+
+    folder.fold([...events, event('AssistantText', { text: 'done' })]);
+    expect(folder.revision).toBeGreaterThan(settled);
+  });
+
   it('skips an unknown kind instead of throwing', () => {
     // The server adds event kinds; an app in a store is always older than it.
     const folder = new TranscriptFolder();

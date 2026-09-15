@@ -35,6 +35,8 @@ export function useSession(seam: Seam | null, hub: SessionHub | null, id: string
   const accumulator = useRef(new LiveAccumulator()).current;
   const folder = useRef(new TranscriptFolder()).current;
   const pulling = useRef(false);
+  /** The fold this hook has already handed out; see {@link publishItems}. */
+  const published = useRef(-1);
 
   const [state, setState] = useState<SessionState | null>(null);
   const [items, setItems] = useState<readonly Item[]>([]);
@@ -43,10 +45,28 @@ export function useSession(seam: Seam | null, hub: SessionHub | null, id: string
   const [error, setError] = useState<string | null>(null);
   const [canLoadEarlier, setCanLoadEarlier] = useState(false);
 
+  /**
+   * A new array only when the fold is a different fold.
+   *
+   * A running turn pushes constantly — every one of them re-folds, and nearly
+   * none of them add an item, because the text streaming past is the
+   * accumulator's business until the turn closes it into an event. Copying
+   * regardless meant `items` changed identity on every push, which re-grouped
+   * the subagents and gave the transcript a new object for every row, which
+   * re-rendered every mounted row, which re-parsed every markdown body in the
+   * window. That is the cost that grew with the transcript.
+   */
+  const publishItems = useRef(() => {
+    folder.fold(stream.all);
+    if (folder.revision === published.current) return;
+    published.current = folder.revision;
+    setItems([...folder.all]);
+  }).current;
+
   // One render pass per push, whatever changed.
   const publish = useRef((next: SessionState) => {
     setState(next);
-    setItems([...folder.fold(stream.all)]);
+    publishItems();
     setLive(accumulator.snapshot);
     setCanLoadEarlier(stream.firstOrdinal > 0);
   }).current;
@@ -164,12 +184,12 @@ export function useSession(seam: Seam | null, hub: SessionHub | null, id: string
       void seam.scrollback(id, from, take).then(older => {
         if (stream.prepend(from, older)) {
           folder.refold(stream.all);
-          setItems([...folder.all]);
+          publishItems();
           setCanLoadEarlier(stream.firstOrdinal > 0);
         }
       });
     },
-    [seam, id, stream, folder],
+    [seam, id, stream, folder, publishItems],
   );
 
   return { state, items, live, loading, error, canLoadEarlier, loadEarlier };
