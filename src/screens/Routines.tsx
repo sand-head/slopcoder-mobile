@@ -54,8 +54,7 @@ import { Body, Button, Hint, Meta, Mono, Screen, Skeleton, StatusDot } from '../
 import { HistoryStrip, outcomeColor } from '../ui/HistoryStrip';
 import { SheetSegments } from '../ui/Sheet';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
-import { useHeaderInset } from '../navigation/headers';
-import { barButton } from '../navigation/headers';
+import { barButton, useHeaderInset } from '../navigation/headers';
 import { tapSelect } from '../ui/haptics';
 import { font, mix, radius, useTheme } from '../theme';
 

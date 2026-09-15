@@ -70,9 +70,17 @@ export function useHeaderInset(): number {
 
 /**
  * A tab's own page: the title is large, and collapses as the list scrolls.
+ *
  * Nothing here about transparency — an explicit `headerTransparent: false`
  * on a large title made the bar non-translucent while its appearance stayed
  * transparent, which is how the window's black showed through it.
+ *
+ * The collapse is UIKit's, and UIKit only drives it against a scroll view it
+ * has been handed. Which the tab bar has to do, and the SwiftUI-backed one this
+ * app used to run did not — see `navigation/Tabs.tsx` for what that cost. Two
+ * things are still the page's own job: its scroll view has to be the first one
+ * in the screen's descendant chain, and it has to carry
+ * `contentInsetAdjustmentBehavior="automatic"`.
  */
 export const rootPageOptions: NativeStackNavigationOptions = {
   headerLargeTitle: true,

@@ -7,8 +7,19 @@
  * pages stacked on top of each other as it switched between them, and a screen
  * with a menu button could still be swiped "back" to a sibling. Four places to
  * switch between is a tab bar on both platforms — `UITabBarController` on iOS,
- * which iOS 26 draws in glass, and Material's navigation bar on Android — and
- * this is that, natively, through `react-native-bottom-tabs`.
+ * which iOS 26 draws in glass, and Material's navigation bar on Android.
+ *
+ * Which library draws it is not a detail. This was `react-native-bottom-tabs`,
+ * which hands each tab's subtree to a SwiftUI `TabView`; the navigation
+ * controller nested inside one stopped contributing its own height to the page
+ * under it, so the scroll view's top inset came out as the status bar alone.
+ * Everything downstream of UIKit adopting a page's scroll view went with it:
+ * the large title never collapsed, nothing reserved room for it, and iOS 26's
+ * scroll-edge effect never appeared. React Navigation's own native tabs run a
+ * real `UITabBarController` through `react-native-screens`, and hand that
+ * scroll view over on purpose — see `overrideScrollViewContentInsetAdjustmentBehavior`,
+ * which is on by default and is the reason {@link rootPageOptions} can ask for
+ * a large title again.
  *
  * Each tab is a stack of one so the page owns a real navigation bar: the large
  * title that collapses, the search field, the trailing button. Screens that are
@@ -21,8 +32,11 @@
  * page you were on. That is the tab's badge.
  */
 import React from 'react';
-import { Platform } from 'react-native';
-import { createNativeBottomTabNavigator } from '@bottom-tabs/react-navigation';
+import { Platform, type ImageSourcePropType } from 'react-native';
+import {
+  createNativeBottomTabNavigator,
+  type NativeBottomTabIcon,
+} from '@react-navigation/bottom-tabs/unstable';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SessionsScreen } from '../screens/Sessions';
 import { RoutinesScreen } from '../screens/Routines';
@@ -39,12 +53,21 @@ const UsageStack = createNativeStackNavigator();
 const SettingsStack = createNativeStackNavigator();
 
 /**
- * SF Symbols on iOS, where the bar expects them and draws the filled variant
- * for the selected tab itself; a bundled SVG on Android, which Material tints.
+ * SF Symbols on iOS, where the bar expects them and we name the filled variant
+ * for the selected tab ourselves; a bundled bitmap on Android, which Material
+ * tints. The Android icon is a PNG rather than the SVG it was: this bar resolves
+ * an image icon through `Image.resolveAssetSource` and hands the bitmap to a
+ * `Drawable`, and nothing in that path decodes SVG. `assets/icons/*.svg` are
+ * still the source the PNGs beside them were rendered from.
  */
-function icon(sf: string, android: number) {
-  return ({ focused }: { focused: boolean }) =>
-    Platform.OS === 'ios' ? { sfSymbol: (focused ? `${sf}.fill` : sf) as never } : android;
+function icon(
+  sf: string,
+  android: ImageSourcePropType,
+): (props: { focused: boolean }) => NativeBottomTabIcon {
+  return ({ focused }) =>
+    Platform.OS === 'ios'
+      ? { type: 'sfSymbol', name: (focused ? `${sf}.fill` : sf) as never }
+      : { type: 'image', source: android };
 }
 
 function SessionsTab() {
@@ -89,19 +112,21 @@ export function Tabs() {
 
   return (
     <Tab.Navigator
-      tabBarActiveTintColor={c.primary}
-      tabBarInactiveTintColor={c.mutedForeground}
-      hapticFeedbackEnabled
-      // Android's bar; iOS ignores it and draws its own material.
-      tabBarStyle={{ backgroundColor: c.background }}
-      rippleColor={c.accent}
-      activeIndicatorColor={c.accent}>
+      screenOptions={{
+        tabBarActiveTintColor: c.primary,
+        tabBarInactiveTintColor: c.mutedForeground,
+        // Android's bar, and iOS 18 and below; iOS 26 draws its own glass and
+        // ignores a background colour.
+        tabBarStyle: { backgroundColor: c.background },
+        tabBarRippleColor: c.accent,
+        tabBarActiveIndicatorColor: c.accent,
+      }}>
       <Tab.Screen
         name="SessionsTab"
         component={SessionsTab}
         options={{
           title: 'Sessions',
-          tabBarIcon: icon('bubble.left.and.bubble.right', require('../../assets/icons/sessions.svg')),
+          tabBarIcon: icon('bubble.left.and.bubble.right', require('../../assets/icons/sessions.png')),
         }}
       />
       <Tab.Screen
@@ -109,9 +134,9 @@ export function Tabs() {
         component={RoutinesTab}
         options={{
           title: 'Routines',
-          tabBarIcon: icon('clock', require('../../assets/icons/routines.svg')),
+          tabBarIcon: icon('clock', require('../../assets/icons/routines.png')),
           tabBarBadge: anyFailed ? '!' : undefined,
-          tabBarBadgeBackgroundColor: c.destructive,
+          tabBarBadgeStyle: { backgroundColor: c.destructive },
         }}
       />
       <Tab.Screen
@@ -119,7 +144,7 @@ export function Tabs() {
         component={UsageTab}
         options={{
           title: 'Usage',
-          tabBarIcon: icon('chart.bar', require('../../assets/icons/usage.svg')),
+          tabBarIcon: icon('chart.bar', require('../../assets/icons/usage.png')),
         }}
       />
       <Tab.Screen
@@ -127,7 +152,7 @@ export function Tabs() {
         component={SettingsTab}
         options={{
           title: 'Settings',
-          tabBarIcon: icon('gearshape', require('../../assets/icons/settings.svg')),
+          tabBarIcon: icon('gearshape', require('../../assets/icons/settings.png')),
         }}
       />
     </Tab.Navigator>
