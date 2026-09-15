@@ -5,7 +5,7 @@
 import React, { useLayoutEffect } from 'react';
 import { Alert, Platform, ScrollView, View } from 'react-native';
 import { useAuth } from '../state/auth';
-import { Body, Brand, Button, Hint, Meta, Mono, Screen, SectionLabel } from '../ui/kit';
+import { Body, Brand, Button, Hint, Meta, Mono, SectionLabel } from '../ui/kit';
 import { tapRefuse } from '../ui/haptics';
 import { appVersion } from '../appInfo';
 import { useTheme } from '../theme';
@@ -34,41 +34,42 @@ export function SettingsScreen({ navigation }: { navigation: any }) {
     ]);
 
   return (
-    <Screen>
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={{ padding: 20, paddingBottom: 24, gap: 18 }}>
-        <View>
-          <SectionLabel label="account" />
-          <Row label="signed in as" value={credential?.userName ?? '—'} />
-          <Row label="server" value={credential?.server ?? '—'} mono />
-          <Row
-            label="this device"
-            value={Platform.OS === 'ios' ? 'iPhone (slopcoder)' : 'Android (slopcoder)'}
-          />
-        </View>
+    // The scroll view is the screen, with nothing wrapped around it: UIKit
+    // finds the one that drives the large title by walking first children down
+    // from the screen, and a view in between is one step too many.
+    <ScrollView
+      contentInsetAdjustmentBehavior="automatic"
+      contentContainerStyle={{ padding: 20, paddingBottom: 24, gap: 18 }}>
+      <View>
+        <SectionLabel label="account" />
+        <Row label="signed in as" value={credential?.userName ?? '—'} />
+        <Row label="server" value={credential?.server ?? '—'} mono />
+        <Row
+          label="this device"
+          value={Platform.OS === 'ios' ? 'iPhone (slopcoder)' : 'Android (slopcoder)'}
+        />
+      </View>
 
-        <View>
-          <SectionLabel label="elsewhere" />
-          <Hint>
-            Everything else — providers, facets, memory, remote nodes — lives on the server. Open
-            slopcoder in a browser to reach it, and to write a routine: choosing a model, a
-            schedule, triggers and where the answer goes is a form, not a phone screen. Code mode
-            and the terminal are there too; they are not in this app on purpose.
-          </Hint>
-        </View>
+      <View>
+        <SectionLabel label="elsewhere" />
+        <Hint>
+          Everything else — providers, facets, memory, remote nodes — lives on the server. Open
+          slopcoder in a browser to reach it, and to write a routine: choosing a model, a
+          schedule, triggers and where the answer goes is a form, not a phone screen. Code mode
+          and the terminal are there too; they are not in this app on purpose.
+        </Hint>
+      </View>
 
-        <View>
-          <SectionLabel label="session" />
-          <Button label="Sign out" variant="link-destructive" onPress={confirmSignOut} />
-        </View>
+      <View>
+        <SectionLabel label="session" />
+        <Button label="Sign out" variant="link-destructive" onPress={confirmSignOut} />
+      </View>
 
-        <View style={{ marginTop: 'auto', paddingTop: 24, gap: 8, opacity: 0.7 }}>
-          <Brand size={13} />
-          <Meta>version {appVersion()}</Meta>
-        </View>
-      </ScrollView>
-    </Screen>
+      <View style={{ marginTop: 'auto', paddingTop: 24, gap: 8, opacity: 0.7 }}>
+        <Brand size={13} />
+        <Meta>version {appVersion()}</Meta>
+      </View>
+    </ScrollView>
   );
 }
 

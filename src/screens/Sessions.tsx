@@ -48,7 +48,6 @@ import {
   Hint,
   Meta,
   Mono,
-  Screen,
   SectionLabel,
   Skeleton,
   StatusDot,
@@ -276,7 +275,11 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
   const open = (session: SessionSummary) => navigation.navigate('Session', { id: session.id });
 
   return (
-    <Screen>
+    // A fragment, not a view: UIKit finds the scroll view that drives the large
+    // title by walking first children down from the screen, so anything wrapped
+    // around this one hides it. The rename sheet is a sibling *after* it, which
+    // leaves the walk alone, and renders nothing on iOS anyway.
+    <>
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         // The composer's buttons sit inside this scroll view. Without this, a
@@ -440,7 +443,7 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
           }}
         />
       ) : null}
-    </Screen>
+    </>
   );
 }
 
