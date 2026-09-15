@@ -14,9 +14,13 @@
  * reach it by accident — a keyboard's problem, and there is no Enter on a
  * phone. Here a running turn shows a square beside the arrow, whatever is in
  * the box, so stopping never means clearing a steer you were about to send.
+ *
+ * Images ride the next prompt as inline attachments, as they do on the web,
+ * where they are pasted; here they come from the photo library or the camera
+ * through the `+` menu, which is the platform's own menu rather than a sheet.
  */
 import React, { useEffect, useState } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+import { Image, Pressable, TextInput, View } from 'react-native';
 import {
   ApprovalMode,
   ThinkingLevel,
@@ -25,7 +29,9 @@ import {
   type ModelSelection,
 } from '../api/contracts';
 import { Body, Dot, GlassSurface, Meta, Mono, SendButton, Sliders } from './kit';
+import { OverflowMenu, type MenuItem } from './menu';
 import { Sheet, SheetGroup, SheetMultiGroup, SheetSegments } from './Sheet';
+import { MAX_IMAGES, type ImageSource, type PendingImage } from './images';
 import { useConnection } from '../state/connection';
 import { Field } from './kit';
 import { offer, shouldSearch } from '../api/repoPicker';
@@ -55,6 +61,20 @@ export interface Attachments {
   availableNodes: AttachOption[];
   searchRepos: (query: string) => Promise<AttachOption[]>;
   onChange: (next: { repos: string[]; nodes: string[] }) => void;
+}
+
+/**
+ * The images waiting on the next prompt, and the two ways to add one. The
+ * composer draws them and asks; the screen owns the list, because what
+ * happens to it on send differs — the launcher clears it, the cockpit keeps
+ * it back when the text went out as a steer.
+ */
+export interface ComposerImages {
+  pending: PendingImage[];
+  onPick: (source: ImageSource) => void;
+  onRemove: (key: string) => void;
+  /** Why the last pick fell short, or null. Cleared by the screen on the next pick. */
+  error: string | null;
 }
 
 export interface TurnOptions {
@@ -100,6 +120,7 @@ export function Composer({
   models,
   facets,
   attachments,
+  images,
 }: {
   value: string;
   onChangeValue: (next: string) => void;
@@ -120,6 +141,8 @@ export function Composer({
   facets: FacetOption[];
   /** Omitted by the cockpit: a running session's workspace is already set. */
   attachments?: Attachments;
+  /** Omitted where a prompt cannot carry an image. */
+  images?: ComposerImages;
 }) {
   const { c, status } = useTheme();
   const reachable = useConnection(s => s.reachable);
@@ -133,9 +156,51 @@ export function Composer({
   const thinkingLabel = THINKING.find(t => t.value === options.thinking)?.label ?? 'Auto';
   const approvalLabel = APPROVALS.find(a => a.value === options.approval)?.label ?? '';
 
+  // The `+` is one button whatever it offers: the platform's menu when images
+  // are on the table, the attach sheet straight away when only the workspace is.
+  const addItems: MenuItem[] = images
+    ? [
+        {
+          key: 'library',
+          title: 'Photo Library',
+          symbol: 'photo.on.rectangle',
+          onPress: () => images.onPick('library'),
+        },
+        { key: 'camera', title: 'Take Photo', symbol: 'camera', onPress: () => images.onPick('camera') },
+        ...(attachments
+          ? [
+              {
+                key: 'workspace',
+                title: 'Repositories & nodes',
+                symbol: 'folder',
+                onPress: () => setSheet('attach'),
+              },
+            ]
+          : []),
+      ]
+    : [];
+
+  const addButton =
+    attachments || images ? (
+      <IconButton
+        onPress={() => (images ? undefined : setSheet('attach'))}
+        accessibilityLabel="Attach">
+        <Body
+          style={{
+            fontFamily: font.mono,
+            fontSize: 17,
+            lineHeight: 17,
+            color: c.mutedForeground,
+          }}>
+          +
+        </Body>
+      </IconButton>
+    ) : null;
+
   return (
     <View style={{ gap: 8 }}>
       {attachments ? <AttachChips attachments={attachments} /> : null}
+      {images ? <ImageChips images={images} /> : null}
 
       <GlassSurface
         cornerRadius={radius.xl}
@@ -182,19 +247,13 @@ export function Composer({
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          {attachments ? (
-            <IconButton onPress={() => setSheet('attach')} accessibilityLabel="Attach">
-              <Body
-                style={{
-                  fontFamily: font.mono,
-                  fontSize: 17,
-                  lineHeight: 17,
-                  color: c.mutedForeground,
-                }}>
-                +
-              </Body>
-            </IconButton>
-          ) : null}
+          {images && addButton ? (
+            <OverflowMenu title="Attach" items={addItems}>
+              {addButton}
+            </OverflowMenu>
+          ) : (
+            addButton
+          )}
           <IconButton onPress={() => setSheet('turn')} accessibilityLabel="Turn settings">
             <Sliders color={c.mutedForeground} />
           </IconButton>
@@ -449,6 +508,72 @@ export function AttachChips({ attachments }: { attachments: Attachments }) {
           <Mono style={{ fontSize: 12 }}>×</Mono>
         </Pressable>
       ))}
+    </View>
+  );
+}
+
+/**
+ * The images going with the next prompt, as thumbnails; a tap drops one, as
+ * with the workspace chips. Under them, in one line, what the last pick
+ * refused and why — the cap, the size, a file that was not an image.
+ */
+export function ImageChips({ images }: { images: ComposerImages }) {
+  const { c } = useTheme();
+
+  if (images.pending.length === 0 && !images.error) return null;
+
+  return (
+    <View style={{ gap: 6 }}>
+      {images.pending.length > 0 ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          {images.pending.map((image, index) => (
+            <Pressable
+              key={image.key}
+              onPress={() => images.onRemove(image.key)}
+              accessibilityRole="button"
+              accessibilityLabel={`Remove image ${index + 1} of ${images.pending.length}`}
+              style={({ pressed }) => ({
+                width: 56,
+                height: 56,
+                borderRadius: radius.md,
+                borderWidth: 1,
+                borderColor: c.border,
+                overflow: 'hidden',
+                opacity: pressed ? 0.6 : 1,
+              })}>
+              <Image
+                source={{ uri: `data:${image.mediaType};base64,${image.base64Data}` }}
+                resizeMode="cover"
+                style={{ width: '100%', height: '100%' }}
+              />
+              <View
+                style={{
+                  position: 'absolute',
+                  top: 3,
+                  right: 3,
+                  width: 16,
+                  height: 16,
+                  borderRadius: 8,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: mix(c.foreground, 70),
+                }}>
+                <Mono style={{ fontSize: 11, lineHeight: 13, color: c.background }}>×</Mono>
+              </View>
+            </Pressable>
+          ))}
+          {images.pending.length >= MAX_IMAGES ? (
+            <Mono style={{ fontSize: 11, color: c.mutedForeground, alignSelf: 'center' }}>
+              {MAX_IMAGES} of {MAX_IMAGES}
+            </Mono>
+          ) : null}
+        </View>
+      ) : null}
+      {images.error ? (
+        <View accessibilityLiveRegion="polite">
+          <Mono style={{ fontSize: 12, color: c.destructive }}>{images.error}</Mono>
+        </View>
+      ) : null}
     </View>
   );
 }

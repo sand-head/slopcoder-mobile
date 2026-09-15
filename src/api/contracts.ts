@@ -254,7 +254,7 @@ export interface CreateSessionResult {
 
 export interface ImageAttachment {
   mediaType: string;
-  base64: string;
+  base64Data: string;
 }
 
 export interface StartSessionRequest {

@@ -56,6 +56,7 @@ import {
 } from '../ui/kit';
 import { animateNextLayout } from '../ui/motion';
 import { Composer, shortRepo, type TurnOptions } from '../ui/Composer';
+import { MAX_IMAGES, pickImages, type ImageSource, type PendingImage } from '../ui/images';
 import { OverflowMenu } from '../ui/menu';
 import { Sheet } from '../ui/Sheet';
 import { useRoutineAlert } from '../state/routines';
@@ -78,6 +79,8 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
   const [routines, setRoutines] = useState<RoutineStatus | null>(null);
 
   const [prompt, setPrompt] = useState('');
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  const [imageError, setImageError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [models, setModels] = useState<ModelCandidate[]>([]);
@@ -146,10 +149,19 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
       if (options.approval !== ApprovalMode.Dangerous) {
         await seam.setApprovalMode(id, { mode: options.approval, useClassifier: true });
       }
-      await seam.start(id, { prompt: text, selection: options.selection });
+      await seam.start(id, {
+        prompt: text,
+        selection: options.selection,
+        images:
+          pendingImages.length > 0
+            ? pendingImages.map(({ mediaType, base64Data }) => ({ mediaType, base64Data }))
+            : null,
+      });
       tapConfirm();
 
       setPrompt('');
+      setPendingImages([]);
+      setImageError(null);
       setRepos([]);
       setNodes([]);
       navigation.navigate('Session', { id });
@@ -302,6 +314,23 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
           onChangeOptions={setOptions}
           models={models}
           facets={facets}
+          images={{
+            pending: pendingImages,
+            onPick: async (source: ImageSource) => {
+              setImageError(null);
+              const result = await pickImages(source, MAX_IMAGES - pendingImages.length);
+              if (result.images.length > 0) {
+                animateNextLayout();
+                setPendingImages(current => [...current, ...result.images].slice(0, MAX_IMAGES));
+              }
+              setImageError(result.error);
+            },
+            onRemove: key => {
+              animateNextLayout();
+              setPendingImages(current => current.filter(image => image.key !== key));
+            },
+            error: imageError,
+          }}
           attachments={{
             repos,
             nodes,

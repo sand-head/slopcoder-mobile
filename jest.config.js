@@ -20,6 +20,7 @@ module.exports = {
     // Native views and modules with nothing to render or fire under jest.
     '^react-native-haptic-feedback$': '<rootDir>/__mocks__/haptics.js',
     '^@react-native-menu/menu$': '<rootDir>/__mocks__/menu.js',
+    '^react-native-image-picker$': '<rootDir>/__mocks__/image-picker.js',
     '^@bottom-tabs/react-navigation$': '<rootDir>/__mocks__/bottom-tabs.js',
     // Tab icons: Metro would hand back an asset id; a number is enough here.
     '\\.svg$': '<rootDir>/__mocks__/asset.js',

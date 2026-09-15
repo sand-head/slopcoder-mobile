@@ -11,6 +11,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   Pressable,
   ScrollView,
   View,
@@ -54,13 +55,14 @@ import {
 } from '../ui/kit';
 import { animateNextLayout } from '../ui/motion';
 import { Composer, type TurnOptions } from '../ui/Composer';
+import { MAX_IMAGES, pickImages, type ImageSource, type PendingImage } from '../ui/images';
 import { Sheet } from '../ui/Sheet';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 import { ToolCard } from '../ui/ToolCard';
 import { useAtBottom } from '../ui/atBottom';
 import { useKeyboardHeight } from '../ui/keyboard';
 import { useHeaderInset } from '../navigation/headers';
-import { tapConfirm, tapRefuse } from '../ui/haptics';
+import { tapConfirm, tapError, tapRefuse } from '../ui/haptics';
 import { newTokens } from '../api/contracts';
 import { font, mix, radius, useTheme } from '../theme';
 
@@ -88,6 +90,8 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
   );
 
   const [draft, setDraft] = useState('');
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  const [imageError, setImageError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [models, setModels] = useState<ModelCandidate[]>([]);
   const [facets, setFacets] = useState<FacetOption[]>([]);
@@ -156,20 +160,41 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
       tapConfirm();
 
       // Steering only lands while a turn is in flight; a false means it ended
-      // between the render and the tap, so start a new one instead.
+      // between the render and the tap, so start a new one instead. Steering
+      // is text-only, so the images stay put and go with the next real turn.
       if (running && (await seam.steer(id, { prompt }))) return;
 
-      await seam.start(id, {
+      const images = pendingImages.length > 0 ? pendingImages.map(strip) : null;
+      setPendingImages([]);
+      setImageError(null);
+      const started = await seam.start(id, {
         prompt,
         selection: options?.selection ?? {
           auto: state.autoRoute,
           connectionId: state.connectionId ?? null,
           modelId: state.selectedModel ?? null,
         },
+        images,
       });
+      // A refused start leaves what was typed and attached where it was.
+      if (!started) {
+        setDraft(prompt);
+        setPendingImages(pendingImages);
+        tapError();
+      }
     } finally {
       setSending(false);
     }
+  };
+
+  const pick = async (source: ImageSource) => {
+    setImageError(null);
+    const result = await pickImages(source, MAX_IMAGES - pendingImages.length);
+    if (result.images.length > 0) {
+      animateNextLayout();
+      setPendingImages(current => [...current, ...result.images].slice(0, MAX_IMAGES));
+    }
+    setImageError(result.error);
   };
 
   const stop = () => {
@@ -353,6 +378,15 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
             onAction={send}
             busy={sending}
             disabled={!draft.trim()}
+            images={{
+              pending: pendingImages,
+              onPick: pick,
+              onRemove: key => {
+                animateNextLayout();
+                setPendingImages(current => current.filter(image => image.key !== key));
+              },
+              error: imageError,
+            }}
             running={running}
             onStop={stop}
             stopping={state?.stopRequested}
@@ -561,6 +595,52 @@ function SubagentBlock({ group, ...handlers }: { group: SubagentGroup } & RowHan
   );
 }
 
+/** The wire's shape: the chip key stays on the phone. */
+function strip({ mediaType, base64Data }: PendingImage) {
+  return { mediaType, base64Data };
+}
+
+/**
+ * The images a prompt carried, in the scrollback. Thumbnails in a row; a tap
+ * opens one at the width of the bubble, and another tap folds it back.
+ */
+function PromptImages({ images }: { images: readonly { mediaType: string; base64Data: string }[] }) {
+  const { c } = useTheme();
+  const [open, setOpen] = useState<number | null>(null);
+
+  return (
+    <View style={{ gap: 6 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+        {images.map((image, index) => (
+          <Pressable
+            key={index}
+            onPress={() => {
+              animateNextLayout();
+              setOpen(open === index ? null : index);
+            }}
+            accessibilityRole="imagebutton"
+            accessibilityLabel={`Attached image ${index + 1} of ${images.length}`}
+            style={{
+              width: open === index ? '100%' : 72,
+              aspectRatio: open === index ? undefined : 1,
+              height: open === index ? 240 : undefined,
+              borderRadius: radius.md,
+              borderWidth: 1,
+              borderColor: mix(c.primary, 25),
+              overflow: 'hidden',
+            }}>
+            <Image
+              source={{ uri: `data:${image.mediaType};base64,${image.base64Data}` }}
+              resizeMode={open === index ? 'contain' : 'cover'}
+              style={{ width: '100%', height: '100%' }}
+            />
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 function TranscriptRow({
   item,
   pendingApprovals,
@@ -587,7 +667,8 @@ function TranscriptRow({
           <Meta style={{ color: c.primary, fontSize: 10.5 }}>
             {item.steering ? 'you · steering' : 'you'}
           </Meta>
-          <Body style={{ fontSize: 14 }}>{item.text}</Body>
+          {item.images.length > 0 ? <PromptImages images={item.images} /> : null}
+          {item.text ? <Body style={{ fontSize: 14 }}>{item.text}</Body> : null}
         </View>
       );
 

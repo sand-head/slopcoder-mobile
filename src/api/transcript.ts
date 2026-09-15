@@ -11,7 +11,7 @@
  * rather than thrown on — the server adds new ones, and an app in a store is
  * always older than the server it talks to.
  */
-import type { AgentEventEnvelope, UserQuestion, UserQuestionAnswer } from './contracts';
+import type { AgentEventEnvelope, ImageAttachment, UserQuestion, UserQuestionAnswer } from './contracts';
 
 export type ItemKind =
   | 'user'
@@ -44,7 +44,8 @@ export interface UserItem extends BaseItem {
   kind: 'user';
   text: string;
   steering: boolean;
-  imageCount: number;
+  /** What rode with the prompt, inline as the seam persisted it. */
+  images: ImageAttachment[];
 }
 
 export interface TextItem extends BaseItem {
@@ -193,7 +194,7 @@ export class TranscriptFolder {
           kind: 'user',
           text: str('text'),
           steering: envelope.kind === 'SteeringPrompt',
-          imageCount: ((payload.images as unknown[]) ?? []).length,
+          images: readImages(payload.images),
         });
         break;
 
@@ -431,6 +432,24 @@ export class TranscriptFolder {
 }
 
 /** A one-line summary of a tool's input, for the collapsed row. */
+/**
+ * A prompt's images as the seam persisted them: `mediaType` and `base64Data`,
+ * or nothing for a text-only prompt and for every prompt from before
+ * attachments existed. A malformed entry is dropped rather than rendered as
+ * a broken picture.
+ */
+function readImages(raw: unknown): ImageAttachment[] {
+  if (!Array.isArray(raw)) return [];
+  const images: ImageAttachment[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue;
+    const { mediaType, base64Data } = entry as Record<string, unknown>;
+    if (typeof mediaType !== 'string' || typeof base64Data !== 'string' || !base64Data) continue;
+    images.push({ mediaType, base64Data });
+  }
+  return images;
+}
+
 export function summarize(input: string, limit = 80): string {
   if (input.length === 0) return '';
 

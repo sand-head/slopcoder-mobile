@@ -23,7 +23,12 @@ const options = {
   facet: null,
 };
 
-function mount(props: { running: boolean; value: string; onStop?: () => void }) {
+function mount(props: {
+  running: boolean;
+  value: string;
+  onStop?: () => void;
+  images?: React.ComponentProps<typeof Composer>['images'];
+}) {
   let tree: ReturnType<typeof create> | undefined;
   act(() => {
     tree = create(
@@ -39,6 +44,7 @@ function mount(props: { running: boolean; value: string; onStop?: () => void }) 
         onChangeOptions={() => {}}
         models={[]}
         facets={[]}
+        images={props.images}
       />,
     );
   });
@@ -61,6 +67,55 @@ describe('the composer', () => {
       tree.root.find(node => node.props.accessibilityLabel === 'Stop').props.onPress();
     });
     expect(stop).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * The `+` is the platform's menu when a prompt can carry images: the
+   * library, the camera, and nothing about the workspace in the cockpit,
+   * whose workspace is already set.
+   */
+  it('offers the library and the camera from one native menu', () => {
+    const onPick = jest.fn();
+    const tree = mount({
+      running: false,
+      value: '',
+      images: { pending: [], onPick, onRemove: () => {}, error: null },
+    });
+
+    const menu = tree.root.findByType('MenuView' as never);
+    expect(menu.props.actions.map((a: { title: string }) => a.title)).toEqual(['Photo Library', 'Take Photo']);
+
+    act(() => {
+      menu.props.onPressAction({ nativeEvent: { event: 'camera' } });
+    });
+    expect(onPick).toHaveBeenCalledWith('camera');
+  });
+
+  it('shows each pending image as a chip that removes it, and the last refusal', () => {
+    const onRemove = jest.fn();
+    const tree = mount({
+      running: false,
+      value: '',
+      images: {
+        pending: [
+          { key: 'a', mediaType: 'image/jpeg', base64Data: 'QUJD' },
+          { key: 'b', mediaType: 'image/png', base64Data: 'QUJD' },
+        ],
+        onPick: () => {},
+        onRemove,
+        error: 'huge.png is over 2 MB.',
+      },
+    });
+
+    // A Pressable's label is on its host view too; count the labels, not the nodes.
+    const chips = [...new Set(labels(tree).filter(label => label.startsWith('Remove image')))];
+    expect(chips).toEqual(['Remove image 1 of 2', 'Remove image 2 of 2']);
+    expect(tree.root.findAll(node => node.props.children === 'huge.png is over 2 MB.')).not.toHaveLength(0);
+
+    act(() => {
+      tree.root.find(node => node.props.accessibilityLabel === 'Remove image 2 of 2').props.onPress();
+    });
+    expect(onRemove).toHaveBeenCalledWith('b');
   });
 
   it('offers no Stop when nothing is running', () => {

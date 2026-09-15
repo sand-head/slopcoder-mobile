@@ -28,6 +28,23 @@ describe('TranscriptFolder', () => {
     expect(items.map(i => i.kind)).toEqual(['user', 'text']);
   });
 
+  /** Images ride the prompt as the seam persisted them, or not at all. */
+  it('carries a prompt\'s images through, and reads an old prompt as having none', () => {
+    const folder = new TranscriptFolder();
+
+    const items = folder.fold([
+      event('UserPrompt', { text: 'what is this', images: [{ mediaType: 'image/jpeg', base64Data: 'QUJD' }] }),
+      event('UserPrompt', { text: 'plain' }),
+      event('UserPrompt', { text: 'odd', images: [{ mediaType: 'image/png' }, null] }),
+    ]);
+
+    expect(items.map(i => (i.kind === 'user' ? i.images : null))).toEqual([
+      [{ mediaType: 'image/jpeg', base64Data: 'QUJD' }],
+      [],
+      [],
+    ]);
+  });
+
   it('folds a finished tool call back into the row that started it', () => {
     const folder = new TranscriptFolder();
 

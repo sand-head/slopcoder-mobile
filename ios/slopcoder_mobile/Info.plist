@@ -48,7 +48,13 @@
 	     not prompt, it terminates the app the moment requestPermission() is
 	     called (Login.tsx) — a crash on the one screen a new install starts on. -->
 	<key>NSCameraUsageDescription</key>
-	<string>Scanning the pairing code on your slopcoder settings page signs this device in.</string>
+	<string>The camera scans the pairing code on your slopcoder settings page, and takes photos to send to the agent.</string>
+	<!-- Choosing from the library goes through the system picker, which needs
+	     no permission; the key is still declared so that Photos, which the
+	     picker links, never has cause to terminate the app for a missing
+	     string. -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Photos you choose are sent to the agent with your message.</string>
 	<!-- The app speaks HTTPS and nothing else, which is exempt. Declaring it here
 	     answers the export-compliance question once instead of once per build. -->
 	<key>ITSAppUsesNonExemptEncryption</key>

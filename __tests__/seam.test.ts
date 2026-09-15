@@ -76,6 +76,26 @@ describe('Seam', () => {
     await expect(seam.session('gone')).resolves.toBeNull();
   });
 
+  /**
+   * The server's record is `ImageAttachment(MediaType, Base64Data)`, so the
+   * JSON says `base64Data`. The type used to say `base64`, which nothing sent
+   * until now; a wrong name here is an image the model never sees.
+   */
+  it('sends images inline under the names the server reads', async () => {
+    fetchMock.mockReturnValue(reply(200));
+    const seam = new Seam({ baseUrl: 'https://s', apiKey: 'slop_k' });
+
+    await seam.start('abc', {
+      prompt: 'what is this',
+      selection: { auto: true, connectionId: null, modelId: null },
+      images: [{ mediaType: 'image/jpeg', base64Data: 'QUJD' }],
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://s/api/seam/sessions/abc/start');
+    expect(JSON.parse(init.body).images).toEqual([{ mediaType: 'image/jpeg', base64Data: 'QUJD' }]);
+  });
+
   it('reads a 404 on a command as "no longer applicable"', async () => {
     fetchMock.mockReturnValue(reply(404));
     const seam = new Seam({ baseUrl: 'https://s', apiKey: 'slop_k' });

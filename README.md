@@ -11,6 +11,7 @@ Sessions it creates run in the server's Docker sandbox, the same as the web cock
 
 - Sign in with a password, or by scanning a pairing code from the web UI
 - Create a session: repo search, remote nodes, model, facet, thinking level, approval mode
+- Attach photos to a message, from the library or the camera, and see them in the transcript
 - Watch a turn stream in, steer it mid-flight, stop it
 - Answer permission approvals and agent questions
 - Keep an eye on routines: what has run, what failed, what is next — pause one, run it

@@ -125,6 +125,9 @@ android {
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
+    // The image picker uses the AndroidX Photo Picker, which is backported to
+    // devices below API 30 through this artifact; minSdk is 24.
+    implementation("androidx.activity:activity:1.9.3")
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")
