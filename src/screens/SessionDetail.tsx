@@ -17,7 +17,6 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Markdown from '@ronradtke/react-native-markdown-display';
 import {
   ApprovalMode,
   SessionStatus,
@@ -51,7 +50,7 @@ import {
   Meta,
   Mono,
   Screen,
-  markdownStyles,
+  Prose,
 } from '../ui/kit';
 import { animateNextLayout } from '../ui/motion';
 import { Composer, type TurnOptions } from '../ui/Composer';
@@ -371,7 +370,7 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
                     </Body>
                   ) : null}
                   {live.text ? (
-                    <Markdown style={markdownStyles(c)}>{live.text}</Markdown>
+                    <Prose>{live.text}</Prose>
                   ) : null}
                 </View>
               ) : undefined
@@ -787,13 +786,17 @@ const TranscriptRow = React.memo(function Transcript({
             {parentDriven ? 'parent agent' : item.steering ? 'you · steering' : 'you'}
           </Meta>
           {item.images.length > 0 ? <PromptImages images={item.images} /> : null}
-          {item.text ? <Body style={{ fontSize: 14 }}>{item.text}</Body> : null}
+          {item.text ? (
+            <Body selectable style={{ fontSize: 14 }}>
+              {item.text}
+            </Body>
+          ) : null}
         </View>
       );
 
     case 'text':
       // No bubble, no border: assistant prose is the page.
-      return <Markdown style={markdownStyles(c)}>{item.text}</Markdown>;
+      return <Prose>{item.text}</Prose>;
 
     case 'think':
       return (
@@ -803,7 +806,7 @@ const TranscriptRow = React.memo(function Transcript({
           meta={summarize(item.text)}
           open={open}
           onToggle={() => setOpen(!open)}>
-          <Body style={{ fontStyle: 'italic', color: c.mutedForeground, fontSize: 12.5 }}>
+          <Body selectable style={{ fontStyle: 'italic', color: c.mutedForeground, fontSize: 12.5 }}>
             {item.text}
           </Body>
         </Collapsible>
@@ -944,7 +947,9 @@ const TranscriptRow = React.memo(function Transcript({
           }}>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <Body style={{ color: c.destructive, fontFamily: font.mono, fontSize: 14 }}>{GLYPHS.error}</Body>
-            <Body style={{ flex: 1, fontSize: 13, color: c.destructive }}>{item.message}</Body>
+            <Body selectable style={{ flex: 1, fontSize: 13, color: c.destructive }}>
+              {item.message}
+            </Body>
           </View>
           {item.detail ? (
             <Pressable
@@ -1157,6 +1162,7 @@ function Pre({ text, error }: { text: string; error?: boolean }) {
       }}
       nestedScrollEnabled>
       <Body
+        selectable
         style={{
           fontFamily: font.mono,
           fontSize: 11.5,

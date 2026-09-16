@@ -8,9 +8,10 @@ module.exports = {
   // parses a URL with its real router; @callstack because the kit imports the
   // glass view, so every suite that touches a component pulls it in;
   // react-native-url-polyfill because its own suite proves it does the thing
-  // React Native's URL cannot.
+  // React Native's URL cannot; @ronradtke and the two packages it renders with
+  // because the kit's `Prose` imports the markdown display, which ships JSX.
   transformIgnorePatterns: [
-    'node_modules/(?!((jest-)?react-native|@react-native(-community)?|@react-navigation|react-native-url-polyfill|@lodev09)/)',
+    'node_modules/(?!((jest-)?react-native|@react-native(-community)?|@react-navigation|react-native-url-polyfill|@lodev09|@ronradtke|prism-react-renderer)/)',
   ],
   moduleNameMapper: {
     '^@callstack/liquid-glass$': '<rootDir>/__mocks__/liquid-glass.js',
@@ -20,6 +21,7 @@ module.exports = {
     // Native views and modules with nothing to render or fire under jest.
     '^react-native-haptic-feedback$': '<rootDir>/__mocks__/haptics.js',
     '^@react-native-menu/menu$': '<rootDir>/__mocks__/menu.js',
+    '^@react-native-vector-icons/material-design-icons$': '<rootDir>/__mocks__/vector-icons.js',
     '^react-native-image-picker$': '<rootDir>/__mocks__/image-picker.js',
     '^@react-navigation/bottom-tabs/unstable$': '<rootDir>/__mocks__/bottom-tabs.js',
     // Tab icons: Metro would hand back an asset id; a number is enough here.

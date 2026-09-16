@@ -220,7 +220,9 @@ function Block({ block }: { block: ToolBlock }) {
               structure it has, so this scrolls sideways instead. */}
           <Surface>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <Body style={mono(c.foreground)}>{block.text}</Body>
+              <Body selectable style={mono(c.foreground)}>
+                {block.text}
+              </Body>
             </ScrollView>
           </Surface>
         </View>
@@ -232,6 +234,7 @@ function Block({ block }: { block: ToolBlock }) {
           {label}
           <Surface error={block.tone === 'error'}>
             <Body
+              selectable
               style={{
                 ...mono(block.tone === 'error' ? c.destructive : c.foreground),
                 ...(block.tone === 'muted' ? { color: c.mutedForeground } : null),

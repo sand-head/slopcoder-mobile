@@ -26,7 +26,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import Markdown from '@ronradtke/react-native-markdown-display';
 import {
   AutomationKind,
   AutomationRunStatus,
@@ -62,7 +61,7 @@ import {
   Screen,
   Skeleton,
   StatusDot,
-  markdownStyles,
+  Prose,
 } from '../ui/kit';
 import { HistoryStrip, outcomeColor } from '../ui/HistoryStrip';
 import { Sheet, SheetGroup, SheetSegments } from '../ui/Sheet';
@@ -905,7 +904,7 @@ function RunPanel({
             borderTopColor: c.border,
             paddingTop: 10,
           }}>
-          <Markdown style={markdownStyles(c)}>{run.finalMessage}</Markdown>
+          <Prose>{run.finalMessage}</Prose>
         </View>
       ) : null}
 

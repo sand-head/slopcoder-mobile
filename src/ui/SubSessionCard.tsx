@@ -8,14 +8,13 @@
  */
 import React, { useMemo } from 'react';
 import { Pressable, View } from 'react-native';
-import Markdown from '@ronradtke/react-native-markdown-display';
 import { SessionStatus } from '../api/contracts';
 import { buildToolCard } from '../api/toolcard';
 import type { Item, SubSessionItem } from '../api/transcript';
 import { useAuth } from '../state/auth';
 import { useSessionHub } from '../state/hub';
 import { useSession } from '../state/session';
-import { Body, Dot, Fork, GLYPHS, Meta, Mono, markdownStyles } from './kit';
+import { Body, Dot, Fork, GLYPHS, Meta, Mono, Prose } from './kit';
 import { ToolCard } from './ToolCard';
 import { font, mix, radius, useTheme } from '../theme';
 
@@ -153,9 +152,9 @@ function TailRow({ item }: { item: Item }) {
 
     case 'text':
       return (
-        <Markdown style={markdownStyles(c)}>
+        <Prose>
           {item.text.length > REPLY_LIMIT ? `${item.text.slice(0, REPLY_LIMIT)}…` : item.text}
-        </Markdown>
+        </Prose>
       );
 
     case 'tool':

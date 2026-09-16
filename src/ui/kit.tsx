@@ -26,6 +26,8 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { LiquidGlassView, isLiquidGlassSupported } from '@callstack/liquid-glass';
+import Markdown from '@ronradtke/react-native-markdown-display';
+import { copyText } from './clipboard';
 import { mix, radius, font, useTheme, type Palette } from '../theme';
 
 /**
@@ -90,18 +92,22 @@ export function Body({
   style,
   numberOfLines,
   accessibilityLiveRegion,
+  selectable,
 }: {
   children: React.ReactNode;
   style?: StyleProp<TextStyle>;
   numberOfLines?: number;
   /** 'polite' for an error that appears in place, so a screen reader says it. */
   accessibilityLiveRegion?: 'none' | 'polite' | 'assertive';
+  /** Long-press to select and copy, for text worth taking off the phone. */
+  selectable?: boolean;
 }) {
   const { c } = useTheme();
   return (
     <Text
       numberOfLines={numberOfLines}
       accessibilityLiveRegion={accessibilityLiveRegion}
+      selectable={selectable}
       style={[{ fontFamily: font.sans, fontSize: 15, color: c.foreground }, style]}>
       {children}
     </Text>
@@ -824,6 +830,40 @@ export function stamp(iso: string): string {
   return `${date} ${time}`;
 }
 
+/** The text node markdown is built from, with selection turned on. */
+function SelectableText(props: React.ComponentProps<typeof Text>) {
+  return <Text selectable {...props} />;
+}
+
+/**
+ * Prose, rendered the one way.
+ *
+ * Four screens render markdown — the transcript's replies and its streaming
+ * tail, a routine run's answer, a sub-session's last lines — and each was
+ * passing `markdownStyles` by hand, which is three chances to drift and three
+ * places to forget the copy button. The paragraph should not read differently
+ * depending on which screen it is on, and neither should a fenced command.
+ */
+export function Prose({ children }: { children: string }) {
+  const { c, isDark } = useTheme();
+  return (
+    <Markdown
+      style={markdownStyles(c)}
+      // Every text node selectable, so a reader can take one line out of a
+      // reply rather than the whole thing. This is the platform's own
+      // selection UI; it costs no view and no gesture handler.
+      textcomponent={SelectableText}
+      // The prism theme behind the syntax colours; without it a fence is
+      // highlighted for a white page.
+      colorScheme={isDark ? 'dark' : 'light'}
+      // Gives every fence a header with a copy button, which is the only way
+      // to get a command off this screen and into a terminal.
+      onCopyCode={copyText}>
+      {children}
+    </Markdown>
+  );
+}
+
 /**
  * How prose renders: an assistant's message in the transcript, and a routine
  * run's answer, which is the same text arriving by a different road.
@@ -851,6 +891,10 @@ export function markdownStyles(c: Palette) {
       borderRadius: radius.md,
       color: c.foreground,
     },
+    // A fence is not one style but six, and the five below `fence` were falling
+    // through to the library's own — which are light greys, so a fenced block
+    // rendered a pale slab on this charcoal. They matter more now that the
+    // header is where the copy button lives.
     fence: {
       fontFamily: font.mono,
       fontSize: 12,
@@ -858,8 +902,24 @@ export function markdownStyles(c: Palette) {
       borderWidth: 1,
       borderColor: c.border,
       borderRadius: radius.md,
+      overflow: 'hidden' as const,
       color: c.foreground,
     },
+    fence_header: {
+      flexDirection: 'row' as const,
+      justifyContent: 'space-between' as const,
+      alignItems: 'center' as const,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      backgroundColor: mix(c.muted, 70),
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+    },
+    fence_language_label: { fontFamily: font.mono, fontSize: 11, color: c.mutedForeground },
+    fence_copy_button: { paddingHorizontal: 6, paddingVertical: 2 },
+    fence_copy_text: { fontFamily: font.mono, fontSize: 11, color: c.primary },
+    fence_code: { backgroundColor: mix(c.muted, 40), padding: 10 },
+    fence_token: { fontFamily: font.mono, fontSize: 12, lineHeight: 18 },
     link: { color: c.primary },
     blockquote: {
       backgroundColor: 'transparent',
