@@ -33,6 +33,7 @@ jest.mock('../src/state/repos', () => ({ useOwnedRepos: () => ({ repos: [], load
 
 import { SettingsScreen } from '../src/screens/Settings';
 import { UsageScreen } from '../src/screens/Usage';
+import { SessionsScreen } from '../src/screens/Sessions';
 import { rootPageOptions, stackOptions } from '../src/navigation/headers';
 
 const metrics = {
@@ -75,6 +76,10 @@ async function chainFor(name: string, component: React.ComponentType<any>) {
 describe.each([
   ['Settings', SettingsScreen],
   ['Usage', UsageScreen],
+  // Sessions is the shape most likely to regress: it has a sibling after the
+  // list, so it returns a fragment rather than the scroll view itself, and a
+  // fragment is one keystroke from being a view again.
+  ['Sessions', SessionsScreen],
 ])('%s, as a large-title page', (name, component) => {
   it('hands its scroll view to the bar by being the screen, not by being inside one', async () => {
     const chain = await chainFor(name, component);

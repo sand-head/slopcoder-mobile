@@ -795,6 +795,18 @@ export function Hint({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * A page that fills its screen, for the ones that lay out more than one thing.
+ *
+ * **Not for a page with a large title.** UIKit finds the scroll view that
+ * drives the bar by walking first children down from the screen, and this view
+ * stops that walk even though the scroll view is its only child — the title
+ * then stays at full size forever and never collapses. Such a page returns its
+ * `ScrollView`/`FlatList` directly, or a fragment with the scroll view first;
+ * `__tests__/large-title.test.tsx` holds them to it. The background here is the
+ * one the navigator's `contentStyle` already paints, so dropping this wrapper
+ * costs a page nothing.
+ */
 export function Screen({ children }: { children: React.ReactNode }) {
   const { c } = useTheme();
   return <View style={[styles.screen, { backgroundColor: c.background }]}>{children}</View>;

@@ -9,17 +9,16 @@
  * switch between is a tab bar on both platforms — `UITabBarController` on iOS,
  * which iOS 26 draws in glass, and Material's navigation bar on Android.
  *
- * Which library draws it is not a detail. This was `react-native-bottom-tabs`,
- * which hands each tab's subtree to a SwiftUI `TabView`; the navigation
- * controller nested inside one stopped contributing its own height to the page
- * under it, so the scroll view's top inset came out as the status bar alone.
- * Everything downstream of UIKit adopting a page's scroll view went with it:
- * the large title never collapsed, nothing reserved room for it, and iOS 26's
- * scroll-edge effect never appeared. React Navigation's own native tabs run a
- * real `UITabBarController` through `react-native-screens`, and hand that
- * scroll view over on purpose — see `overrideScrollViewContentInsetAdjustmentBehavior`,
- * which is on by default and is the reason {@link rootPageOptions} can ask for
- * a large title again.
+ * This is React Navigation's own native tabs, which run a real
+ * `UITabBarController` through `react-native-screens`. It was
+ * `react-native-bottom-tabs`, which hands each tab's subtree to a SwiftUI
+ * `TabView` instead. Worth knowing why that changed, because the stated reason
+ * was wrong: the tab bar was blamed for the large title never collapsing, and
+ * swapping it did not fix that — the fault was a view wrapped around each
+ * page's scroll view, and it lived in the screens (see {@link rootPageOptions}).
+ * The move still earns its keep — a real tab bar controller, one fewer pod, and
+ * the build patch that pod needed is gone — but it was not the cure it was sold
+ * as, and nothing here should be read as load-bearing for the header.
  *
  * Each tab is a stack of one so the page owns a real navigation bar: the large
  * title that collapses, the search field, the trailing button. Screens that are

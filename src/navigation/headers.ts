@@ -76,11 +76,19 @@ export function useHeaderInset(): number {
  * transparent, which is how the window's black showed through it.
  *
  * The collapse is UIKit's, and UIKit only drives it against a scroll view it
- * has been handed. Which the tab bar has to do, and the SwiftUI-backed one this
- * app used to run did not — see `navigation/Tabs.tsx` for what that cost. Two
- * things are still the page's own job: its scroll view has to be the first one
- * in the screen's descendant chain, and it has to carry
+ * has found, which it does by walking first children down from the screen. So
+ * a page using this has two jobs, and the first is easy to get wrong: its
+ * scroll view must *be* what the screen returns — not the first child of a view
+ * the screen returns — and it must carry
  * `contentInsetAdjustmentBehavior="automatic"`.
+ *
+ * These three pages each wrapped theirs in a `Screen`, which is still a first
+ * child and still one step too many: the bar never adopted the page, so the
+ * title sat at full size pinned to the top, nothing reserved room for it, and
+ * iOS 26's scroll-edge effect — same lookup — never appeared. It survived a
+ * whole tab-bar migration before anyone found it, because nothing about it
+ * looks wrong in a diff. `__tests__/large-title.test.tsx` walks the chain the
+ * OS walks and fails if a view gets back in the way.
  */
 export const rootPageOptions: NativeStackNavigationOptions = {
   headerLargeTitle: true,

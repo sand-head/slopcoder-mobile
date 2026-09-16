@@ -11,16 +11,8 @@
  * no price and contributed nothing to the estimate. Saying so is the difference
  * between an estimate and a wrong number.
  */
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import {
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  View,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import {
   UsageAttributionQuality,
   UsageRange,
@@ -34,7 +26,6 @@ import { useAuth } from '../state/auth';
 import { Body, Hint, Meta, Mono, SectionLabel, Skeleton } from '../ui/kit';
 import { SheetSegments } from '../ui/Sheet';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
-import { useHeaderInset } from '../navigation/headers';
 import { tapSelect } from '../ui/haptics';
 import { font, mix, radius, useTheme } from '../theme';
 
@@ -95,189 +86,90 @@ export function UsageScreen({ navigation }: { navigation: any }) {
     setAttempt(a => a + 1);
   }, []);
 
-  const probe = useInsetProbe();
-
   return (
-    // A fragment, not a view: the bar's large title only collapses against a
-    // scroll view UIKit has found, and it looks for it by walking first
-    // children down from the screen. A `Screen` in between was one level too
-    // many — and it painted a background the navigator's `contentStyle` already
-    // paints. The probe is a sibling *after* the list, which leaves the walk
-    // alone.
-    <>
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={{ padding: 20, paddingBottom: 24, gap: 18 }}
-        {...probe.scroll}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={c.mutedForeground} />
-        }>
-        <ConnectionBanner onRetry={refresh} />
+    // The scroll view *is* the screen, with nothing wrapped around it. UIKit
+    // only collapses the large title against a scroll view it has found, and it
+    // finds it by walking first children down from the screen — a `Screen` in
+    // between, though still a first child, was one step too many and the bar
+    // never adopted the page. It painted a background the navigator's
+    // `contentStyle` already paints, so it cost nothing to drop.
+    <ScrollView
+      contentInsetAdjustmentBehavior="automatic"
+      contentContainerStyle={{ padding: 20, paddingBottom: 24, gap: 18 }}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={c.mutedForeground} />
+      }>
+      <ConnectionBanner onRetry={refresh} />
 
-        <SheetSegments
-          options={RANGES.map(r => ({ key: r.key, label: r.label }))}
-          selected={RANGES.find(r => r.value === range)?.key ?? 'Days30'}
-          onSelect={key => {
-            tapSelect();
-            setRange(RANGES.find(r => r.key === key)?.value ?? UsageRange.Days30);
-          }}
-        />
+      <SheetSegments
+        options={RANGES.map(r => ({ key: r.key, label: r.label }))}
+        selected={RANGES.find(r => r.value === range)?.key ?? 'Days30'}
+        onSelect={key => {
+          tapSelect();
+          setRange(RANGES.find(r => r.key === key)?.value ?? UsageRange.Days30);
+        }}
+      />
 
-        {error ? (
-          <View style={{ gap: 8 }}>
-            <Body accessibilityLiveRegion="polite" style={{ color: c.destructive, fontSize: 13 }}>
-              {error}
-            </Body>
-            <Pressable onPress={refresh} hitSlop={8} accessibilityRole="button">
-              <Mono style={{ color: c.primary, textDecorationLine: 'underline' }}>Try again</Mono>
-            </Pressable>
-          </View>
-        ) : null}
-        {!data && !error ? <Skeleton rows={3} /> : null}
+      {error ? (
+        <View style={{ gap: 8 }}>
+          <Body accessibilityLiveRegion="polite" style={{ color: c.destructive, fontSize: 13 }}>
+            {error}
+          </Body>
+          <Pressable onPress={refresh} hitSlop={8} accessibilityRole="button">
+            <Mono style={{ color: c.primary, textDecorationLine: 'underline' }}>Try again</Mono>
+          </Pressable>
+        </View>
+      ) : null}
+      {!data && !error ? <Skeleton rows={3} /> : null}
 
-        {data ? (
-          <>
-            <Totals totals={data.totals} />
-            <Daily buckets={data.daily} />
+      {data ? (
+        <>
+          <Totals totals={data.totals} />
+          <Daily buckets={data.daily} />
 
-            <View>
-              <SectionLabel label="by model" count={data.breakdown.length || undefined} />
-              {data.breakdown.length === 0 ? (
-                <Hint>Nothing in this range.</Hint>
-              ) : (
-                data.breakdown.map(row => (
-                  <View
-                    key={`${row.connectionName ?? ''}:${row.model}`}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 12,
-                      minHeight: 52,
-                      paddingVertical: 10,
-                      borderTopWidth: 1,
-                      borderTopColor: c.border,
-                    }}>
-                    <View style={{ flex: 1, gap: 2 }}>
-                      <Body numberOfLines={1} style={{ fontSize: 14 }}>
-                        {row.model}
-                      </Body>
-                      <Mono numberOfLines={1}>
-                        {row.connectionName ?? 'unknown connection'} · {row.totals.completions} calls
-                        {row.attributionQuality === UsageAttributionQuality.Exact
-                          ? ''
-                          : row.attributionQuality === UsageAttributionQuality.InferredLegacy
-                            ? ' · inferred'
-                            : ' · unattributed'}
-                      </Mono>
-                    </View>
-                    <View style={{ alignItems: 'flex-end', gap: 2 }}>
-                      <Mono style={{ fontSize: 12.5, color: c.foreground }}>
-                        {compact(newTokens(row.totals))}
-                      </Mono>
-                      <Mono>{money(row.totals.estimatedCost)}</Mono>
-                    </View>
+          <View>
+            <SectionLabel label="by model" count={data.breakdown.length || undefined} />
+            {data.breakdown.length === 0 ? (
+              <Hint>Nothing in this range.</Hint>
+            ) : (
+              data.breakdown.map(row => (
+                <View
+                  key={`${row.connectionName ?? ''}:${row.model}`}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 12,
+                    minHeight: 52,
+                    paddingVertical: 10,
+                    borderTopWidth: 1,
+                    borderTopColor: c.border,
+                  }}>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Body numberOfLines={1} style={{ fontSize: 14 }}>
+                      {row.model}
+                    </Body>
+                    <Mono numberOfLines={1}>
+                      {row.connectionName ?? 'unknown connection'} · {row.totals.completions} calls
+                      {row.attributionQuality === UsageAttributionQuality.Exact
+                        ? ''
+                        : row.attributionQuality === UsageAttributionQuality.InferredLegacy
+                          ? ' · inferred'
+                          : ' · unattributed'}
+                    </Mono>
                   </View>
-                ))
-              )}
-            </View>
-          </>
-        ) : null}
-      </ScrollView>
-      <InsetProbe {...probe.reading} />
-    </>
-  );
-}
-
-/**
- * TEMPORARY — remove with the commit that settles the large-title bug.
- *
- * The one number that tells us whether UIKit ever adopted this page's scroll
- * view. When it has, the resting `contentOffset.y` is exactly minus the inset
- * it applied, because that is how a scroll view sits "at the top" with an
- * inset. So, at rest:
- *
- *   rest ≈ -header  → UIKit adopted it and applied the whole bar. The title
- *                     not collapsing is then something else entirely.
- *   rest ≈ -safe    → only the safe area. The bar contributed nothing, which
- *                     means it never found this scroll view.
- *   rest ≈ 0        → nothing adjusted it at all.
- *
- * `contentInset` on the scroll event is no use here: React Native reports the
- * scroll view's own `contentInset`, which nobody sets, rather than
- * `adjustedContentInset`, which is where the bar's contribution lands.
- */
-function useInsetProbe() {
-  const header = useHeaderInset();
-  const safe = useSafeAreaInsets();
-  const [live, setLive] = useState(0);
-  const [rest, setRest] = useState<number | null>(null);
-  const latest = useRef(0);
-
-  const onScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    latest.current = event.nativeEvent.contentOffset.y;
-    setLive(latest.current);
-  }, []);
-  // Where it settled, which is the reading that means something — mid-drag and
-  // mid-bounce the offset is whatever the finger made it.
-  const settle = useCallback(() => setRest(latest.current), []);
-
-  return {
-    scroll: {
-      scrollEventThrottle: 32,
-      onScroll,
-      onMomentumScrollEnd: settle,
-      onScrollEndDrag: settle,
-    },
-    reading: { live, rest, header, safe: safe.top },
-  };
-}
-
-/** TEMPORARY — see {@link useInsetProbe}. */
-function InsetProbe({
-  live,
-  rest,
-  header,
-  safe,
-}: {
-  live: number;
-  rest: number | null;
-  header: number;
-  safe: number;
-}) {
-  const { c } = useTheme();
-  const verdict =
-    rest === null
-      ? 'scroll to the top and lift your finger'
-      : Math.abs(rest + header) < 6
-        ? 'ADOPTED — bar is in the inset'
-        : Math.abs(rest + safe) < 6
-          ? 'NOT ADOPTED — safe area only'
-          : Math.abs(rest) < 6
-            ? 'NO ADJUSTMENT AT ALL'
-            : 'neither — read the numbers';
-
-  return (
-    <View
-      pointerEvents="none"
-      style={{
-        position: 'absolute',
-        left: 8,
-        bottom: 100,
-        paddingHorizontal: 8,
-        paddingVertical: 6,
-        borderRadius: radius.md,
-        backgroundColor: mix(c.foreground, 12),
-        borderWidth: 1,
-        borderColor: c.border,
-      }}>
-      <Mono style={{ fontSize: 11, color: c.foreground }}>
-        rest {rest === null ? '—' : rest.toFixed(1)} · live {live.toFixed(1)}
-      </Mono>
-      <Mono style={{ fontSize: 11, color: c.foreground }}>
-        header {header.toFixed(1)} · safe {safe.toFixed(1)}
-      </Mono>
-      <Mono style={{ fontSize: 11, color: c.primary }}>{verdict}</Mono>
-    </View>
+                  <View style={{ alignItems: 'flex-end', gap: 2 }}>
+                    <Mono style={{ fontSize: 12.5, color: c.foreground }}>
+                      {compact(newTokens(row.totals))}
+                    </Mono>
+                    <Mono>{money(row.totals.estimatedCost)}</Mono>
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+        </>
+      ) : null}
+    </ScrollView>
   );
 }
 
