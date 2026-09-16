@@ -19,12 +19,14 @@
 import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import {
   Alert,
+  Keyboard,
   Platform,
   Pressable,
   RefreshControl,
   ScrollView,
   View,
 } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
 import {
   ApprovalMode,
   DeleteResult,
@@ -69,6 +71,7 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
   const seam = useAuth(s => s.seam);
   const { hub } = useSessionHub();
   const setFailed = useRoutineAlert(s => s.setFailed);
+  const focused = useIsFocused();
 
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -163,7 +166,7 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
       setImageError(null);
       setRepos([]);
       setNodes([]);
-      navigation.navigate('Session', { id });
+      leaveFor('Session', { id });
     } catch (e) {
       tapError();
       // The message, not the exception: "TypeError: Network request failed"
@@ -272,7 +275,15 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
   const running = visible.filter(s => s.status === SessionStatus.Running);
   const idle = visible.filter(s => s.status !== SessionStatus.Running);
 
-  const open = (session: SessionSummary) => navigation.navigate('Session', { id: session.id });
+  // The keyboard goes down before the page does, while the list is still the
+  // page that adjusts for it: dismissed after the list stops listening, the
+  // inset it added for the keyboard would stay behind.
+  const leaveFor = (route: string, params: object) => {
+    Keyboard.dismiss();
+    navigation.navigate(route, params);
+  };
+
+  const open = (session: SessionSummary) => leaveFor('Session', { id: session.id });
 
   return (
     // A fragment, not a view: UIKit finds the scroll view that drives the large
@@ -288,7 +299,12 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         // iOS: the page grows to keep the composer's caret above the keyboard.
-        automaticallyAdjustKeyboardInsets
+        // Only while this is the page on screen. The native scroll view hears
+        // every keyboard in the app, and a keyboard raised for the session
+        // screen's composer pushed this list's offset down by its own height
+        // underneath the session; the list was then found scrolled past the
+        // composer for a frame on the way back, until layout clamped it.
+        automaticallyAdjustKeyboardInsets={focused}
         contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 24, gap: 18 }}
         refreshControl={
           <RefreshControl
