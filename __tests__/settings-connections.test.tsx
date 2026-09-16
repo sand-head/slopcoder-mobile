@@ -35,6 +35,7 @@ const github: GitConnectionSummary = {
   username: 'sand-head',
   createdAt: '2026-09-02T12:00:00Z',
   lastValidatedAt: null,
+  trouble: null,
 };
 
 const mockSeam = {
@@ -127,6 +128,8 @@ describe('the connections page', () => {
     expect(rendered).toContain('GitHub · github.com · connected 2026-09-02');
     // No apps registered: the foot says who can fix that.
     expect(rendered).toContain('Ask an administrator');
+    // A healthy account says nothing about reconnecting.
+    expect(rendered).not.toContain('reconnect');
 
     const [menu] = bar(navigation).unstable_headerRightItems();
     expect(menu.type).toBe('menu');
@@ -136,6 +139,25 @@ describe('the connections page', () => {
       'Claude Code · subscription',
       'ChatGPT · Codex · subscription',
     ]);
+  });
+
+  /**
+   * The failure this replaced was silent everywhere: an expired Forgejo
+   * sign-in made the repository picker come up empty, with no error, on the
+   * phone and in the cockpit alike. The server now names it, and this is the
+   * end of that wire.
+   */
+  it('says when a git account needs reconnecting, in the words the server used', async () => {
+    mockSeam.gitConnections.mockImplementationOnce(() =>
+      Promise.resolve([
+        { ...github, trouble: "Sign-in expired and couldn't be renewed — reconnect it." },
+      ]),
+    );
+
+    const rendered = text(await mount(<ConnectionsScreen navigation={navigator()} />));
+
+    expect(rendered).toContain('reconnect');
+    expect(rendered).toContain("Sign-in expired and couldn't be renewed — reconnect it.");
   });
 });
 

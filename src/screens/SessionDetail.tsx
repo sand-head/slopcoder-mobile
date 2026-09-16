@@ -17,6 +17,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useIsFocused } from '@react-navigation/native';
 import {
   ApprovalMode,
   SessionStatus,
@@ -56,6 +57,8 @@ import { animateNextLayout } from '../ui/motion';
 import { Composer, type TurnOptions } from '../ui/Composer';
 import { MAX_IMAGES, pickImages, type ImageSource, type PendingImage } from '../ui/images';
 import { Sheet } from '../ui/Sheet';
+import { TerminalSheet } from '../ui/TerminalSheet';
+import { useShake } from '../ui/shake';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 import { ToolCard } from '../ui/ToolCard';
 import { SubSessionCard } from '../ui/SubSessionCard';
@@ -105,6 +108,17 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
   // it in view as lines arrive. This only says whether the reader is there.
   const { pinned, toBottom, props: bottom } = useAtBottom(listRef);
   const [usageOpen, setUsageOpen] = useState(false);
+  const [terminalOpen, setTerminalOpen] = useState(false);
+
+  // Shake to open the terminal — see ui/shake.ts for why that gesture.
+  // Only while this screen is the one on top: a shake on the settings tab
+  // should not attach a shell to whatever session was last looked at. And not
+  // while the terminal is already up, where a shake is just a shake.
+  const focused = useIsFocused();
+  useShake(focused && !terminalOpen && !usageOpen, () => {
+    tapConfirm();
+    setTerminalOpen(true);
+  });
 
   useEffect(() => {
     if (!seam) return;
@@ -521,6 +535,14 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
           </>
         ) : null}
       </Sheet>
+
+      <TerminalSheet
+        visible={terminalOpen}
+        onClose={() => setTerminalOpen(false)}
+        baseUrl={seam?.baseUrl ?? null}
+        apiKey={seam?.apiKey ?? null}
+        sessionId={id}
+      />
     </Screen>
   );
 }

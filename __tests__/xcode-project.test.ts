@@ -71,6 +71,19 @@ describe('the Xcode project', () => {
     );
   });
 
+  /**
+   * The shake gesture is UIKit's, and it only reaches the app through a window
+   * subclass the AppDelegate installs. Leave either file out of the target and
+   * the build still succeeds — `ShakeWindow` simply is not a type, the
+   * AppDelegate stops compiling, and the failure lands ten minutes later on a
+   * macOS runner. Cheaper to notice here.
+   */
+  it('compiles the shake detector and the window that feeds it', () => {
+    expect(compiled.map(p => path.basename(p))).toEqual(
+      expect.arrayContaining(['ShakeWindow.swift', 'ShakeDetector.swift', 'ShakeDetector.m']),
+    );
+  });
+
   it.each(cases)('%s resolves to a file that exists', (_name, resolved) => {
     expect(fs.existsSync(resolved)).toBe(true);
   });

@@ -7,6 +7,7 @@ import com.facebook.react.ReactHost
 import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.slopcoder_mobile.appinfo.AppInfoPackage
+import com.slopcoder_mobile.shake.ShakePackage
 
 class MainApplication : Application(), ReactApplication {
 
@@ -15,8 +16,9 @@ class MainApplication : Application(), ReactApplication {
       context = applicationContext,
       packageList =
         PackageList(this).packages.apply {
-          // The app's own module; autolinking only knows about dependencies.
+          // The app's own modules; autolinking only knows about dependencies.
           add(AppInfoPackage())
+          add(ShakePackage())
         },
     )
   }

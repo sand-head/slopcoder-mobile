@@ -297,6 +297,9 @@ export function ConnectionsScreen({ navigation }: { navigation: any }) {
               key={account.id}
               title={account.username}
               subtitle={`${gitKindLabel(account)} · ${gitHost(account)} · connected ${day(account.createdAt)}`}
+              tag={account.trouble ? 'reconnect' : undefined}
+              tagTone={account.trouble ? 'warn' : undefined}
+              warn={account.trouble}
               menu={[{ key: 'disconnect', title: 'Disconnect', symbol: 'trash', destructive: true, onPress: () => confirmDisconnect(account) }]}
             />
           ))}

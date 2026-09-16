@@ -938,6 +938,15 @@ export interface GitConnectionSummary {
   username: string;
   createdAt: string;
   lastValidatedAt: string | null;
+  /**
+   * What is wrong with this connection and what fixes it, or null while it is
+   * healthy. Written by the server (`GitConnectionHealth`) so every client says
+   * the same thing — and because both failures it covers are otherwise
+   * invisible: an expired sign-in shows up only as a repository picker with
+   * nothing in it, and a GitHub token without the `workflow` scope only as a
+   * push the agent cannot land.
+   */
+  trouble: string | null;
 }
 
 export interface GitAppSummary {

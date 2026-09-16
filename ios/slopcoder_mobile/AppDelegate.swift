@@ -22,7 +22,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     reactNativeDelegate = delegate
     reactNativeFactory = factory
 
-    window = UIWindow(frame: UIScreen.main.bounds)
+    // ShakeWindow, not UIWindow: the shake that opens a session's terminal is
+    // a UIKit motion event, and only the window sees it. See ShakeWindow.swift.
+    window = ShakeWindow(frame: UIScreen.main.bounds)
 
     factory.startReactNative(
       withModuleName: "slopcoder_mobile",
