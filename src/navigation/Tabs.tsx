@@ -41,6 +41,16 @@ import { SessionsScreen } from '../screens/Sessions';
 import { RoutinesScreen } from '../screens/Routines';
 import { UsageScreen } from '../screens/Usage';
 import { SettingsScreen } from '../screens/Settings';
+import { ConnectionsScreen } from '../screens/settings/Connections';
+import { McpServersScreen } from '../screens/settings/McpServers';
+import { RemoteNodesScreen } from '../screens/settings/RemoteNodes';
+import { TerminalScreen } from '../screens/settings/Terminal';
+import { FacetsScreen } from '../screens/settings/Facets';
+import { HooksScreen } from '../screens/settings/Hooks';
+import { MemoryScreen } from '../screens/settings/Memory';
+import { SkillsScreen } from '../screens/settings/Skills';
+import { ChannelsScreen } from '../screens/settings/Channels';
+import { ApiKeysScreen } from '../screens/settings/ApiKeys';
 import { useRoutineAlert } from '../state/routines';
 import { useTheme } from '../theme';
 import { rootPageOptions, stackOptions } from './headers';
@@ -101,6 +111,19 @@ function SettingsTab() {
   return (
     <SettingsStack.Navigator screenOptions={stackOptions(theme)}>
       <SettingsStack.Screen name="Settings" component={SettingsScreen} options={rootPageOptions} />
+      {/* The pages the hub's rows open, pushed within the tab so the bar stays,
+          as the system Settings app does. Each is a plain title; the editors
+          they present are sheets on the root stack, in App.tsx. */}
+      <SettingsStack.Screen name="Connections" component={ConnectionsScreen} options={{ title: 'Connections' }} />
+      <SettingsStack.Screen name="McpServers" component={McpServersScreen} options={{ title: 'MCP servers' }} />
+      <SettingsStack.Screen name="RemoteNodes" component={RemoteNodesScreen} options={{ title: 'Remote nodes' }} />
+      <SettingsStack.Screen name="Terminal" component={TerminalScreen} options={{ title: 'Terminal' }} />
+      <SettingsStack.Screen name="Facets" component={FacetsScreen} options={{ title: 'Facets' }} />
+      <SettingsStack.Screen name="Hooks" component={HooksScreen} options={{ title: 'Hooks' }} />
+      <SettingsStack.Screen name="Memory" component={MemoryScreen} options={{ title: 'Memory' }} />
+      <SettingsStack.Screen name="Skills" component={SkillsScreen} options={{ title: 'Skills' }} />
+      <SettingsStack.Screen name="Channels" component={ChannelsScreen} options={{ title: 'Channels' }} />
+      <SettingsStack.Screen name="ApiKeys" component={ApiKeysScreen} options={{ title: 'API keys' }} />
     </SettingsStack.Navigator>
   );
 }

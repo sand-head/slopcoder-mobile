@@ -24,6 +24,12 @@ import { LoginScreen, ScanScreen } from './screens/Login';
 import { SessionDetailScreen } from './screens/SessionDetail';
 import { RoutineScreen } from './screens/Routine';
 import { RoutineEditorScreen } from './screens/RoutineEditor';
+import { DocEditorScreen } from './screens/settings/DocEditor';
+import { ProviderEditorScreen } from './screens/settings/ProviderEditor';
+import { CodexConnectScreen } from './screens/settings/CodexConnect';
+import { McpServerEditorScreen } from './screens/settings/McpServerEditor';
+import { NodeEditorScreen } from './screens/settings/NodeEditor';
+import { ChannelEditorScreen } from './screens/settings/ChannelEditor';
 import { Tabs } from './navigation/Tabs';
 import { stackOptions } from './navigation/headers';
 import { GlassBar } from './ui/kit';
@@ -82,6 +88,14 @@ export default function App() {
                 component={RoutineEditorScreen}
                 options={{ title: '', presentation: 'modal', ...glassBar }}
               />
+              {/* The settings editors: each a form presented as a sheet over
+                  the list it came from, Cancel on the left, Save on the right. */}
+              <Root.Screen name="DocEditor" component={DocEditorScreen} options={{ title: '', presentation: 'modal', ...glassBar }} />
+              <Root.Screen name="ProviderEditor" component={ProviderEditorScreen} options={{ title: '', presentation: 'modal', ...glassBar }} />
+              <Root.Screen name="CodexConnect" component={CodexConnectScreen} options={{ title: '', presentation: 'modal', ...glassBar }} />
+              <Root.Screen name="McpServerEditor" component={McpServerEditorScreen} options={{ title: '', presentation: 'modal', ...glassBar }} />
+              <Root.Screen name="NodeEditor" component={NodeEditorScreen} options={{ title: '', presentation: 'modal', ...glassBar }} />
+              <Root.Screen name="ChannelEditor" component={ChannelEditorScreen} options={{ title: '', presentation: 'modal', ...glassBar }} />
             </>
           ) : (
             <>

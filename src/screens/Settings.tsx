@@ -1,22 +1,75 @@
 /**
- * Deliberately thin. Everything configurable lives on the server and is reached
- * from the web UI; what belongs here is what is true of *this device*.
+ * The settings hub: what is true of this device, and a row into every
+ * settings page the web has — the same list `Settings/Hub.razor` shows a
+ * phone-width browser, with the same best-effort counts landing after the
+ * list paints.
+ *
+ * Profile and SSO sign-ins are not here: they are Identity's cookie pages,
+ * not the seam's, and a device key cannot reach them.
  */
-import React, { useLayoutEffect } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import { Alert, Platform, ScrollView, View } from 'react-native';
 import { useAuth } from '../state/auth';
-import { Body, Brand, Button, Hint, Meta, Mono, SectionLabel } from '../ui/kit';
+import { Body, Brand, Button, Meta, Mono, SectionLabel } from '../ui/kit';
+import { HubRow } from '../ui/settings';
 import { tapRefuse } from '../ui/haptics';
 import { appVersion } from '../appInfo';
 import { useTheme } from '../theme';
 
+/** The workspace rows, in the web hub's order, each naming its screen. */
+const PAGES: { route: string; label: string; count?: keyof Counts }[] = [
+  { route: 'Connections', label: 'Connections', count: 'connections' },
+  { route: 'McpServers', label: 'MCP servers' },
+  { route: 'RemoteNodes', label: 'Remote nodes', count: 'nodes' },
+  { route: 'Terminal', label: 'Terminal' },
+  { route: 'Facets', label: 'Facets', count: 'facets' },
+  { route: 'Hooks', label: 'Hooks' },
+  { route: 'Memory', label: 'Memory' },
+  { route: 'Skills', label: 'Skills', count: 'skills' },
+  { route: 'Channels', label: 'Channels', count: 'channels' },
+  { route: 'ApiKeys', label: 'API keys' },
+];
+
+interface Counts {
+  connections?: string;
+  nodes?: string;
+  facets?: string;
+  skills?: string;
+  channels?: string;
+}
+
 export function SettingsScreen({ navigation }: { navigation: any }) {
   const credential = useAuth(s => s.credential);
+  const seam = useAuth(s => s.seam);
   const signOut = useAuth(s => s.signOut);
+  const [counts, setCounts] = useState<Counts>({});
 
   useLayoutEffect(() => {
     navigation.setOptions({ title: 'Settings' });
   }, [navigation]);
+
+  // Each count is its own beat, so one slow call never holds the others, and
+  // a count is decoration: a failed one leaves its row blank and still linked.
+  const load = useCallback(() => {
+    if (!seam) return;
+    const count = (key: keyof Counts, read: () => Promise<string>) =>
+      read()
+        .then(value => setCounts(current => ({ ...current, [key]: value })))
+        .catch(() => {});
+    void count('connections', async () => {
+      const [models, git] = await Promise.all([seam.connections(), seam.gitConnections().catch(() => [])]);
+      return git.length > 0 ? `${models.length} · ${git.length} git` : String(models.length);
+    });
+    void count('nodes', async () => String((await seam.nodes()).length));
+    void count('facets', async () => String((await seam.facets()).length));
+    void count('skills', async () => String((await seam.skills()).length));
+    void count('channels', async () => String((await seam.channels()).length));
+  }, [seam]);
+
+  useEffect(() => {
+    load();
+    return navigation.addListener('focus', load);
+  }, [load, navigation]);
 
   const confirmSignOut = () =>
     Alert.alert('Sign out?', 'This device’s key is dropped. It stays listed under API keys on the server until you revoke it there.', [
@@ -51,13 +104,15 @@ export function SettingsScreen({ navigation }: { navigation: any }) {
       </View>
 
       <View>
-        <SectionLabel label="elsewhere" />
-        <Hint>
-          Everything else — providers, facets, memory, remote nodes — lives on the server. Open
-          slopcoder in a browser to reach it, and to write a routine: choosing a model, a
-          schedule, triggers and where the answer goes is a form, not a phone screen. Code mode
-          and the terminal are there too; they are not in this app on purpose.
-        </Hint>
+        <SectionLabel label="workspace" />
+        {PAGES.map(page => (
+          <HubRow
+            key={page.route}
+            label={page.label}
+            count={page.count ? counts[page.count] ?? null : null}
+            onPress={() => navigation.navigate(page.route)}
+          />
+        ))}
       </View>
 
       <View>

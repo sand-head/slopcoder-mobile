@@ -19,12 +19,21 @@ Sessions it creates run in the server's Docker sandbox, the same as the web cock
 - Write a routine: describe it in a sentence and the model drafts the form, or fill it in
   yourself — schedule in English, triggers, model, repositories and nodes, where the
   answer goes; edit an existing one; set the heartbeat's cadence, hours and model
+- Settings, the same ten pages the web has: provider connections (add a key, sign in to
+  Codex, grade and switch models), MCP servers, remote nodes (register, test, install its
+  key), terminal defaults, facets, hooks and permission rules, memory, skills, channels
+  (connect, pair, test) and API keys (mint, revoke, show a pairing code)
 
 ## What it deliberately does not do
 
 Code mode, the terminal, and the workspace diff panel. All three are SkiaSharp canvases
 over WebAssembly in the web app and have no native path short of a rewrite. If you need
 them, open the session on a computer.
+
+Two settings stay web-only for a reason other than effort: the account's profile and SSO
+sign-ins are Identity's cookie pages, which a device key cannot reach, and connecting a
+git account is an OAuth round trip that lands on a cookie session. The phone lists and
+disconnects git accounts and says where to connect one.
 
 ## Layout
 
@@ -37,8 +46,11 @@ src/api/          the seam client — this is the part to read first
   transcript.ts   folding events into renderable items
   routines.ts     how a routine reads — a port of RoutineFormat.cs
   routineEditor.ts what the editor decides — a port of TriggerEdit.cs and Editor.razor's draft
+  settings.ts     what the settings pages decide — the razor @code blocks, function for function
 src/state/        auth (keychain), the hub connection, one session's live view
 src/screens/      login (+ scanner), sessions (list + launcher), session detail, routines, routine, routine editor, usage, settings
+src/screens/settings/  one list page per web settings page, and the editors they present as sheets
+src/ui/settings.tsx    the grammar those pages share: rows, fields, the focus-reload hook
 src/navigation/   the tab bar and the native-header options every stack shares
 src/theme.ts      the web cockpit's tokens, converted to sRGB
 ```
@@ -82,8 +94,13 @@ npx tsc --noEmit && npx eslint . --ext .ts,.tsx && npx jest
 Point it at a slopcoder instance and sign in.
 
 `scripts/wire-check.cjs` drives the compiled client against a running server and asserts
-the five facts above — most importantly that `Delta` binds four arguments. Run it whenever
-the seam or the hub changes; the unit tests cannot see any of it.
+the five facts above — most importantly that `Delta` binds four arguments — and then walks
+every settings group: each create, update, switch and delete, and that no secret ever
+reads back. Run it whenever the seam or the hub changes; the unit tests cannot see any of
+it. Compile the client first (`npx tsc --ignoreConfig src/api/*.ts --outDir $SCRATCH/apidist
+--module commonjs --target es2020 --moduleResolution node --esModuleInterop --skipLibCheck`),
+put a device key at `$SCRATCH/devicekey.json`, and pass a connection id to run the session
+half.
 
 ### Liquid Glass
 

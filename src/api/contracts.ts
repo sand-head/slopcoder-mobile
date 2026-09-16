@@ -413,13 +413,51 @@ export interface GitRepoListing {
   errors: string[];
 }
 
+export enum NodeKeyKind {
+  Generated = 0,
+  Pasted = 1,
+}
+
+/** Ported from `INodesApi.cs`. Carries the public key, never the private one. */
 export interface RemoteNodeSummary {
   id: string;
   name: string;
   host: string;
   port: number;
   username: string;
+  keyKind: NodeKeyKind;
+  publicKey: string;
+  hostKeyFingerprint: string | null;
   enabled: boolean;
+  lastConnectedAt: string | null;
+  lastError: string | null;
+  createdAt: string;
+}
+
+/** A pasted private key travels once, in this body; null on a create means "generate one". */
+export interface RemoteNodeRequest {
+  name: string;
+  host: string;
+  port: number;
+  username: string;
+  privateKeyPem: string | null;
+}
+
+export interface NodeTestResult {
+  ok: boolean;
+  detail: string;
+}
+
+/** Creating a node answers its id, an error, or the line to install on the host. */
+export interface NodeCreateResult {
+  id: string | null;
+  error: string | null;
+  authorizedKeysLine: string | null;
+}
+
+export interface NodeKeyResult {
+  authorizedKeysLine: string | null;
+  error: string | null;
 }
 
 // ---- device auth (outside the seam) ----
@@ -833,4 +871,209 @@ export interface ChannelSummary {
   lastError: string | null;
   lastSeenAt: string | null;
   createdAt: string;
+}
+
+// ---- settings ----
+//
+// Everything `/settings/*` edits on the web, ported from the `I*Api.cs`
+// contracts each page injects. Secrets go out in a request body and never
+// come back: a summary says `hasSecret`/`hasSecrets`, a key answers its prefix.
+
+/** The two-field answer a create gives: one of the two is set. */
+export interface CreateResult {
+  id: string | null;
+  error: string | null;
+}
+
+/** `{value}` — null is success, a string is the problem to show. */
+export interface TextResult {
+  value: string | null;
+}
+
+export enum ProviderKind {
+  Anthropic = 0,
+  OpenAICompatible = 1,
+  OpenAICodex = 2,
+  ClaudeCode = 3,
+}
+
+export enum ModelTier {
+  Simple = 0,
+  Medium = 1,
+  Complex = 2,
+  Reasoning = 3,
+}
+
+export interface ConnectionSummary {
+  id: string;
+  kind: ProviderKind;
+  displayName: string;
+  baseUrl: string | null;
+  createdAt: string;
+  lastValidatedAt: string | null;
+  accountLabel: string | null;
+  enabled: boolean;
+}
+
+export interface CreateConnectionRequest {
+  kind: ProviderKind;
+  displayName: string;
+  apiKey: string;
+  baseUrl: string | null;
+}
+
+export interface ModelOption {
+  id: string;
+  displayName: string;
+  contextWindowTokens?: number | null;
+  defaultThinkingLevel?: ThinkingLevel | null;
+  supportedThinkingLevels?: ThinkingLevel[] | null;
+}
+
+export interface GitConnectionSummary {
+  id: string;
+  kind: GitServiceKind;
+  displayName: string;
+  baseUrl: string | null;
+  username: string;
+  createdAt: string;
+  lastValidatedAt: string | null;
+}
+
+export interface GitAppSummary {
+  id: string;
+  kind: GitServiceKind;
+  baseUrl: string | null;
+  clientId: string;
+  createdAt: string;
+}
+
+/** The device flow's handles. Neither value is a bearer token; `interval` is a .NET TimeSpan string. */
+export interface CodexDeviceStart {
+  deviceAuthId: string | null;
+  userCode: string | null;
+  interval: string;
+  verificationUrl: string;
+  error: string | null;
+}
+
+export enum CodexPollStatus {
+  Pending = 0,
+  Connected = 1,
+  Failed = 2,
+}
+
+export interface CodexPollResult {
+  status: CodexPollStatus;
+  error: string | null;
+}
+
+export enum McpTransportKind {
+  Stdio = 0,
+  Http = 1,
+}
+
+export interface McpServerSummary {
+  id: string;
+  displayName: string;
+  kind: McpTransportKind;
+  command: string;
+  args: string[];
+  url: string | null;
+  hasSecrets: boolean;
+  enabled: boolean;
+  createdAt: string;
+}
+
+/** `secrets` null on an update keeps the stored cipher; a map replaces it. */
+export interface McpServerRequest {
+  displayName: string;
+  kind: McpTransportKind;
+  command: string;
+  args: string[];
+  url: string | null;
+  secrets: Record<string, string> | null;
+}
+
+export interface TerminalPrefs {
+  packages: string | null;
+  shell: string | null;
+}
+
+export interface TerminalDefaults {
+  packages: string;
+  shell: string;
+}
+
+export interface UserFacetSummary {
+  id: string;
+  name: string;
+  content: string;
+  updatedAt: string;
+}
+
+export interface FacetCheck {
+  name: string | null;
+  toolsAllowed: number;
+  toolsDenied: number;
+  model: string | null;
+  error: string | null;
+}
+
+export interface PermissionsCheck {
+  ruleCount: number;
+  error: string | null;
+}
+
+export interface MemorySummary {
+  id: string;
+  repoKey: string;
+  name: string;
+  description: string;
+  content: string;
+  pinned: boolean;
+  updatedAt: string;
+}
+
+export interface SaveMemoryRequest {
+  repoKey: string;
+  name: string;
+  description: string;
+  content: string;
+  pinned: boolean;
+}
+
+export interface UserSkillSummary {
+  id: string;
+  name: string;
+  content: string;
+  updatedAt: string;
+}
+
+/** The non-secret half of a channel. `settings` is the JSON blob the kind reads. */
+export interface ChannelDraft {
+  kind: ChannelKind;
+  displayName: string;
+  secret: string | null;
+  settings: string;
+  enabled: boolean;
+}
+
+export interface ApiKeySummary {
+  id: string;
+  name: string;
+  prefix: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+/** `fullKey` is in this response and nowhere else, ever again. */
+export interface MintedApiKey {
+  key: ApiKeySummary;
+  fullKey: string;
+}
+
+export interface DevicePairingCode {
+  code: string;
+  expiresAt: string;
 }

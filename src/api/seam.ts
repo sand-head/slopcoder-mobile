@@ -14,19 +14,41 @@
  */
 import type {
   AgentEventEnvelope,
+  ApiKeySummary,
   AutomationDraft,
   AutomationSaveResult,
   AutomationSummary,
+  ChannelDraft,
   ChannelSummary,
+  CodexDeviceStart,
+  CodexPollResult,
+  ConnectionSummary,
+  CreateConnectionRequest,
+  CreateResult,
   CreateSessionRequest,
   CreateSessionResult,
   DeviceKey,
+  DevicePairingCode,
+  FacetCheck,
   FacetOption,
+  GitAppSummary,
+  GitConnectionSummary,
   GitRepoListing,
   GitRepoRow,
+  McpServerRequest,
+  McpServerSummary,
+  MemorySummary,
+  MintedApiKey,
   ModelCandidate,
+  ModelOption,
+  ModelTier,
+  NodeCreateResult,
+  NodeKeyResult,
+  NodeTestResult,
   PairRequest,
   PasswordLoginRequest,
+  PermissionsCheck,
+  RemoteNodeRequest,
   RemoteNodeSummary,
   ResolveApprovalRequest,
   ResolveQuestionRequest,
@@ -36,6 +58,7 @@ import type {
   RoutineStatus,
   RunDetail,
   RunPage,
+  SaveMemoryRequest,
   ScheduleParse,
   ServerProtocol,
   SessionState,
@@ -45,9 +68,14 @@ import type {
   SetThinkingRequest,
   StartSessionRequest,
   SteerRequest,
+  TerminalDefaults,
+  TerminalPrefs,
+  TextResult,
   UsageDashboard,
+  UserFacetSummary,
+  UserSkillSummary,
 } from './contracts';
-import { UsageRange } from './contracts';
+import { CodexPollStatus, UsageRange } from './contracts';
 
 /** `?tz=Europe/Berlin`, or nothing at all when the phone could not name its zone. */
 function zone(timeZoneId?: string): string {
@@ -250,13 +278,31 @@ export class Seam {
    * routine" from "not yours".
    */
   private async problem(path: string, body?: unknown): Promise<string | null> {
-    const { status, value } = await this.request<{ value: string | null }>(
-      'POST',
-      path,
-      body ?? {},
-    );
-    if (status === 404) return 'That routine is gone.';
+    return this.textResult('POST', path, body ?? {}, 'That routine is gone.');
+  }
+
+  /**
+   * The same `{value}` answer, from any settings command. The seam answers a
+   * 404 for "no such row" and "not yours" alike, so the sentence is ours.
+   */
+  private async textResult(
+    method: string,
+    path: string,
+    body: unknown,
+    gone: string,
+  ): Promise<string | null> {
+    const { status, value } = await this.request<TextResult>(method, path, body);
+    if (status === 404) return gone;
     return value?.value ?? null;
+  }
+
+  /**
+   * A command that answers 204 or 404 and nothing else: true when it landed.
+   * A PUT, mostly — the settings pages flip switches with these.
+   */
+  private async landed(method: string, path: string, body?: unknown): Promise<boolean> {
+    const { status } = await this.request<void>(method, path, body ?? {});
+    return status !== 404;
   }
 
   // ---- sessions ----
@@ -559,6 +605,316 @@ export class Seam {
     } catch {
       return false;
     }
+  }
+
+  // ---- settings ----
+  //
+  // One method per call the web's settings pages make, over the same
+  // `/api/seam/*` groups (`Http*Api.cs`). A create answers `{id, error}`; an
+  // update or a command answers `{value}` with null for success; a switch
+  // answers 204 or 404. Nothing here ever reads a secret back.
+
+  // -- connections --
+
+  async connections(signal?: AbortSignal): Promise<ConnectionSummary[]> {
+    return (await this.get<ConnectionSummary[]>('api/seam/connections/', signal)) ?? [];
+  }
+
+  /** The key is validated against the provider before it is stored; the error says why not. */
+  async createConnection(request: CreateConnectionRequest): Promise<CreateResult> {
+    return (
+      (await this.send<CreateResult>('POST', 'api/seam/connections/', request)) ?? {
+        id: null,
+        error: 'The server did not answer.',
+      }
+    );
+  }
+
+  deleteConnection(id: string) {
+    return this.landed('DELETE', `api/seam/connections/${id}`);
+  }
+
+  /** Resolved server-side with the decrypted key; only names come back. */
+  async connectionModels(id: string, signal?: AbortSignal): Promise<ModelOption[]> {
+    return (await this.get<ModelOption[]>(`api/seam/connections/${id}/models`, signal)) ?? [];
+  }
+
+  async connectionTiers(id: string, signal?: AbortSignal): Promise<Record<string, ModelTier>> {
+    return (await this.get<Record<string, ModelTier>>(`api/seam/connections/${id}/tiers`, signal)) ?? {};
+  }
+
+  /** Null clears the grade back to the catalog's default. */
+  setModelTier(id: string, modelId: string, tier: ModelTier | null) {
+    return this.landed('PUT', `api/seam/connections/${id}/tiers`, { modelId, tier });
+  }
+
+  setConnectionEnabled(id: string, enabled: boolean) {
+    return this.landed('PUT', `api/seam/connections/${id}/enabled`, { value: enabled });
+  }
+
+  async disabledModels(id: string, signal?: AbortSignal): Promise<string[]> {
+    return (await this.get<string[]>(`api/seam/connections/${id}/disabled-models`, signal)) ?? [];
+  }
+
+  setModelEnabled(id: string, modelId: string, enabled: boolean) {
+    return this.landed('PUT', `api/seam/connections/${id}/models/enabled`, { modelId, enabled });
+  }
+
+  async gitConnections(signal?: AbortSignal): Promise<GitConnectionSummary[]> {
+    return (await this.get<GitConnectionSummary[]>('api/seam/git/connections', signal)) ?? [];
+  }
+
+  deleteGitConnection(id: string) {
+    return this.landed('DELETE', `api/seam/git/connections/${id}`);
+  }
+
+  async gitApps(signal?: AbortSignal): Promise<GitAppSummary[]> {
+    return (await this.get<GitAppSummary[]>('api/seam/git/apps', signal)) ?? [];
+  }
+
+  // -- codex --
+  //
+  // The device flow runs on the server: it holds the PKCE verifier and the
+  // tokens, and creates the connection in the poll that sees the approval.
+
+  async codexStart(): Promise<CodexDeviceStart> {
+    return (
+      (await this.send<CodexDeviceStart>('POST', 'api/seam/codex/device', {})) ?? {
+        deviceAuthId: null,
+        userCode: null,
+        interval: '00:00:00',
+        verificationUrl: '',
+        error: 'The server did not answer.',
+      }
+    );
+  }
+
+  async codexPoll(deviceAuthId: string, userCode: string, signal?: AbortSignal): Promise<CodexPollResult> {
+    return (
+      (await this.send<CodexPollResult>('POST', 'api/seam/codex/device/poll', { deviceAuthId, userCode }, signal)) ?? {
+        status: CodexPollStatus.Failed,
+        error: 'The server did not answer.',
+      }
+    );
+  }
+
+  /** The one inbound road for tokens: a paste of `~/.codex/auth.json`. */
+  codexImport(json: string) {
+    return this.textResult('POST', 'api/seam/codex/import', { value: json }, 'The server did not answer.');
+  }
+
+  // -- mcp servers --
+
+  async mcpServers(signal?: AbortSignal): Promise<McpServerSummary[]> {
+    return (await this.get<McpServerSummary[]>('api/seam/mcp/', signal)) ?? [];
+  }
+
+  async createMcpServer(request: McpServerRequest): Promise<CreateResult> {
+    return (
+      (await this.send<CreateResult>('POST', 'api/seam/mcp/', request)) ?? {
+        id: null,
+        error: 'The server did not answer.',
+      }
+    );
+  }
+
+  updateMcpServer(id: string, request: McpServerRequest) {
+    return this.textResult('PUT', `api/seam/mcp/${id}`, request, 'That server is gone.');
+  }
+
+  setMcpServerEnabled(id: string, enabled: boolean) {
+    return this.landed('PUT', `api/seam/mcp/${id}/enabled`, { value: enabled });
+  }
+
+  deleteMcpServer(id: string) {
+    return this.landed('DELETE', `api/seam/mcp/${id}`);
+  }
+
+  // -- remote nodes --
+
+  async createNode(request: RemoteNodeRequest): Promise<NodeCreateResult> {
+    return (
+      (await this.send<NodeCreateResult>('POST', 'api/seam/nodes/', request)) ?? {
+        id: null,
+        error: 'The server did not answer.',
+        authorizedKeysLine: null,
+      }
+    );
+  }
+
+  updateNode(id: string, request: RemoteNodeRequest) {
+    return this.textResult('PUT', `api/seam/nodes/${id}`, request, 'That node is gone.');
+  }
+
+  async regenerateNodeKey(id: string): Promise<NodeKeyResult> {
+    const { status, value } = await this.request<NodeKeyResult>('POST', `api/seam/nodes/${id}/key`, {});
+    if (status === 404) return { authorizedKeysLine: null, error: 'That node is gone.' };
+    return value ?? { authorizedKeysLine: null, error: 'The server did not answer.' };
+  }
+
+  setNodeEnabled(id: string, enabled: boolean) {
+    return this.landed('PUT', `api/seam/nodes/${id}/enabled`, { value: enabled });
+  }
+
+  deleteNode(id: string) {
+    return this.landed('DELETE', `api/seam/nodes/${id}`);
+  }
+
+  resetNodeHostKeyPin(id: string) {
+    return this.landed('DELETE', `api/seam/nodes/${id}/host-key-pin`);
+  }
+
+  async testNode(id: string): Promise<NodeTestResult> {
+    const { status, value } = await this.request<NodeTestResult>('POST', `api/seam/nodes/${id}/test`, {});
+    if (status === 404) return { ok: false, detail: 'That node is gone.' };
+    return value ?? { ok: false, detail: 'The server did not answer.' };
+  }
+
+  // -- terminal --
+
+  terminalDefaults(signal?: AbortSignal) {
+    return this.get<TerminalDefaults>('api/seam/terminal-settings/defaults', signal);
+  }
+
+  async terminalPrefs(signal?: AbortSignal): Promise<TerminalPrefs> {
+    return (await this.get<TerminalPrefs>('api/seam/terminal-settings/', signal)) ?? { packages: null, shell: null };
+  }
+
+  saveTerminalPrefs(packages: string | null, shell: string | null) {
+    return this.send<void>('PUT', 'api/seam/terminal-settings/', { packages, shell });
+  }
+
+  // -- facets, hooks, permission rules --
+
+  async userFacets(signal?: AbortSignal): Promise<UserFacetSummary[]> {
+    return (await this.get<UserFacetSummary[]>('api/seam/user-config/facets', signal)) ?? [];
+  }
+
+  saveFacet(name: string, content: string) {
+    return this.send<void>('POST', 'api/seam/user-config/facets', { name, content });
+  }
+
+  deleteFacet(id: string) {
+    return this.landed('DELETE', `api/seam/user-config/facets/${id}`);
+  }
+
+  /** The exact parser the runtime uses, so a facet that checks out here loads there. */
+  async checkFacet(name: string, content: string): Promise<FacetCheck> {
+    return (
+      (await this.send<FacetCheck>('POST', 'api/seam/user-config/facets/check', { name, content })) ?? {
+        name: null,
+        toolsAllowed: 0,
+        toolsDenied: 0,
+        model: null,
+        error: 'the server did not answer',
+      }
+    );
+  }
+
+  async hooks(signal?: AbortSignal): Promise<string | null> {
+    return (await this.get<TextResult>('api/seam/user-config/hooks', signal))?.value ?? null;
+  }
+
+  /** An empty document removes the global hooks. */
+  saveHooks(json: string | null) {
+    return this.send<void>('PUT', 'api/seam/user-config/hooks', { value: json });
+  }
+
+  async permissions(signal?: AbortSignal): Promise<string | null> {
+    return (await this.get<TextResult>('api/seam/user-config/permissions', signal))?.value ?? null;
+  }
+
+  savePermissions(yaml: string | null) {
+    return this.send<void>('PUT', 'api/seam/user-config/permissions', { value: yaml });
+  }
+
+  async checkPermissions(yaml: string): Promise<PermissionsCheck> {
+    return (
+      (await this.send<PermissionsCheck>('POST', 'api/seam/user-config/permissions/check', { value: yaml })) ?? {
+        ruleCount: 0,
+        error: 'The server did not answer.',
+      }
+    );
+  }
+
+  // -- memory --
+
+  async memories(signal?: AbortSignal): Promise<MemorySummary[]> {
+    return (await this.get<MemorySummary[]>('api/seam/memory/', signal)) ?? [];
+  }
+
+  saveMemory(request: SaveMemoryRequest) {
+    return this.send<void>('POST', 'api/seam/memory/', request);
+  }
+
+  deleteMemory(id: string) {
+    return this.landed('DELETE', `api/seam/memory/${id}`);
+  }
+
+  // -- skills --
+
+  async skills(signal?: AbortSignal): Promise<UserSkillSummary[]> {
+    return (await this.get<UserSkillSummary[]>('api/seam/skills/', signal)) ?? [];
+  }
+
+  /** A save that the parser refuses answers with why; null is saved. */
+  saveSkill(name: string, content: string) {
+    return this.textResult('POST', 'api/seam/skills/', { name, content }, 'The server did not answer.');
+  }
+
+  deleteSkill(id: string) {
+    return this.landed('DELETE', `api/seam/skills/${id}`);
+  }
+
+  // -- channels --
+
+  createChannel(draft: ChannelDraft) {
+    return this.textResult('POST', 'api/seam/channels/', draft, 'The server did not answer.');
+  }
+
+  updateChannel(id: string, draft: ChannelDraft) {
+    return this.textResult('PUT', `api/seam/channels/${id}`, draft, 'That channel is gone.');
+  }
+
+  deleteChannel(id: string) {
+    return this.landed('DELETE', `api/seam/channels/${id}`);
+  }
+
+  setChannelEnabled(id: string, enabled: boolean) {
+    return this.textResult('POST', `api/seam/channels/${id}/enabled/${enabled}`, {}, 'That channel is gone.');
+  }
+
+  /** The code the bot (or the mailbox) handed a stranger. In the body: a URL ends up in logs. */
+  pairChannel(id: string, code: string) {
+    return this.textResult('POST', `api/seam/channels/${id}/pair`, { code }, 'That channel is gone.');
+  }
+
+  unpairChannel(id: string, peerId: string) {
+    return this.textResult('POST', `api/seam/channels/${id}/unpair`, { peerId }, 'That channel is gone.');
+  }
+
+  testChannel(id: string) {
+    return this.textResult('POST', `api/seam/channels/${id}/test`, {}, 'That channel is gone.');
+  }
+
+  // -- api keys --
+
+  async apiKeys(signal?: AbortSignal): Promise<ApiKeySummary[]> {
+    return (await this.get<ApiKeySummary[]>('api/seam/api-keys/', signal)) ?? [];
+  }
+
+  /** The full key is in this answer and nowhere else, ever again. */
+  mintApiKey(name: string) {
+    return this.send<MintedApiKey>('POST', 'api/seam/api-keys/', { name });
+  }
+
+  revokeApiKey(id: string) {
+    return this.landed('DELETE', `api/seam/api-keys/${id}`);
+  }
+
+  /** A 90-second single-use code another device redeems for a key of its own. */
+  startPairing() {
+    return this.send<DevicePairingCode>('POST', 'api/seam/api-keys/pairing', {});
   }
 }
 

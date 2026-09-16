@@ -25,7 +25,22 @@ export const linking: LinkingOptions<Record<string, any>> = {
           SessionsTab: { screens: { Sessions: 'sessions' } },
           RoutinesTab: { screens: { Routines: 'routines' } },
           UsageTab: { screens: { Usage: 'usage' } },
-          SettingsTab: { screens: { Settings: 'settings' } },
+          SettingsTab: {
+            screens: {
+              Settings: 'settings',
+              // The web's paths, so a link to a settings page lands on its screen.
+              Connections: 'settings/connections',
+              McpServers: 'settings/mcp',
+              RemoteNodes: 'settings/nodes',
+              Terminal: 'settings/terminal',
+              Facets: 'settings/facets',
+              Hooks: 'settings/hooks',
+              Memory: 'settings/memory',
+              Skills: 'settings/skills',
+              Channels: 'settings/channels',
+              ApiKeys: 'settings/api-keys',
+            },
+          },
         },
       },
       Session: 'session/:id',

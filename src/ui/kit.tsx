@@ -690,7 +690,8 @@ export const Field = forwardRef<
     autoFocus?: boolean;
     selectTextOnFocus?: boolean;
     accessibilityLabel?: string;
-    style?: StyleProp<ViewStyle>;
+    /** A text style, so a caller can put a host or a token in mono. */
+    style?: StyleProp<TextStyle>;
   }
 >(function FieldInner(
   {

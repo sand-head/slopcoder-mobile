@@ -225,6 +225,125 @@ const check = (name, ok, extra = '') => (ok ? pass : fail).push(name + (extra ? 
   check('a draft answers with its shape', typeof drafted.ok === 'boolean' && Array.isArray(drafted.triggers),
     drafted.ok ? `drafted by ${drafted.draftedBy}` : String(drafted.error));
 
+  // --- the settings pages' seam: every group /settings/* edits ---
+  //
+  // What this half proves is the shape of each answer — a `{value}` on a PUT,
+  // a `{id, error}` on a create, a 204 on a switch — and that a secret never
+  // comes back. Each write is undone before the next check.
+
+  const facetName = 'wire-check-facet';
+  const facetBody = '---\ndescription: wire check\ntools-allow: read_file\n---\nYou only read.';
+  const facetCheck = await seam.checkFacet(facetName, facetBody);
+  check('a facet is checked by the real parser', facetCheck.error === null && facetCheck.toolsAllowed === 1, JSON.stringify(facetCheck));
+  check('a facet with no frontmatter fence says why', (await seam.checkFacet(facetName, 'no fence')).error !== null);
+  await seam.saveFacet(facetName, facetBody);
+  const facets = await seam.userFacets();
+  const facet = facets.find(f => f.name === facetName);
+  check('a saved facet lists with its content', Boolean(facet) && facet.content === facetBody);
+  check('the facet catalog now offers it', (await seam.facets()).some(f => f.name === facetName));
+  if (facet) check('a facet deletes', (await seam.deleteFacet(facet.id)) === true);
+  check('deleting a missing facet is false', (await seam.deleteFacet('00000000-0000-0000-0000-000000000000')) === false);
+
+  const skillProblem = await seam.saveSkill('wire-check-skill', '---\nname: wire-check-skill\ndescription: a check\n---\nSteps.');
+  check('a skill save answers null when it worked', skillProblem === null, String(skillProblem));
+  check('a skill the parser refuses is a sentence', typeof (await seam.saveSkill('wire-check-bad', 'no frontmatter')) === 'string');
+  const skill = (await seam.skills()).find(s => s.name === 'wire-check-skill');
+  check('the skill lists', Boolean(skill));
+  if (skill) check('the skill deletes', (await seam.deleteSkill(skill.id)) === true);
+
+  await seam.saveMemory({ repoKey: '', name: 'wire-check-memory', description: 'a check', content: 'remember this', pinned: true });
+  const memory = (await seam.memories()).find(m => m.name === 'wire-check-memory');
+  check('a memory entry lists with its pin', Boolean(memory) && memory.pinned === true && memory.repoKey === '');
+  if (memory) check('the memory entry deletes', (await seam.deleteMemory(memory.id)) === true);
+
+  const hooksBefore = await seam.hooks();
+  await seam.saveHooks('{"stop":[{"command":"true"}]}');
+  check('hooks round-trip as a TextResult', (await seam.hooks()) === '{"stop":[{"command":"true"}]}');
+  await seam.saveHooks(hooksBefore ?? '');
+  const rules = 'rules:\n  - action: allow\n    tool: run_bash\n    executable: git\n';
+  const rulesCheck = await seam.checkPermissions(rules);
+  check('permission rules are checked server-side', rulesCheck.error === null && rulesCheck.ruleCount === 1, JSON.stringify(rulesCheck));
+  check('bad YAML says why', (await seam.checkPermissions('rules: [')).error !== null);
+  const permsBefore = await seam.permissions();
+  await seam.savePermissions(rules);
+  check('permission rules round-trip', (await seam.permissions()) === rules);
+  await seam.savePermissions(permsBefore ?? '');
+
+  const defaults = await seam.terminalDefaults();
+  check('terminal defaults come back', Boolean(defaults) && typeof defaults.shell === 'string', JSON.stringify(defaults));
+  await seam.saveTerminalPrefs('ripgrep', 'fish');
+  const prefs = await seam.terminalPrefs();
+  check('terminal prefs round-trip', prefs.shell === 'fish' && prefs.packages === 'ripgrep', JSON.stringify(prefs));
+  await seam.saveTerminalPrefs(null, null);
+
+  const mcp = await seam.createMcpServer({ displayName: 'wire-check-mcp', kind: 0, command: 'npx', args: ['-y', 'x'], url: null, secrets: { TOKEN: 's3cret' } });
+  check('an mcp create answers {id, error}', typeof mcp.id === 'string' && mcp.error === null, JSON.stringify(mcp));
+  if (mcp.id) {
+    const listed = (await seam.mcpServers()).find(s => s.id === mcp.id);
+    check('the mcp server lists with hasSecrets and never the secret', Boolean(listed) && listed.hasSecrets === true && !JSON.stringify(listed).includes('s3cret'));
+    check('McpTransportKind is numeric on the wire', typeof listed?.kind === 'number');
+    check('an mcp update answers null when it worked', (await seam.updateMcpServer(mcp.id, { displayName: 'wire-check-mcp', kind: 0, command: 'npx', args: [], url: null, secrets: null })) === null);
+    check('an mcp switch lands', (await seam.setMcpServerEnabled(mcp.id, false)) === true);
+    check('the mcp server deletes', (await seam.deleteMcpServer(mcp.id)) === true);
+  }
+  check('an mcp update of a missing id is a sentence', typeof (await seam.updateMcpServer('00000000-0000-0000-0000-000000000000', { displayName: 'x', kind: 0, command: 'x', args: [], url: null, secrets: null })) === 'string');
+
+  const node = await seam.createNode({ name: 'wire-check-node', host: '127.0.0.1', port: 22, username: 'nobody', privateKeyPem: null });
+  check('a generated node answers its authorized_keys line', typeof node.id === 'string' && typeof node.authorizedKeysLine === 'string', JSON.stringify(node).slice(0, 80));
+  if (node.id) {
+    const listed = (await seam.nodes()).find(n => n.id === node.id);
+    check('the node lists with a public key and no fingerprint yet', Boolean(listed) && listed.publicKey.length > 0 && listed.hostKeyFingerprint === null);
+    check('NodeKeyKind is numeric on the wire', typeof listed?.keyKind === 'number');
+    check('a node update answers null when it worked', (await seam.updateNode(node.id, { name: 'wire-check-node', host: '127.0.0.1', port: 2222, username: 'nobody', privateKeyPem: null })) === null);
+    const rotated = await seam.regenerateNodeKey(node.id);
+    check('a new key answers a new line', typeof rotated.authorizedKeysLine === 'string' && rotated.authorizedKeysLine !== node.authorizedKeysLine, String(rotated.error));
+    const test = await seam.testNode(node.id);
+    check('a node test answers {ok, detail}', typeof test.ok === 'boolean' && typeof test.detail === 'string', test.detail.slice(0, 60));
+    check('resetting an absent pin still lands', typeof (await seam.resetNodeHostKeyPin(node.id)) === 'boolean');
+    check('the node deletes', (await seam.deleteNode(node.id)) === true);
+  }
+
+  const chan = await seam.createChannel({ kind: 1, displayName: 'wire-check-ntfy', secret: null, settings: JSON.stringify({ server: 'https://ntfy.sh', topic: 'wire-check-topic' }), enabled: false });
+  check('a channel create answers null when it worked', chan === null, String(chan));
+  const channel = (await seam.channels()).find(c => c.displayName === 'wire-check-ntfy');
+  check('the channel lists with its settings blob', Boolean(channel) && JSON.parse(channel.settings).topic === 'wire-check-topic');
+  if (channel) {
+    check('a channel update answers null', (await seam.updateChannel(channel.id, { kind: 1, displayName: 'wire-check-ntfy', secret: null, settings: channel.settings, enabled: false })) === null);
+    check('a channel switch answers a TextResult', (await seam.setChannelEnabled(channel.id, false)) === null);
+    check('pairing a delivery-only channel is a sentence', typeof (await seam.pairChannel(channel.id, '000000')) === 'string');
+    check('the channel deletes', (await seam.deleteChannel(channel.id)) === true);
+  }
+
+  const minted = await seam.mintApiKey('wire-check key');
+  check('a minted key comes back once, with its summary', Boolean(minted) && minted.fullKey.startsWith('slop_') && minted.key.prefix.length > 0);
+  if (minted) {
+    check('the key lists by prefix only', (await seam.apiKeys()).some(k => k.id === minted.key.id && !JSON.stringify(k).includes(minted.fullKey)));
+    check('the key revokes', (await seam.revokeApiKey(minted.key.id)) === true);
+  }
+  const pairing = await seam.startPairing();
+  check('a pairing code is issued with an expiry', Boolean(pairing) && pairing.code.length > 0 && !Number.isNaN(Date.parse(pairing.expiresAt)));
+
+  const connections = await seam.connections();
+  check('connections list', Array.isArray(connections));
+  check('ProviderKind is numeric on the wire', connections.length === 0 || typeof connections[0].kind === 'number');
+  if (CONNECTION) {
+    const models = await seam.connectionModels(CONNECTION);
+    check('a connection lists its models', models.length > 0 && typeof models[0].id === 'string', JSON.stringify(models[0]));
+    check('a model switch lands', (await seam.setModelEnabled(CONNECTION, models[0].id, false)) === true);
+    check('the disabled list reads it back', (await seam.disabledModels(CONNECTION)).includes(models[0].id));
+    check('a model switch lands again', (await seam.setModelEnabled(CONNECTION, models[0].id, true)) === true);
+    check('a tier grade lands', (await seam.setModelTier(CONNECTION, models[0].id, 3)) === true);
+    const tiers = await seam.connectionTiers(CONNECTION);
+    check('tiers come back as a map of numbers', tiers[models[0].id] === 3, JSON.stringify(tiers));
+    check('a tier clears', (await seam.setModelTier(CONNECTION, models[0].id, null)) === true);
+    check('a connection switch lands', (await seam.setConnectionEnabled(CONNECTION, true)) === true);
+  }
+  check('git connections list', Array.isArray(await seam.gitConnections()));
+  check('git apps list', Array.isArray(await seam.gitApps()));
+  const codex = await seam.codexStart();
+  check('a codex start answers its shape (an error is fine without the network)', 'deviceAuthId' in codex && typeof codex.interval === 'string', JSON.stringify(codex).slice(0, 80));
+  check('a codex import of garbage is a sentence', typeof (await seam.codexImport('not json')) === 'string');
+
   if (hub) await hub.stop();
 
   console.log('\n--- PASS ---');
