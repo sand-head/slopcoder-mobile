@@ -40,6 +40,8 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SessionsScreen } from '../screens/Sessions';
 import { RoutinesScreen } from '../screens/Routines';
 import { UsageScreen } from '../screens/Usage';
+import { ArtifactsScreen } from '../screens/Artifacts';
+import { ArtifactScreen } from '../screens/Artifact';
 import { SettingsScreen } from '../screens/Settings';
 import { ConnectionsScreen } from '../screens/settings/Connections';
 import { McpServersScreen } from '../screens/settings/McpServers';
@@ -58,6 +60,7 @@ import { rootPageOptions, stackOptions } from './headers';
 const Tab = createNativeBottomTabNavigator();
 const SessionsStack = createNativeStackNavigator();
 const RoutinesStack = createNativeStackNavigator();
+const ArtifactsStack = createNativeStackNavigator();
 const UsageStack = createNativeStackNavigator();
 const SettingsStack = createNativeStackNavigator();
 
@@ -94,6 +97,18 @@ function RoutinesTab() {
     <RoutinesStack.Navigator screenOptions={stackOptions(theme)}>
       <RoutinesStack.Screen name="Routines" component={RoutinesScreen} />
     </RoutinesStack.Navigator>
+  );
+}
+
+function ArtifactsTab() {
+  const theme = useTheme();
+  return (
+    <ArtifactsStack.Navigator screenOptions={stackOptions(theme)}>
+      <ArtifactsStack.Screen name="Artifacts" component={ArtifactsScreen} options={rootPageOptions} />
+      {/* Reading one is pushed within the tab, as a list's detail is
+          everywhere else on the phone: the bar stays, and back is a swipe. */}
+      <ArtifactsStack.Screen name="Artifact" component={ArtifactScreen} />
+    </ArtifactsStack.Navigator>
   );
 }
 
@@ -159,6 +174,14 @@ export function Tabs() {
           tabBarIcon: icon('clock', require('../../assets/icons/routines.png')),
           tabBarBadge: anyFailed ? '!' : undefined,
           tabBarBadgeStyle: { backgroundColor: c.destructive },
+        }}
+      />
+      <Tab.Screen
+        name="ArtifactsTab"
+        component={ArtifactsTab}
+        options={{
+          title: 'Artifacts',
+          tabBarIcon: icon('doc.text', require('../../assets/icons/artifacts.png')),
         }}
       />
       <Tab.Screen

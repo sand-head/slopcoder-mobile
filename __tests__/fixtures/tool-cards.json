@@ -1542,5 +1542,183 @@
         }
       ]
     }
+  },
+  {
+    "name": "publish a report the agent wrote",
+    "tool": "publish_artifact",
+    "input": {
+      "title": "Battery chemistry landscape",
+      "slug": "battery-landscape",
+      "format": "markdown",
+      "description": "Where sodium-ion actually stands, with sources.",
+      "content": "# Battery chemistry\n\nSodium-ion is shipping in grid storage, not in cars.\n"
+    },
+    "result": "Published \u0022Battery chemistry landscape\u0022 as artifact \u0060battery-landscape\u0060 (markdown, 1.2 KB). The user can read it at /artifacts/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b. It is private until they share it.",
+    "expected": {
+      "verb": "Publish",
+      "subject": "Battery chemistry landscape",
+      "subjectStyle": "plain",
+      "facets": [
+        "markdown",
+        "battery-landscape"
+      ],
+      "blocks": [
+        {
+          "type": "text",
+          "label": "description",
+          "open": false,
+          "tone": "plain",
+          "text": "Where sodium-ion actually stands, with sources."
+        },
+        {
+          "type": "text",
+          "label": "content",
+          "open": false,
+          "tone": "plain",
+          "text": "# Battery chemistry\n\nSodium-ion is shipping in grid storage, not in cars.\n"
+        },
+        {
+          "type": "text",
+          "label": "result",
+          "open": false,
+          "tone": "plain",
+          "text": "Published \u0022Battery chemistry landscape\u0022 as artifact \u0060battery-landscape\u0060 (markdown, 1.2 KB). The user can read it at /artifacts/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b. It is private until they share it."
+        }
+      ]
+    }
+  },
+  {
+    "name": "publish a file a routine generated",
+    "tool": "publish_artifact",
+    "input": {
+      "title": "Overnight build log",
+      "slug": "overnight-build-log",
+      "path": "home/logs/build.log",
+      "format": "text"
+    },
+    "result": "Republished (v6) \u0022Overnight build log\u0022 as artifact \u0060overnight-build-log\u0060 (text, 84.2 KB). The user can read it at /artifacts/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b. It is private until they share it.",
+    "expected": {
+      "verb": "Publish",
+      "subject": "Overnight build log",
+      "subjectStyle": "plain",
+      "facets": [
+        "text",
+        "overnight-build-log"
+      ],
+      "blocks": [
+        {
+          "type": "text",
+          "label": "file",
+          "open": false,
+          "tone": "plain",
+          "text": "home/logs/build.log"
+        },
+        {
+          "type": "text",
+          "label": "result",
+          "open": false,
+          "tone": "plain",
+          "text": "Republished (v6) \u0022Overnight build log\u0022 as artifact \u0060overnight-build-log\u0060 (text, 84.2 KB). The user can read it at /artifacts/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b. It is private until they share it."
+        }
+      ]
+    }
+  },
+  {
+    "name": "publish that was refused",
+    "tool": "publish_artifact",
+    "input": {
+      "title": "Everything",
+      "content": "..."
+    },
+    "result": "Error: pass content or path, not both.",
+    "expected": {
+      "verb": "Publish",
+      "subject": "Everything",
+      "subjectStyle": "plain",
+      "facets": [],
+      "blocks": [
+        {
+          "type": "text",
+          "label": "content",
+          "open": false,
+          "tone": "plain",
+          "text": "..."
+        },
+        {
+          "type": "text",
+          "label": "result",
+          "open": false,
+          "tone": "plain",
+          "text": "Error: pass content or path, not both."
+        }
+      ]
+    }
+  },
+  {
+    "name": "list the published artifacts",
+    "tool": "list_artifacts",
+    "input": {},
+    "result": "- \u0060battery-landscape\u0060 \u2014 Battery chemistry landscape (markdown, 1.2 KB, v1, updated 2026-09-17)\n- \u0060overnight-build-log\u0060 \u2014 Overnight build log (text, 84.2 KB, v6, updated 2026-09-17)",
+    "expected": {
+      "verb": "Artifacts",
+      "subject": null,
+      "subjectStyle": "plain",
+      "facets": [],
+      "blocks": [
+        {
+          "type": "text",
+          "label": "result",
+          "open": false,
+          "tone": "plain",
+          "text": "- \u0060battery-landscape\u0060 \u2014 Battery chemistry landscape (markdown, 1.2 KB, v1, updated 2026-09-17)\n- \u0060overnight-build-log\u0060 \u2014 Overnight build log (text, 84.2 KB, v6, updated 2026-09-17)"
+        }
+      ]
+    }
+  },
+  {
+    "name": "read an artifact back",
+    "tool": "read_artifact",
+    "input": {
+      "slug": "battery-landscape"
+    },
+    "result": "# Battery chemistry\n\nSodium-ion is shipping in grid storage, not in cars.",
+    "expected": {
+      "verb": "Read artifact",
+      "subject": "battery-landscape",
+      "subjectStyle": "plain",
+      "facets": [],
+      "blocks": [
+        {
+          "type": "text",
+          "label": "result",
+          "open": false,
+          "tone": "plain",
+          "text": "# Battery chemistry\n\nSodium-ion is shipping in grid storage, not in cars."
+        }
+      ]
+    }
+  },
+  {
+    "name": "delete an artifact",
+    "tool": "delete_artifact",
+    "input": {
+      "slug": "overnight-build-log"
+    },
+    "result": "Deleted artifact \u0060overnight-build-log\u0060.",
+    "expected": {
+      "verb": "Delete artifact",
+      "subject": "overnight-build-log",
+      "subjectStyle": "plain",
+      "facets": [],
+      "blocks": [
+        {
+          "type": "text",
+          "label": "result",
+          "open": false,
+          "tone": "plain",
+          "text": "Deleted artifact \u0060overnight-build-log\u0060."
+        }
+      ]
+    }
   }
 ]

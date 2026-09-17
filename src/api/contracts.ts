@@ -1034,6 +1034,45 @@ export interface PermissionsCheck {
   error: string | null;
 }
 
+/**
+ * The shapes an artifact's body can take. Mirrors
+ * `SlopCoder.Contracts.ArtifactFormats`; a string on both sides on purpose, so
+ * neither end can renumber the other into rendering a report as a spreadsheet.
+ */
+export type ArtifactFormat = 'markdown' | 'text' | 'html' | 'json' | 'csv' | 'binary';
+
+/** A published artifact, without its body. */
+export interface ArtifactSummary {
+  id: string;
+  slug: string;
+  title: string;
+  format: ArtifactFormat;
+  contentType: string;
+  description: string;
+  /** The body's size in bytes, text measured as UTF-8. */
+  size: number;
+  /** Bumped each time the agent republishes this slug. */
+  version: number;
+  sessionId: string | null;
+  sessionTitle: string | null;
+  routineId: string | null;
+  routineName: string | null;
+  /** The unlisted link's token, or null while the artifact is private. */
+  shareToken: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Computed server-side from shareToken; sent, not derived, so both agree. */
+  shared: boolean;
+  /** App-relative `a/<token>` while shared, else null. */
+  sharePath: string | null;
+}
+
+/** One artifact with its body — null for a binary one, which is fetched raw. */
+export interface ArtifactDetail {
+  artifact: ArtifactSummary;
+  text: string | null;
+}
+
 export interface MemorySummary {
   id: string;
   repoKey: string;

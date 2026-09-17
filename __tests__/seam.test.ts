@@ -36,6 +36,31 @@ describe('Seam', () => {
     expect(init.headers.Authorization).toBe('Bearer slop_k');
   });
 
+  /**
+   * An artifact's bytes do not come from the seam: a PDF has no business being
+   * base64 in a JSON envelope. Two URLs, and the difference is who can open
+   * them — the raw route wants the bearer key, the share link wants nothing.
+   */
+  it('points at the raw route for bytes and the share route for a link', () => {
+    const seam = new Seam({ baseUrl: 'https://slop.example.com', apiKey: 'slop_k' });
+
+    expect(seam.artifactRawUrl('a-1')).toBe('https://slop.example.com/artifacts/a-1/raw');
+    expect(seam.shareUrl('a/tok')).toBe('https://slop.example.com/a/tok');
+  });
+
+  it('asks the seam to mint or revoke a share link, and gets the new token back', async () => {
+    fetchMock.mockReturnValue(reply(200, { id: 'a-1', shareToken: 'tok', shared: true, sharePath: 'a/tok' }));
+    const seam = new Seam({ baseUrl: 'https://slop.example.com', apiKey: 'slop_k' });
+
+    const updated = await seam.shareArtifact('a-1', true);
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://slop.example.com/api/seam/artifacts/a-1/share');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ shared: true });
+    expect(updated?.sharePath).toBe('a/tok');
+  });
+
   it('trims a trailing slash off the server so URLs do not double up', async () => {
     fetchMock.mockReturnValue(reply(200, []));
     const seam = new Seam({ baseUrl: 'https://slop.example.com/', apiKey: 'slop_k' });

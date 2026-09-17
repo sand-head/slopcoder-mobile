@@ -37,6 +37,8 @@ import type {
   GitRepoRow,
   McpServerRequest,
   McpServerSummary,
+  ArtifactDetail,
+  ArtifactSummary,
   MemorySummary,
   MintedApiKey,
   ModelCandidate,
@@ -835,6 +837,40 @@ export class Seam {
         error: 'The server did not answer.',
       }
     );
+  }
+
+  // -- artifacts --
+
+  async artifacts(signal?: AbortSignal): Promise<ArtifactSummary[]> {
+    return (await this.get<ArtifactSummary[]>('api/seam/artifacts/', signal)) ?? [];
+  }
+
+  /** Null when the artifact is gone, or was never this account's. */
+  artifact(id: string, signal?: AbortSignal): Promise<ArtifactDetail | null> {
+    return this.get<ArtifactDetail>(`api/seam/artifacts/${id}`, signal);
+  }
+
+  /** Mints or revokes the unlisted link; the summary comes back with the new token. */
+  shareArtifact(id: string, shared: boolean): Promise<ArtifactSummary | null> {
+    return this.send<ArtifactSummary>('POST', `api/seam/artifacts/${id}/share`, { shared });
+  }
+
+  deleteArtifact(id: string) {
+    return this.landed('DELETE', `api/seam/artifacts/${id}`);
+  }
+
+  /**
+   * Where an artifact's bytes live. Two URLs, and the difference matters: the
+   * owner's needs the bearer key, so it is only useful to `fetch` from inside
+   * the app, while the share link opens in any browser and is the one to hand
+   * to the system share sheet.
+   */
+  artifactRawUrl(id: string): string {
+    return `${this.baseUrl}/artifacts/${id}/raw`;
+  }
+
+  shareUrl(sharePath: string): string {
+    return `${this.baseUrl}/${sharePath}`;
   }
 
   // -- memory --

@@ -433,6 +433,16 @@ function compose(tool: string, input: Json | undefined, result: string | null, i
     case 'set_notepad':
       return notepad(input, result, isError);
 
+    // ---- artifacts ----
+    case 'publish_artifact':
+      return publishArtifact(input, result, isError);
+    case 'list_artifacts':
+      return named('Artifacts', null, result, isError);
+    case 'read_artifact':
+      return named('Read artifact', str(input, 'slug'), result, isError);
+    case 'delete_artifact':
+      return named('Delete artifact', str(input, 'slug'), result, isError);
+
     // ---- forge ----
     case 'create_pull_request':
       return createPullRequest(input, result, isError);
@@ -845,6 +855,30 @@ function saveMemory(input: Json | undefined, result: string | null, isError: boo
   if (content) blocks.push({ type: 'text', label: 'content', open: false, tone: 'plain', text: content });
   appendResult(blocks, result, isError, 'text', 'Saved ');
   return { verb: 'Remember', subject: str(input, 'name'), subjectStyle: 'plain', facets, blocks };
+}
+
+/**
+ * Publishing reads as what it is: the title in the header, the format and slug
+ * as chips, and — for something the agent wrote rather than a file it picked
+ * up — the body behind the disclosure.
+ */
+function publishArtifact(input: Json | undefined, result: string | null, isError: boolean): ToolCard {
+  const facets: string[] = [];
+  const format = str(input, 'format');
+  if (format) facets.push(format);
+  const slug = str(input, 'slug');
+  if (slug) facets.push(slug);
+
+  const blocks: ToolBlock[] = [];
+  const description = str(input, 'description');
+  if (description)
+    blocks.push({ type: 'text', label: 'description', open: false, tone: 'plain', text: description });
+  const path = str(input, 'path');
+  if (path) blocks.push({ type: 'text', label: 'file', open: false, tone: 'plain', text: path });
+  const content = str(input, 'content');
+  if (content) blocks.push({ type: 'text', label: 'content', open: false, tone: 'plain', text: content });
+  appendResult(blocks, result, isError, 'text');
+  return { verb: 'Publish', subject: str(input, 'title'), subjectStyle: 'plain', facets, blocks };
 }
 
 function memory(verb: string, input: Json | undefined, result: string | null, isError: boolean): ToolCard {

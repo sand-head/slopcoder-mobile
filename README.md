@@ -19,6 +19,8 @@ Sessions it creates run in the server's Docker sandbox, the same as the web cock
 - Write a routine: describe it in a sentence and the model drafts the form, or fill it in
   yourself — schedule in English, triggers, model, repositories and nodes, where the
   answer goes; edit an existing one; set the heartbeat's cadence, hours and model
+- Read what the agent published: reports, generated logs, a routine's daily file — and
+  give one an unlisted link, from the system share sheet
 - Settings, the same ten pages the web has: provider connections (add a key, sign in to
   Codex, grade and switch models), MCP servers, remote nodes (register, test, install its
   key), terminal defaults, facets, hooks and permission rules, memory, skills, channels
@@ -48,7 +50,7 @@ src/api/          the seam client — this is the part to read first
   routineEditor.ts what the editor decides — a port of TriggerEdit.cs and Editor.razor's draft
   settings.ts     what the settings pages decide — the razor @code blocks, function for function
 src/state/        auth (keychain), the hub connection, one session's live view
-src/screens/      login (+ scanner), sessions (list + launcher), session detail, routines, routine, routine editor, usage, settings
+src/screens/      login (+ scanner), sessions (list + launcher), session detail, routines, routine, routine editor, artifacts (list + one), usage, settings
 src/screens/settings/  one list page per web settings page, and the editors they present as sheets
 src/ui/settings.tsx    the grammar those pages share: rows, fields, the focus-reload hook
 src/navigation/   the tab bar and the native-header options every stack shares
