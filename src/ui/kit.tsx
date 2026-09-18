@@ -9,7 +9,7 @@
  * - Anything the web hides until hover is permanently visible here. The web
  *   stylesheet already branches on `@media (hover: hover)`; this is that branch.
  */
-import React, { forwardRef, useEffect, useRef } from 'react';
+import React, { forwardRef, useEffect, useMemo, useRef } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -25,10 +25,16 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
-import { LiquidGlassView, isLiquidGlassSupported } from '@callstack/liquid-glass';
-import Markdown from '@ronradtke/react-native-markdown-display';
+import {
+  LiquidGlassView,
+  isLiquidGlassSupported,
+} from '@callstack/liquid-glass';
+import Markdown, {
+  type RenderRules,
+} from '@ronradtke/react-native-markdown-display';
 import { copyText } from './clipboard';
-import { mix, radius, font, useTheme, type Palette } from '../theme';
+import { mix, radius, font, tintFor, useTheme, type Palette } from '../theme';
+import { splitMentions, type SubSessionMention } from '../api/mentions';
 
 /**
  * How far the mono grammar may grow under Dynamic Type. Body text scales
@@ -38,7 +44,13 @@ import { mix, radius, font, useTheme, type Palette } from '../theme';
  */
 export const META_SCALE_CAP = 1.3;
 
-export function Meta({ children, style }: { children: React.ReactNode; style?: StyleProp<TextStyle> }) {
+export function Meta({
+  children,
+  style,
+}: {
+  children: React.ReactNode;
+  style?: StyleProp<TextStyle>;
+}) {
   const { c } = useTheme();
   return (
     <Text
@@ -52,7 +64,8 @@ export function Meta({ children, style }: { children: React.ReactNode; style?: S
           color: c.mutedForeground,
         },
         style,
-      ]}>
+      ]}
+    >
       {children}
     </Text>
   );
@@ -81,7 +94,11 @@ export function Mono({
       ellipsizeMode={ellipsizeMode}
       selectable={selectable}
       maxFontSizeMultiplier={META_SCALE_CAP}
-      style={[{ fontFamily: font.mono, fontSize: 11.5, color: c.mutedForeground }, style]}>
+      style={[
+        { fontFamily: font.mono, fontSize: 11.5, color: c.mutedForeground },
+        style,
+      ]}
+    >
       {children}
     </Text>
   );
@@ -108,7 +125,11 @@ export function Body({
       numberOfLines={numberOfLines}
       accessibilityLiveRegion={accessibilityLiveRegion}
       selectable={selectable}
-      style={[{ fontFamily: font.sans, fontSize: 15, color: c.foreground }, style]}>
+      style={[
+        { fontFamily: font.sans, fontSize: 15, color: c.foreground },
+        style,
+      ]}
+    >
       {children}
     </Text>
   );
@@ -128,7 +149,11 @@ export function LogoMark({ size = 18 }: { size?: number }) {
   const { isDark } = useTheme();
   return (
     <Image
-      source={isDark ? require('../../assets/images/logo-dark.png') : require('../../assets/images/logo-light.png')}
+      source={
+        isDark
+          ? require('../../assets/images/logo-dark.png')
+          : require('../../assets/images/logo-light.png')
+      }
       style={{ width: size, height: size }}
       resizeMode="contain"
       accessibilityIgnoresInvertColors
@@ -159,7 +184,8 @@ export function Brand({ size = 15 }: { size?: number }) {
             fontSize: size * 1.15,
             color: c.foreground,
             transform: [{ rotate: '-2deg' }],
-          }}>
+          }}
+        >
           slop
         </Text>
         <Text
@@ -168,7 +194,8 @@ export function Brand({ size = 15 }: { size?: number }) {
             fontSize: size,
             letterSpacing: -0.375,
             color: c.foreground,
-          }}>
+          }}
+        >
           coder
         </Text>
       </View>
@@ -196,7 +223,15 @@ export const GLYPHS = {
   more: '…',
 } as const;
 
-export function Dot({ color, filled = true, size = 9 }: { color: string; filled?: boolean; size?: number }) {
+export function Dot({
+  color,
+  filled = true,
+  size = 9,
+}: {
+  color: string;
+  filled?: boolean;
+  size?: number;
+}) {
   return (
     <View
       style={{
@@ -222,7 +257,8 @@ export function HalfDot({ color, size = 9 }: { color: string; size?: number }) {
         borderWidth: 1.5,
         borderColor: color,
         overflow: 'hidden',
-      }}>
+      }}
+    >
       <View style={{ width: size / 2, height: size, backgroundColor: color }} />
     </View>
   );
@@ -246,7 +282,13 @@ export function Diamond({ color, size = 9 }: { color: string; size?: number }) {
  * The web's sliders icon, which opens the turn's settings. An ellipsis was
  * standing in for it and read as "more actions" rather than "the dials".
  */
-export function Sliders({ color, size = 14 }: { color: string; size?: number }) {
+export function Sliders({
+  color,
+  size = 14,
+}: {
+  color: string;
+  size?: number;
+}) {
   const rows = [
     { y: 0.16, knob: 0.62 },
     { y: 0.5, knob: 0.3 },
@@ -320,9 +362,19 @@ export function Check({ color, size = 14 }: { color: string; size?: number }) {
 /** ☰ — a plan. */
 export function Bars({ color, size = 10 }: { color: string; size?: number }) {
   return (
-    <View style={{ width: size, height: size, justifyContent: 'space-between', paddingVertical: 1 }}>
+    <View
+      style={{
+        width: size,
+        height: size,
+        justifyContent: 'space-between',
+        paddingVertical: 1,
+      }}
+    >
       {[0, 1, 2].map(i => (
-        <View key={i} style={{ height: 1.5, backgroundColor: color, borderRadius: 1 }} />
+        <View
+          key={i}
+          style={{ height: 1.5, backgroundColor: color, borderRadius: 1 }}
+        />
       ))}
     </View>
   );
@@ -332,8 +384,26 @@ export function Bars({ color, size = 10 }: { color: string; size?: number }) {
 export function Fork({ color, size = 10 }: { color: string; size?: number }) {
   return (
     <View style={{ width: size, height: size }}>
-      <View style={{ position: 'absolute', left: 1, top: 0, bottom: 0, width: 1.5, backgroundColor: color }} />
-      <View style={{ position: 'absolute', left: 1, top: size / 2, height: 1.5, width: size - 3, backgroundColor: color }} />
+      <View
+        style={{
+          position: 'absolute',
+          left: 1,
+          top: 0,
+          bottom: 0,
+          width: 1.5,
+          backgroundColor: color,
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          left: 1,
+          top: size / 2,
+          height: 1.5,
+          width: size - 3,
+          backgroundColor: color,
+        }}
+      />
       <View
         style={{
           position: 'absolute',
@@ -350,7 +420,13 @@ export function Fork({ color, size = 10 }: { color: string; size?: number }) {
 }
 
 /** 8px; emerald and breathing when running, a bare ring when idle. */
-export function StatusDot({ running, size = 8 }: { running: boolean; size?: number }) {
+export function StatusDot({
+  running,
+  size = 8,
+}: {
+  running: boolean;
+  size?: number;
+}) {
   const { c, status } = useTheme();
   const pulse = useRef(new Animated.Value(1)).current;
 
@@ -363,8 +439,18 @@ export function StatusDot({ running, size = 8 }: { running: boolean; size?: numb
     // folding a transcript.
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 0.35, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(pulse, {
+          toValue: 0.35,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
       ]),
     );
     loop.start();
@@ -392,15 +478,31 @@ export function StatusDot({ running, size = 8 }: { running: boolean; size?: numb
  * Only for data that is genuinely unknown — a session list, a run log. Chrome
  * paints for real; a heading does not need a placeholder for itself.
  */
-export function Skeleton({ rows = 3, height = 44 }: { rows?: number; height?: number }) {
+export function Skeleton({
+  rows = 3,
+  height = 44,
+}: {
+  rows?: number;
+  height?: number;
+}) {
   const { c } = useTheme();
   const shimmer = useRef(new Animated.Value(0.5)).current;
 
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(shimmer, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-        Animated.timing(shimmer, { toValue: 0.5, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(shimmer, {
+          toValue: 1,
+          duration: 700,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(shimmer, {
+          toValue: 0.5,
+          duration: 700,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
       ]),
     );
     loop.start();
@@ -419,9 +521,24 @@ export function Skeleton({ rows = 3, height = 44 }: { rows?: number; height?: nu
             borderTopWidth: 1,
             borderTopColor: c.border,
             opacity: shimmer,
-          }}>
-          <View style={{ height: 12, width: `${55 + ((i * 17) % 30)}%`, borderRadius: 4, backgroundColor: mix(c.mutedForeground, 22) }} />
-          <View style={{ height: 9, width: '38%', borderRadius: 4, backgroundColor: mix(c.mutedForeground, 14) }} />
+          }}
+        >
+          <View
+            style={{
+              height: 12,
+              width: `${55 + ((i * 17) % 30)}%`,
+              borderRadius: 4,
+              backgroundColor: mix(c.mutedForeground, 22),
+            }}
+          />
+          <View
+            style={{
+              height: 9,
+              width: '38%',
+              borderRadius: 4,
+              backgroundColor: mix(c.mutedForeground, 14),
+            }}
+          />
         </Animated.View>
       ))}
     </View>
@@ -445,7 +562,11 @@ export function GlassBar() {
   return (
     <GlassSurface
       cornerRadius={0}
-      style={[StyleSheet.absoluteFill, { borderWidth: 0, borderBottomWidth: 1, borderBottomColor: c.border }]}>
+      style={[
+        StyleSheet.absoluteFill,
+        { borderWidth: 0, borderBottomWidth: 1, borderBottomColor: c.border },
+      ]}
+    >
       <View />
     </GlassSurface>
   );
@@ -487,7 +608,8 @@ export function GlassSurface({
             borderRadius: cornerRadius,
           },
           style,
-        ]}>
+        ]}
+      >
         {children}
       </View>
     );
@@ -497,7 +619,8 @@ export function GlassSurface({
     <LiquidGlassView
       effect="regular"
       tintColor={tint}
-      style={[{ borderRadius: cornerRadius, overflow: 'hidden' }, style]}>
+      style={[{ borderRadius: cornerRadius, overflow: 'hidden' }, style]}
+    >
       {children}
     </LiquidGlassView>
   );
@@ -522,13 +645,19 @@ export function Card({
           padding: 12,
         },
         style,
-      ]}>
+      ]}
+    >
       {children}
     </View>
   );
 }
 
-type ButtonVariant = 'primary' | 'outline' | 'ghost' | 'destructive' | 'link-destructive';
+type ButtonVariant =
+  | 'primary'
+  | 'outline'
+  | 'ghost'
+  | 'destructive'
+  | 'link-destructive';
 
 export function Button({
   label,
@@ -551,15 +680,19 @@ export function Button({
   const off = disabled || busy;
 
   const background =
-    variant === 'primary' ? c.primary : variant === 'destructive' ? c.destructive : 'transparent';
+    variant === 'primary'
+      ? c.primary
+      : variant === 'destructive'
+      ? c.destructive
+      : 'transparent';
   const foreground =
     variant === 'primary' || variant === 'destructive'
       ? c.primaryForeground
       : variant === 'ghost'
-        ? c.mutedForeground
-        : variant === 'link-destructive'
-          ? c.destructive
-          : c.foreground;
+      ? c.mutedForeground
+      : variant === 'link-destructive'
+      ? c.destructive
+      : c.foreground;
 
   return (
     <Pressable
@@ -582,21 +715,30 @@ export function Button({
           borderColor: c.border,
           opacity: off ? 0.45 : pressed ? 0.8 : 1,
           ...(variant === 'link-destructive'
-            ? { minWidth: 0, paddingHorizontal: 0, minHeight: 32, alignItems: 'flex-start' as const }
+            ? {
+                minWidth: 0,
+                paddingHorizontal: 0,
+                minHeight: 32,
+                alignItems: 'flex-start' as const,
+              }
             : null),
         },
         style,
-      ]}>
+      ]}
+    >
       {busy ? (
         <ActivityIndicator color={foreground} size="small" />
       ) : (
         <Text
           style={{
-            fontFamily: variant === 'link-destructive' ? font.mono : font.sansMedium,
+            fontFamily:
+              variant === 'link-destructive' ? font.mono : font.sansMedium,
             fontSize: variant === 'link-destructive' ? 13 : 14,
             color: foreground,
-            textDecorationLine: variant === 'link-destructive' ? 'underline' : 'none',
-          }}>
+            textDecorationLine:
+              variant === 'link-destructive' ? 'underline' : 'none',
+          }}
+        >
           {label}
         </Text>
       )}
@@ -642,15 +784,24 @@ export function SendButton({
         borderRadius: 17,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: mode === 'stop' ? mix(c.mutedForeground, 22) : c.primary,
+        backgroundColor:
+          mode === 'stop' ? mix(c.mutedForeground, 22) : c.primary,
         opacity: off ? 0.4 : pressed ? 0.75 : 1,
-      })}>
+      })}
+    >
       {busy ? (
         <ActivityIndicator color={foreground} size="small" />
       ) : mode === 'stop' ? (
         // No font here has a filled square, so it is drawn — same reason the
         // transcript's marks are.
-        <View style={{ width: 11, height: 11, borderRadius: 2.5, backgroundColor: foreground }} />
+        <View
+          style={{
+            width: 11,
+            height: 11,
+            borderRadius: 2.5,
+            backgroundColor: foreground,
+          }}
+        />
       ) : (
         <Text
           style={{
@@ -658,7 +809,8 @@ export function SendButton({
             fontSize: 17,
             lineHeight: 19,
             color: foreground,
-          }}>
+          }}
+        >
           ↑
         </Text>
       )}
@@ -682,7 +834,11 @@ export const Field = forwardRef<
     placeholder?: string;
     secure?: boolean;
     autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
-    keyboardType?: 'default' | 'url' | 'email-address' | 'numbers-and-punctuation';
+    keyboardType?:
+      | 'default'
+      | 'url'
+      | 'email-address'
+      | 'numbers-and-punctuation';
     textContentType?: TextInputProps['textContentType'];
     autoComplete?: TextInputProps['autoComplete'];
     returnKeyType?: TextInputProps['returnKeyType'];
@@ -729,7 +885,11 @@ export const Field = forwardRef<
       returnKeyType={returnKeyType}
       onSubmitEditing={onSubmitEditing}
       // Stay focused after "next"; the handler moves focus on itself.
-      submitBehavior={onSubmitEditing && returnKeyType !== 'done' && returnKeyType !== 'go' ? 'submit' : 'blurAndSubmit'}
+      submitBehavior={
+        onSubmitEditing && returnKeyType !== 'done' && returnKeyType !== 'go'
+          ? 'submit'
+          : 'blurAndSubmit'
+      }
       autoFocus={autoFocus}
       selectTextOnFocus={selectTextOnFocus}
       accessibilityLabel={accessibilityLabel ?? placeholder}
@@ -752,7 +912,13 @@ export const Field = forwardRef<
 });
 
 /** The hub row grammar: a section label, then hairline-separated 44px rows. */
-export function SectionLabel({ label, count }: { label: string; count?: number }) {
+export function SectionLabel({
+  label,
+  count,
+}: {
+  label: string;
+  count?: number;
+}) {
   return (
     <Meta style={{ paddingBottom: 6 }}>
       {label}
@@ -787,7 +953,8 @@ export function Row({
           backgroundColor: pressed ? mix(c.mutedForeground, 8) : 'transparent',
         },
         style,
-      ]}>
+      ]}
+    >
       {children}
     </Pressable>
   );
@@ -796,7 +963,14 @@ export function Row({
 export function Hint({ children }: { children: React.ReactNode }) {
   const { c } = useTheme();
   return (
-    <Text style={{ fontFamily: font.mono, fontSize: 12, color: c.mutedForeground, lineHeight: 18 }}>
+    <Text
+      style={{
+        fontFamily: font.mono,
+        fontSize: 12,
+        color: c.mutedForeground,
+        lineHeight: 18,
+      }}
+    >
       {children}
     </Text>
   );
@@ -816,7 +990,11 @@ export function Hint({ children }: { children: React.ReactNode }) {
  */
 export function Screen({ children }: { children: React.ReactNode }) {
   const { c } = useTheme();
-  return <View style={[styles.screen, { backgroundColor: c.background }]}>{children}</View>;
+  return (
+    <View style={[styles.screen, { backgroundColor: c.background }]}>
+      {children}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -826,8 +1004,15 @@ const styles = StyleSheet.create({
 /** "7/10/2026 5:24 PM" — the stamp the web rows show. */
 export function stamp(iso: string): string {
   const at = new Date(iso);
-  const date = at.toLocaleDateString(undefined, { year: 'numeric', month: 'numeric', day: 'numeric' });
-  const time = at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const date = at.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+  });
+  const time = at.toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
   return `${date} ${time}`;
 }
 
@@ -845,8 +1030,25 @@ function SelectableText(props: React.ComponentProps<typeof Text>) {
  * places to forget the copy button. The paragraph should not read differently
  * depending on which screen it is on, and neither should a fenced command.
  */
-export function Prose({ children }: { children: string }) {
+export function Prose({
+  children,
+  mentions,
+}: {
+  children: string;
+  /**
+   * The session's partners. Their names are tinted wherever they appear in
+   * this prose, so one of them can be followed down a transcript by eye.
+   */
+  mentions?: readonly SubSessionMention[];
+}) {
   const { c, isDark } = useTheme();
+  const rules = useMemo(
+    () =>
+      mentions && mentions.length > 0
+        ? mentionRules(mentions, isDark)
+        : undefined,
+    [mentions, isDark],
+  );
   return (
     <Markdown
       style={markdownStyles(c)}
@@ -854,15 +1056,70 @@ export function Prose({ children }: { children: string }) {
       // reply rather than the whole thing. This is the platform's own
       // selection UI; it costs no view and no gesture handler.
       textcomponent={SelectableText}
+      rules={rules}
       // The prism theme behind the syntax colours; without it a fence is
       // highlighted for a white page.
       colorScheme={isDark ? 'dark' : 'light'}
       // Gives every fence a header with a copy button, which is the only way
       // to get a command off this screen and into a terminal.
-      onCopyCode={copyText}>
+      onCopyCode={copyText}
+    >
       {children}
     </Markdown>
   );
+}
+
+/**
+ * The one rule that tints a partner's name.
+ *
+ * It replaces the renderer for `text` nodes only, which is exactly the prose:
+ * inline code and fences carry their content on their own node types and never
+ * become text children, so they are skipped for free. Links do have text
+ * children, so those are skipped explicitly — a name inside a link is the
+ * link's own words, and colouring it would be wrong in a way a reader notices.
+ */
+function mentionRules(
+  mentions: readonly SubSessionMention[],
+  dark: boolean,
+): RenderRules {
+  return {
+    text: (node, _children, parentNodes, nodeStyles, ...extra) => {
+      // The renderer passes the styles inherited from the enclosing nodes as a
+      // trailing argument; without it a name inside a heading or a list loses
+      // its size along with its colour.
+      const inherited = (extra[0] ?? {}) as object;
+      const style = [inherited, nodeStyles.text];
+      const content = node.content ?? '';
+
+      // A name inside a link is the link's own words. Inline code and fences
+      // carry their content on their own node types and never reach here.
+      if (parentNodes.some(ancestor => ancestor.type === 'link')) {
+        return (
+          <Text key={node.key} selectable style={style}>
+            {content}
+          </Text>
+        );
+      }
+
+      return (
+        <Text key={node.key} selectable style={style}>
+          {splitMentions(content, mentions).map((run, index) => {
+            const tint = run.color ? tintFor(run.color, dark) : null;
+            return tint ? (
+              <Text
+                key={index}
+                style={{ color: tint, fontFamily: font.sansMedium }}
+              >
+                {run.text}
+              </Text>
+            ) : (
+              run.text
+            );
+          })}
+        </Text>
+      );
+    },
+  };
 }
 
 /**
@@ -875,7 +1132,12 @@ export function Prose({ children }: { children: string }) {
  */
 export function markdownStyles(c: Palette) {
   return {
-    body: { color: c.foreground, fontFamily: font.sans, fontSize: 15, lineHeight: 23 },
+    body: {
+      color: c.foreground,
+      fontFamily: font.sans,
+      fontSize: 15,
+      lineHeight: 23,
+    },
     code_inline: {
       fontFamily: font.mono,
       fontSize: 12.5,
@@ -916,7 +1178,11 @@ export function markdownStyles(c: Palette) {
       borderBottomWidth: 1,
       borderBottomColor: c.border,
     },
-    fence_language_label: { fontFamily: font.mono, fontSize: 11, color: c.mutedForeground },
+    fence_language_label: {
+      fontFamily: font.mono,
+      fontSize: 11,
+      color: c.mutedForeground,
+    },
     fence_copy_button: { paddingHorizontal: 6, paddingVertical: 2 },
     fence_copy_text: { fontFamily: font.mono, fontSize: 11, color: c.primary },
     fence_code: { backgroundColor: mix(c.muted, 40), padding: 10 },

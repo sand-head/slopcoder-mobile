@@ -121,7 +121,10 @@ export function lineDiff(
   numbered = true,
   context = DIFF_CONTEXT,
 ): DiffLine[] {
-  return elide(align(splitLines(oldText), splitLines(newText), numbered), context);
+  return elide(
+    align(splitLines(oldText), splitLines(newText), numbered),
+    context,
+  );
 }
 
 /**
@@ -130,8 +133,8 @@ export function lineDiff(
  * a phantom blank line the editor never showed.
  */
 export function allAdded(text: string, numbered = true): DiffLine[] {
-  return splitLines(text.endsWith('\n') ? text.slice(0, -1) : text).map((line, index) =>
-    diffLine('add', line, null, numbered ? index + 1 : null),
+  return splitLines(text.endsWith('\n') ? text.slice(0, -1) : text).map(
+    (line, index) => diffLine('add', line, null, numbered ? index + 1 : null),
   );
 }
 
@@ -144,14 +147,29 @@ function diffLine(
   return { kind, text, oldNumber, newNumber };
 }
 
-function align(oldLines: string[], newLines: string[], numbered: boolean): DiffLine[] {
+function align(
+  oldLines: string[],
+  newLines: string[],
+  numbered: boolean,
+): DiffLine[] {
   const result: DiffLine[] = [];
   let oldNo = 1;
   let newNo = 1;
 
   let head = 0;
-  while (head < oldLines.length && head < newLines.length && oldLines[head] === newLines[head]) {
-    result.push(diffLine('context', oldLines[head], numbered ? oldNo : null, numbered ? newNo : null));
+  while (
+    head < oldLines.length &&
+    head < newLines.length &&
+    oldLines[head] === newLines[head]
+  ) {
+    result.push(
+      diffLine(
+        'context',
+        oldLines[head],
+        numbered ? oldNo : null,
+        numbered ? newNo : null,
+      ),
+    );
     head++;
     oldNo++;
     newNo++;
@@ -161,7 +179,8 @@ function align(oldLines: string[], newLines: string[], numbered: boolean): DiffL
   while (
     tail < oldLines.length - head &&
     tail < newLines.length - head &&
-    oldLines[oldLines.length - 1 - tail] === newLines[newLines.length - 1 - tail]
+    oldLines[oldLines.length - 1 - tail] ===
+      newLines[newLines.length - 1 - tail]
   )
     tail++;
 
@@ -171,8 +190,10 @@ function align(oldLines: string[], newLines: string[], numbered: boolean): DiffL
   if (oldMiddle.length > MAX_LCS_LINES || newMiddle.length > MAX_LCS_LINES) {
     // A worse diff beats a phone allocating a table with a third of a million
     // cells in it.
-    for (const line of oldMiddle) result.push(diffLine('remove', line, numbered ? oldNo++ : null));
-    for (const line of newMiddle) result.push(diffLine('add', line, null, numbered ? newNo++ : null));
+    for (const line of oldMiddle)
+      result.push(diffLine('remove', line, numbered ? oldNo++ : null));
+    for (const line of newMiddle)
+      result.push(diffLine('add', line, null, numbered ? newNo++ : null));
   } else {
     const counters = { oldNo, newNo };
     appendLcs(result, oldMiddle, newMiddle, numbered, counters);
@@ -181,7 +202,14 @@ function align(oldLines: string[], newLines: string[], numbered: boolean): DiffL
   }
 
   for (let i = oldLines.length - tail; i < oldLines.length; i++) {
-    result.push(diffLine('context', oldLines[i], numbered ? oldNo : null, numbered ? newNo : null));
+    result.push(
+      diffLine(
+        'context',
+        oldLines[i],
+        numbered ? oldNo : null,
+        numbered ? newNo : null,
+      ),
+    );
     oldNo++;
     newNo++;
   }
@@ -210,7 +238,12 @@ function appendLcs(
   while (x < a.length && y < b.length) {
     if (a[x] === b[y]) {
       result.push(
-        diffLine('context', a[x], numbered ? counters.oldNo : null, numbered ? counters.newNo : null),
+        diffLine(
+          'context',
+          a[x],
+          numbered ? counters.oldNo : null,
+          numbered ? counters.newNo : null,
+        ),
       );
       x++;
       y++;
@@ -223,7 +256,9 @@ function appendLcs(
       x++;
       counters.oldNo++;
     } else {
-      result.push(diffLine('add', b[y], null, numbered ? counters.newNo : null));
+      result.push(
+        diffLine('add', b[y], null, numbered ? counters.newNo : null),
+      );
       y++;
       counters.newNo++;
     }
@@ -254,7 +289,11 @@ function elide(lines: DiffLine[], context: number): DiffLine[] {
   for (let i = 0; i < lines.length; i++) {
     if (lines[i].kind === 'context' || lines[i].kind === 'hunk') continue;
     any = true;
-    for (let j = Math.max(0, i - context); j <= Math.min(lines.length - 1, i + context); j++)
+    for (
+      let j = Math.max(0, i - context);
+      j <= Math.min(lines.length - 1, i + context);
+      j++
+    )
       changed[j] = true;
   }
 
@@ -265,7 +304,12 @@ function elide(lines: DiffLine[], context: number): DiffLine[] {
   for (let i = 0; i < lines.length; i++) {
     if (changed[i]) {
       if (skipped > 0) {
-        result.push(diffLine('hunk', skipped === 1 ? '1 unchanged line' : `${skipped} unchanged lines`));
+        result.push(
+          diffLine(
+            'hunk',
+            skipped === 1 ? '1 unchanged line' : `${skipped} unchanged lines`,
+          ),
+        );
         skipped = 0;
       }
       result.push(lines[i]);
@@ -277,7 +321,12 @@ function elide(lines: DiffLine[], context: number): DiffLine[] {
   // A run elided off the end needs saying too, or the diff simply stops and
   // nothing tells the reader there was more file after it.
   if (skipped > 0)
-    result.push(diffLine('hunk', skipped === 1 ? '1 unchanged line' : `${skipped} unchanged lines`));
+    result.push(
+      diffLine(
+        'hunk',
+        skipped === 1 ? '1 unchanged line' : `${skipped} unchanged lines`,
+      ),
+    );
 
   return result;
 }
@@ -315,7 +364,14 @@ export function parseUnifiedDiff(text: string): DiffLine[] {
     } else if (raw.startsWith('-')) {
       result.push(diffLine('remove', raw.slice(1), oldNo++));
     } else {
-      result.push(diffLine('context', raw.startsWith(' ') ? raw.slice(1) : raw, oldNo++, newNo++));
+      result.push(
+        diffLine(
+          'context',
+          raw.startsWith(' ') ? raw.slice(1) : raw,
+          oldNo++,
+          newNo++,
+        ),
+      );
     }
   }
 
@@ -360,11 +416,21 @@ export function buildToolCard(
   // something about their own errors — the shell lifting an exit code out of the
   // first line — write the block themselves and are left alone.
   if (!isError || !result || result.trim().length === 0) return card;
-  if (card.blocks.some(b => b.type === 'text' && b.tone === 'error')) return card;
+  if (card.blocks.some(b => b.type === 'text' && b.tone === 'error'))
+    return card;
 
   return {
     ...card,
-    blocks: [...card.blocks, { type: 'text', label: 'error', open: true, tone: 'error', text: result.trim() }],
+    blocks: [
+      ...card.blocks,
+      {
+        type: 'text',
+        label: 'error',
+        open: true,
+        tone: 'error',
+        text: result.trim(),
+      },
+    ],
   };
 }
 
@@ -375,19 +441,39 @@ export function buildToolCard(
  * ellipsis is exactly the wrong place to hide the second half of a command
  * somebody is about to approve.
  */
-export function buildProposalCard(toolName: string, inputJson: string): ToolCard {
+export function buildProposalCard(
+  toolName: string,
+  inputJson: string,
+): ToolCard {
   const card = buildToolCard(toolName, inputJson, null, false);
   const blocks: ToolBlock[] = card.blocks.map(b => ({ ...b, open: true }));
 
   if (card.subjectStyle === 'command' && card.subject)
-    blocks.unshift({ type: 'code', label: 'command', open: true, language: null, text: card.subject });
+    blocks.unshift({
+      type: 'code',
+      label: 'command',
+      open: true,
+      language: null,
+      text: card.subject,
+    });
 
   return { ...card, blocks };
 }
 
-type Json = Record<string, unknown> | unknown[] | string | number | boolean | null;
+type Json =
+  | Record<string, unknown>
+  | unknown[]
+  | string
+  | number
+  | boolean
+  | null;
 
-function compose(tool: string, input: Json | undefined, result: string | null, isError: boolean): ToolCard {
+function compose(
+  tool: string,
+  input: Json | undefined,
+  result: string | null,
+  isError: boolean,
+): ToolCard {
   switch (tool) {
     // ---- files ----
     case 'edit_file':
@@ -412,7 +498,13 @@ function compose(tool: string, input: Json | undefined, result: string | null, i
       return shell('PowerShell', str(input, 'command'), input, result, isError);
     case 'run_on_node': {
       const node = str(input, 'node');
-      return shell(node ? `Run on ${node}` : 'Run on node', str(input, 'command'), input, result, isError);
+      return shell(
+        node ? `Run on ${node}` : 'Run on node',
+        str(input, 'command'),
+        input,
+        result,
+        isError,
+      );
     }
     case 'bash_output':
     case 'kill_job':
@@ -427,17 +519,34 @@ function compose(tool: string, input: Json | undefined, result: string | null, i
 
     // ---- agent ----
     case 'open_subsession':
-      return subSession('Open sub-session', str(input, 'name'), input, result, isError);
+      return subSession('Bring on', str(input, 'name'), input, result, isError);
+    // The subject is the name the agent typed, which is how it thinks of the
+    // partner; legacy rows carry an id there and their reply header is the only
+    // place the name appears.
     case 'prompt_subsession':
       return subSession(
-        'Prompt sub-session',
-        subSessionName(result) ?? shortId(str(input, 'subsession_id')),
+        'Send to',
+        str(input, 'subsession') ??
+          subSessionName(result) ??
+          shortId(str(input, 'subsession_id')),
         input,
         result,
         isError,
       );
+    case 'promote_subsession':
+      return named(
+        'Change profile',
+        str(input, 'subsession') ?? shortId(str(input, 'subsession_id')),
+        result,
+        isError,
+      );
     case 'close_subsession':
-      return named('Close sub-session', shortId(str(input, 'subsession_id')), result, isError);
+      return named(
+        'Set aside',
+        str(input, 'subsession') ?? shortId(str(input, 'subsession_id')),
+        result,
+        isError,
+      );
     case 'run_subagent': // legacy transcripts
       return subagent(input, result, isError);
     case 'skill':
@@ -473,21 +582,48 @@ function compose(tool: string, input: Json | undefined, result: string | null, i
     case 'list_issues':
       return forge('Issues', str(input, 'repo'), input, result, isError, true);
     case 'list_pull_requests':
-      return forge('Pull requests', str(input, 'repo'), input, result, isError, true);
+      return forge(
+        'Pull requests',
+        str(input, 'repo'),
+        input,
+        result,
+        isError,
+        true,
+      );
     case 'get_issue':
       return forge('Issue', repoNumber(input), input, result, isError, false);
     case 'get_pull_request':
-      return forge('Pull request', repoNumber(input), input, result, isError, false);
+      return forge(
+        'Pull request',
+        repoNumber(input),
+        input,
+        result,
+        isError,
+        false,
+      );
     case 'create_issue':
       return newIssue(input, result, isError);
     case 'update_issue':
-      return forge('Update issue', repoNumber(input), input, result, isError, false);
+      return forge(
+        'Update issue',
+        repoNumber(input),
+        input,
+        result,
+        isError,
+        false,
+      );
     case 'add_issue_comment':
       return comment(input, result, isError);
 
     // ---- browser ----
     case 'browser_navigate':
-      return named('Navigate', str(input, 'url') ?? str(input, 'path'), result, isError, 'url');
+      return named(
+        'Navigate',
+        str(input, 'url') ?? str(input, 'path'),
+        result,
+        isError,
+        'url',
+      );
     case 'browser_click':
       return browser('Click', input, result, isError);
     case 'browser_type':
@@ -538,7 +674,12 @@ const SUBJECT_KEYS = [
   'id',
 ] as const;
 
-function fallback(tool: string, input: Json | undefined, result: string | null, isError: boolean): ToolCard {
+function fallback(
+  tool: string,
+  input: Json | undefined,
+  result: string | null,
+  isError: boolean,
+): ToolCard {
   const facets: string[] = [];
   let verb = tool;
 
@@ -570,38 +711,69 @@ function fallback(tool: string, input: Json | undefined, result: string | null, 
         key === 'path' || key === 'file'
           ? 'path'
           : key === 'url'
-            ? 'url'
-            : key === 'command'
-              ? 'command'
-              : 'plain';
+          ? 'url'
+          : key === 'command'
+          ? 'command'
+          : 'plain';
       break;
     }
 
     for (const [key, value] of Object.entries(input)) {
-      if (subject !== null && str(input, key) === subject && (SUBJECT_KEYS as readonly string[]).includes(key))
+      if (
+        subject !== null &&
+        str(input, key) === subject &&
+        (SUBJECT_KEYS as readonly string[]).includes(key)
+      )
         continue;
 
       const [rendered, multiline] = render(value);
       if (rendered.length === 0) continue;
 
-      if (!multiline && rendered.length <= MAX_FACET_LENGTH && facets.length < MAX_FACETS)
+      if (
+        !multiline &&
+        rendered.length <= MAX_FACET_LENGTH &&
+        facets.length < MAX_FACETS
+      )
         facets.push(facet(key, value, rendered));
-      else if (!multiline && rendered.length <= MAX_PAIR_LENGTH) pairs.push({ key, value: rendered });
-      else blocks.push({ type: 'code', label: key, open: false, language: null, text: rendered });
+      else if (!multiline && rendered.length <= MAX_PAIR_LENGTH)
+        pairs.push({ key, value: rendered });
+      else
+        blocks.push({
+          type: 'code',
+          label: key,
+          open: false,
+          language: null,
+          text: rendered,
+        });
     }
   } else if (input !== undefined && input !== null) {
-    blocks.push({ type: 'code', label: 'input', open: false, language: null, text: render(input)[0] });
+    blocks.push({
+      type: 'code',
+      label: 'input',
+      open: false,
+      language: null,
+      text: render(input)[0],
+    });
   }
 
-  if (pairs.length > 0) blocks.unshift({ type: 'pairs', label: 'input', open: false, pairs });
+  if (pairs.length > 0)
+    blocks.unshift({ type: 'pairs', label: 'input', open: false, pairs });
   appendResult(blocks, result, isError, 'text');
   return { verb, subject, subjectStyle: style, facets, blocks };
 }
 
 // ---------------------------------------------------------------- files
 
-function editFile(input: Json | undefined, result: string | null, isError: boolean): ToolCard {
-  const lines = lineDiff(str(input, 'old_str') ?? '', str(input, 'new_str') ?? '', false);
+function editFile(
+  input: Json | undefined,
+  result: string | null,
+  isError: boolean,
+): ToolCard {
+  const lines = lineDiff(
+    str(input, 'old_str') ?? '',
+    str(input, 'new_str') ?? '',
+    false,
+  );
   const added = lines.filter(l => l.kind === 'add').length;
   const removed = lines.filter(l => l.kind === 'remove').length;
 
@@ -611,16 +783,28 @@ function editFile(input: Json | undefined, result: string | null, isError: boole
   if (bool(input, 'replace_all')) facets.push('every match');
 
   const blocks: ToolBlock[] = [];
-  if (lines.length > 0) blocks.push({ type: 'diff', label: null, open: true, lines });
+  if (lines.length > 0)
+    blocks.push({ type: 'diff', label: null, open: true, lines });
   appendResult(blocks, result, isError, 'text', 'Edited ');
-  return { verb: 'Edit', subject: str(input, 'path'), subjectStyle: 'path', facets, blocks };
+  return {
+    verb: 'Edit',
+    subject: str(input, 'path'),
+    subjectStyle: 'path',
+    facets,
+    blocks,
+  };
 }
 
-function writeFile(input: Json | undefined, result: string | null, isError: boolean): ToolCard {
+function writeFile(
+  input: Json | undefined,
+  result: string | null,
+  isError: boolean,
+): ToolCard {
   const content = str(input, 'content') ?? '';
   const lines = allAdded(content);
   const blocks: ToolBlock[] = [];
-  if (lines.length > 0) blocks.push({ type: 'diff', label: null, open: true, lines });
+  if (lines.length > 0)
+    blocks.push({ type: 'diff', label: null, open: true, lines });
   appendResult(blocks, result, isError, 'text', 'Wrote ');
   return {
     verb: 'Write',
@@ -631,7 +815,11 @@ function writeFile(input: Json | undefined, result: string | null, isError: bool
   };
 }
 
-function readFile(input: Json | undefined, result: string | null, isError: boolean): ToolCard {
+function readFile(
+  input: Json | undefined,
+  result: string | null,
+  isError: boolean,
+): ToolCard {
   const path = str(input, 'path');
   const facets: string[] = [];
   if (result && result.length > 0) facets.push(lineCount(result));
@@ -644,28 +832,56 @@ function readFile(input: Json | undefined, result: string | null, isError: boole
   if (!isError && result) {
     const body = result.replace(/\n+$/, '');
     if (body.length > 0)
-      blocks.push({ type: 'code', label: null, open: false, language: languageOf(path), text: body });
+      blocks.push({
+        type: 'code',
+        label: null,
+        open: false,
+        language: languageOf(path),
+        text: body,
+      });
   }
 
   return { verb: 'Read', subject: path, subjectStyle: 'path', facets, blocks };
 }
 
-function listDir(input: Json | undefined, result: string | null, isError: boolean): ToolCard {
-  const entries = !isError && result && result.length > 0 && result !== '(empty)' ? rows(result) : [];
+function listDir(
+  input: Json | undefined,
+  result: string | null,
+  isError: boolean,
+): ToolCard {
+  const entries =
+    !isError && result && result.length > 0 && result !== '(empty)'
+      ? rows(result)
+      : [];
   const facets: string[] = [];
   const blocks: ToolBlock[] = [];
   if (entries.length > 0) {
     facets.push(count(entries.length, 'entry', 'entries'));
-    blocks.push({ type: 'list', label: null, open: false, entries: entries.map(plainEntry) });
+    blocks.push({
+      type: 'list',
+      label: null,
+      open: false,
+      entries: entries.map(plainEntry),
+    });
   }
 
   const path = str(input, 'path');
-  return { verb: 'List', subject: path && path.length > 0 ? path : '.', subjectStyle: 'path', facets, blocks };
+  return {
+    verb: 'List',
+    subject: path && path.length > 0 ? path : '.',
+    subjectStyle: 'path',
+    facets,
+    blocks,
+  };
 }
 
 // ---------------------------------------------------------------- search
 
-function grepFiles(input: Json | undefined, result: string | null, isError: boolean): ToolCard {
+function grepFiles(
+  input: Json | undefined,
+  result: string | null,
+  isError: boolean,
+): ToolCard {
   const facets: string[] = [];
   const glob = str(input, 'glob');
   if (glob) facets.push(glob);
@@ -677,14 +893,29 @@ function grepFiles(input: Json | undefined, result: string | null, isError: bool
     const hits = rows(result);
     if (hits.length > 0) {
       facets.unshift(count(hits.length, 'match', 'matches'));
-      blocks.push({ type: 'list', label: null, open: false, entries: hits.map(splitHit) });
+      blocks.push({
+        type: 'list',
+        label: null,
+        open: false,
+        entries: hits.map(splitHit),
+      });
     }
   }
 
-  return { verb: 'Search', subject: str(input, 'pattern'), subjectStyle: 'plain', facets, blocks };
+  return {
+    verb: 'Search',
+    subject: str(input, 'pattern'),
+    subjectStyle: 'plain',
+    facets,
+    blocks,
+  };
 }
 
-function findFiles(input: Json | undefined, result: string | null, isError: boolean): ToolCard {
+function findFiles(
+  input: Json | undefined,
+  result: string | null,
+  isError: boolean,
+): ToolCard {
   const facets: string[] = [];
   const path = str(input, 'path');
   if (path) facets.push(path);
@@ -694,11 +925,22 @@ function findFiles(input: Json | undefined, result: string | null, isError: bool
     const found = rows(result);
     if (found.length > 0) {
       facets.unshift(count(found.length, 'file', 'files'));
-      blocks.push({ type: 'list', label: null, open: false, entries: found.map(plainEntry) });
+      blocks.push({
+        type: 'list',
+        label: null,
+        open: false,
+        entries: found.map(plainEntry),
+      });
     }
   }
 
-  return { verb: 'Find', subject: str(input, 'glob'), subjectStyle: 'path', facets, blocks };
+  return {
+    verb: 'Find',
+    subject: str(input, 'glob'),
+    subjectStyle: 'path',
+    facets,
+    blocks,
+  };
 }
 
 /** `path:12: matched text` → the location, with the line beside it. */
@@ -743,15 +985,37 @@ function shell(
   if (output.length > 0)
     blocks.push(
       isError
-        ? { type: 'text', label: 'error', open: true, tone: 'error', text: output }
-        : { type: 'code', label: 'output', open: false, language: null, text: output },
+        ? {
+            type: 'text',
+            label: 'error',
+            open: true,
+            tone: 'error',
+            text: output,
+          }
+        : {
+            type: 'code',
+            label: 'output',
+            open: false,
+            language: null,
+            text: output,
+          },
     );
 
   return { verb, subject: command, subjectStyle: 'command', facets, blocks };
 }
 
-function job(tool: string, input: Json | undefined, result: string | null, isError: boolean): ToolCard {
-  const verb = tool === 'kill_job' ? 'Kill job' : tool === 'shell_monitor' ? 'Watch job' : 'Job output';
+function job(
+  tool: string,
+  input: Json | undefined,
+  result: string | null,
+  isError: boolean,
+): ToolCard {
+  const verb =
+    tool === 'kill_job'
+      ? 'Kill job'
+      : tool === 'shell_monitor'
+      ? 'Watch job'
+      : 'Job output';
   const facets: string[] = [];
   const pattern = str(input, 'pattern');
   if (pattern) facets.push(pattern);
@@ -760,13 +1024,29 @@ function job(tool: string, input: Json | undefined, result: string | null, isErr
 
   const blocks: ToolBlock[] = [];
   if (!isError && result && result.length > 0)
-    blocks.push({ type: 'code', label: 'output', open: false, language: null, text: trimEnd(result) });
-  return { verb, subject: str(input, 'job_id'), subjectStyle: 'plain', facets, blocks };
+    blocks.push({
+      type: 'code',
+      label: 'output',
+      open: false,
+      language: null,
+      text: trimEnd(result),
+    });
+  return {
+    verb,
+    subject: str(input, 'job_id'),
+    subjectStyle: 'plain',
+    facets,
+    blocks,
+  };
 }
 
 // ---------------------------------------------------------------- web
 
-function fetchUrl(input: Json | undefined, result: string | null, isError: boolean): ToolCard {
+function fetchUrl(
+  input: Json | undefined,
+  result: string | null,
+  isError: boolean,
+): ToolCard {
   const facets: string[] = [];
   const offset = int(input, 'offset');
   if (offset !== null) facets.push(`from ${offset}`);
@@ -775,21 +1055,42 @@ function fetchUrl(input: Json | undefined, result: string | null, isError: boole
 
   const blocks: ToolBlock[] = [];
   appendResult(blocks, result, isError, 'text');
-  return { verb: 'Fetch', subject: str(input, 'url'), subjectStyle: 'url', facets, blocks };
+  return {
+    verb: 'Fetch',
+    subject: str(input, 'url'),
+    subjectStyle: 'url',
+    facets,
+    blocks,
+  };
 }
 
-function webSearch(input: Json | undefined, result: string | null, isError: boolean): ToolCard {
+function webSearch(
+  input: Json | undefined,
+  result: string | null,
+  isError: boolean,
+): ToolCard {
   const facets: string[] = [];
   const blocks: ToolBlock[] = [];
   if (!isError && result && result.length > 0) {
     const found = rows(result);
     if (found.length > 0) {
       facets.push(count(found.length, 'result', 'results'));
-      blocks.push({ type: 'list', label: null, open: false, entries: found.map(plainEntry) });
+      blocks.push({
+        type: 'list',
+        label: null,
+        open: false,
+        entries: found.map(plainEntry),
+      });
     }
   }
 
-  return { verb: 'Search web', subject: str(input, 'query'), subjectStyle: 'plain', facets, blocks };
+  return {
+    verb: 'Search web',
+    subject: str(input, 'query'),
+    subjectStyle: 'plain',
+    facets,
+    blocks,
+  };
 }
 
 // ---------------------------------------------------------------- agent
@@ -813,7 +1114,14 @@ function subSession(
 
   const blocks: ToolBlock[] = [];
   const prompt = str(input, 'prompt');
-  if (prompt) blocks.push({ type: 'text', label: 'prompt', open: false, tone: 'plain', text: prompt });
+  if (prompt)
+    blocks.push({
+      type: 'text',
+      label: 'prompt',
+      open: false,
+      tone: 'plain',
+      text: prompt,
+    });
   appendResult(blocks, stripSubSessionHeader(result), isError, 'text');
   return { verb, subject, subjectStyle: 'plain', facets, blocks };
 }
@@ -822,6 +1130,8 @@ const SUB_SESSION_HEADER = '[sub-session "';
 
 /** The sub-session's name, read off the reply header — the input only carries the id. */
 function subSessionName(result: string | null): string | null {
+  // Legacy only: sub-session turns used to run inside the tool call, and the
+  // reply came back under a header while the input carried nothing but an id.
   if (result === null) return null;
   const at = result.indexOf(SUB_SESSION_HEADER);
   if (at < 0) return null;
@@ -842,17 +1152,34 @@ function shortId(id: string | null): string | null {
   return id !== null && id.length > 8 ? id.slice(0, 8) : id;
 }
 
-function subagent(input: Json | undefined, result: string | null, isError: boolean): ToolCard {
+function subagent(
+  input: Json | undefined,
+  result: string | null,
+  isError: boolean,
+): ToolCard {
   const facets: string[] = [];
   const model = str(input, 'model');
   if (model) facets.push(model);
 
   const blocks: ToolBlock[] = [];
   const task = str(input, 'task');
-  if (task) blocks.push({ type: 'text', label: 'task', open: false, tone: 'plain', text: task });
+  if (task)
+    blocks.push({
+      type: 'text',
+      label: 'task',
+      open: false,
+      tone: 'plain',
+      text: task,
+    });
   const acceptance = str(input, 'acceptance');
   if (acceptance)
-    blocks.push({ type: 'text', label: 'acceptance', open: false, tone: 'plain', text: acceptance });
+    blocks.push({
+      type: 'text',
+      label: 'acceptance',
+      open: false,
+      tone: 'plain',
+      text: acceptance,
+    });
   appendResult(blocks, result, isError, 'text');
   return {
     verb: 'Subagent',
@@ -865,18 +1192,41 @@ function subagent(input: Json | undefined, result: string | null, isError: boole
 
 // ---------------------------------------------------------------- memory
 
-function saveMemory(input: Json | undefined, result: string | null, isError: boolean): ToolCard {
+function saveMemory(
+  input: Json | undefined,
+  result: string | null,
+  isError: boolean,
+): ToolCard {
   const facets = memoryFacets(input);
   if (bool(input, 'pinned')) facets.push('pinned');
 
   const blocks: ToolBlock[] = [];
   const description = str(input, 'description');
   if (description)
-    blocks.push({ type: 'text', label: 'description', open: false, tone: 'plain', text: description });
+    blocks.push({
+      type: 'text',
+      label: 'description',
+      open: false,
+      tone: 'plain',
+      text: description,
+    });
   const content = str(input, 'content');
-  if (content) blocks.push({ type: 'text', label: 'content', open: false, tone: 'plain', text: content });
+  if (content)
+    blocks.push({
+      type: 'text',
+      label: 'content',
+      open: false,
+      tone: 'plain',
+      text: content,
+    });
   appendResult(blocks, result, isError, 'text', 'Saved ');
-  return { verb: 'Remember', subject: str(input, 'name'), subjectStyle: 'plain', facets, blocks };
+  return {
+    verb: 'Remember',
+    subject: str(input, 'name'),
+    subjectStyle: 'plain',
+    facets,
+    blocks,
+  };
 }
 
 /**
@@ -888,7 +1238,11 @@ function saveMemory(input: Json | undefined, result: string | null, isError: boo
  * once its parts are the header and the card, repeating it whole is the noise a
  * card exists to remove. A result we could not read still shows as it did.
  */
-function publishArtifact(input: Json | undefined, result: string | null, isError: boolean): ToolCard {
+function publishArtifact(
+  input: Json | undefined,
+  result: string | null,
+  isError: boolean,
+): ToolCard {
   const published = readPublished(result);
   const format = str(input, 'format') ?? published.format;
   const name = str(input, 'slug') ?? published.slug;
@@ -933,14 +1287,40 @@ function publishArtifact(input: Json | undefined, result: string | null, isError
 
   const description = str(input, 'description');
   if (description)
-    blocks.push({ type: 'text', label: 'description', open: false, tone: 'plain', text: description });
+    blocks.push({
+      type: 'text',
+      label: 'description',
+      open: false,
+      tone: 'plain',
+      text: description,
+    });
   const path = str(input, 'path');
-  if (path) blocks.push({ type: 'text', label: 'file', open: false, tone: 'plain', text: path });
+  if (path)
+    blocks.push({
+      type: 'text',
+      label: 'file',
+      open: false,
+      tone: 'plain',
+      text: path,
+    });
   const content = str(input, 'content');
-  if (content) blocks.push({ type: 'text', label: 'content', open: false, tone: 'plain', text: content });
+  if (content)
+    blocks.push({
+      type: 'text',
+      label: 'content',
+      open: false,
+      tone: 'plain',
+      text: content,
+    });
   appendResult(blocks, result, isError, 'text');
 
-  return { verb: 'Publish', subject: str(input, 'title'), subjectStyle: 'plain', facets: [], blocks };
+  return {
+    verb: 'Publish',
+    subject: str(input, 'title'),
+    subjectStyle: 'plain',
+    facets: [],
+    blocks,
+  };
 }
 
 /** The format as a person would say it. Unknown formats keep their own word. */
@@ -973,7 +1353,13 @@ function kindLabel(format: string | null): string {
 function artifacts(result: string | null, isError: boolean): ToolCard {
   const blocks: ToolBlock[] = [];
   appendResult(blocks, result, isError, 'list', 'No artifacts published');
-  return { verb: 'Artifacts', subject: null, subjectStyle: 'plain', facets: [], blocks };
+  return {
+    verb: 'Artifacts',
+    subject: null,
+    subjectStyle: 'plain',
+    facets: [],
+    blocks,
+  };
 }
 
 /**
@@ -989,7 +1375,13 @@ function readPublished(result: string | null): {
   version: string | null;
   artifactId: string | null;
 } {
-  const none = { slug: null, format: null, size: null, version: null, artifactId: null };
+  const none = {
+    slug: null,
+    format: null,
+    size: null,
+    version: null,
+    artifactId: null,
+  };
   if (!result) return none;
 
   const slug = textBetween(result, 'as artifact `', '`');
@@ -1033,10 +1425,21 @@ function textBetween(text: string, open: string, close: string): string | null {
   return end < 0 ? null : text.slice(from, end);
 }
 
-function memory(verb: string, input: Json | undefined, result: string | null, isError: boolean): ToolCard {
+function memory(
+  verb: string,
+  input: Json | undefined,
+  result: string | null,
+  isError: boolean,
+): ToolCard {
   const blocks: ToolBlock[] = [];
   appendResult(blocks, result, isError, 'text');
-  return { verb, subject: str(input, 'name'), subjectStyle: 'plain', facets: memoryFacets(input), blocks };
+  return {
+    verb,
+    subject: str(input, 'name'),
+    subjectStyle: 'plain',
+    facets: memoryFacets(input),
+    blocks,
+  };
 }
 
 function memoryFacets(input: Json | undefined): string[] {
@@ -1048,10 +1451,21 @@ function memoryFacets(input: Json | undefined): string[] {
   return facets;
 }
 
-function notepad(input: Json | undefined, result: string | null, isError: boolean): ToolCard {
+function notepad(
+  input: Json | undefined,
+  result: string | null,
+  isError: boolean,
+): ToolCard {
   const text = str(input, 'text') ?? '';
   const blocks: ToolBlock[] = [];
-  if (text.length > 0) blocks.push({ type: 'text', label: null, open: false, tone: 'plain', text });
+  if (text.length > 0)
+    blocks.push({
+      type: 'text',
+      label: null,
+      open: false,
+      tone: 'plain',
+      text,
+    });
   appendResult(blocks, result, isError, 'text', 'Notepad ');
   return {
     verb: text.length === 0 ? 'Clear notepad' : 'Notepad',
@@ -1064,7 +1478,11 @@ function notepad(input: Json | undefined, result: string | null, isError: boolea
 
 // ---------------------------------------------------------------- forge
 
-function createPullRequest(input: Json | undefined, result: string | null, isError: boolean): ToolCard {
+function createPullRequest(
+  input: Json | undefined,
+  result: string | null,
+  isError: boolean,
+): ToolCard {
   const facets: string[] = [];
   const repo = str(input, 'repo');
   if (repo) facets.push(repo);
@@ -1076,12 +1494,29 @@ function createPullRequest(input: Json | undefined, result: string | null, isErr
 
   const blocks: ToolBlock[] = [];
   const body = str(input, 'body');
-  if (body) blocks.push({ type: 'text', label: 'body', open: false, tone: 'plain', text: body });
+  if (body)
+    blocks.push({
+      type: 'text',
+      label: 'body',
+      open: false,
+      tone: 'plain',
+      text: body,
+    });
   appendResult(blocks, result, isError, 'text');
-  return { verb: 'Open PR', subject: str(input, 'title'), subjectStyle: 'plain', facets, blocks };
+  return {
+    verb: 'Open PR',
+    subject: str(input, 'title'),
+    subjectStyle: 'plain',
+    facets,
+    blocks,
+  };
 }
 
-function pullRequestDiff(input: Json | undefined, result: string | null, isError: boolean): ToolCard {
+function pullRequestDiff(
+  input: Json | undefined,
+  result: string | null,
+  isError: boolean,
+): ToolCard {
   const blocks: ToolBlock[] = [];
   const facets: string[] = [];
   if (!isError && result && result.length > 0) {
@@ -1093,7 +1528,13 @@ function pullRequestDiff(input: Json | undefined, result: string | null, isError
     blocks.push({ type: 'diff', label: null, open: true, lines });
   }
 
-  return { verb: 'PR diff', subject: repoNumber(input), subjectStyle: 'plain', facets, blocks };
+  return {
+    verb: 'PR diff',
+    subject: repoNumber(input),
+    subjectStyle: 'plain',
+    facets,
+    blocks,
+  };
 }
 
 function forge(
@@ -1117,10 +1558,21 @@ function forge(
   return { verb, subject, subjectStyle: 'plain', facets, blocks };
 }
 
-function newIssue(input: Json | undefined, result: string | null, isError: boolean): ToolCard {
+function newIssue(
+  input: Json | undefined,
+  result: string | null,
+  isError: boolean,
+): ToolCard {
   const blocks: ToolBlock[] = [];
   const body = str(input, 'body');
-  if (body) blocks.push({ type: 'text', label: 'body', open: false, tone: 'plain', text: body });
+  if (body)
+    blocks.push({
+      type: 'text',
+      label: 'body',
+      open: false,
+      tone: 'plain',
+      text: body,
+    });
   appendResult(blocks, result, isError, 'text');
   const repo = str(input, 'repo');
   return {
@@ -1132,12 +1584,29 @@ function newIssue(input: Json | undefined, result: string | null, isError: boole
   };
 }
 
-function comment(input: Json | undefined, result: string | null, isError: boolean): ToolCard {
+function comment(
+  input: Json | undefined,
+  result: string | null,
+  isError: boolean,
+): ToolCard {
   const blocks: ToolBlock[] = [];
   const body = str(input, 'body');
-  if (body) blocks.push({ type: 'text', label: null, open: false, tone: 'plain', text: body });
+  if (body)
+    blocks.push({
+      type: 'text',
+      label: null,
+      open: false,
+      tone: 'plain',
+      text: body,
+    });
   appendResult(blocks, result, isError, 'text');
-  return { verb: 'Comment', subject: repoNumber(input), subjectStyle: 'plain', facets: [], blocks };
+  return {
+    verb: 'Comment',
+    subject: repoNumber(input),
+    subjectStyle: 'plain',
+    facets: [],
+    blocks,
+  };
 }
 
 /** `owner/repo#42`, or whichever half is present. */
@@ -1151,7 +1620,12 @@ function repoNumber(input: Json | undefined): string | null {
 
 // ---------------------------------------------------------------- browser
 
-function browser(verb: string, input: Json | undefined, result: string | null, isError: boolean): ToolCard {
+function browser(
+  verb: string,
+  input: Json | undefined,
+  result: string | null,
+  isError: boolean,
+): ToolCard {
   const facets: string[] = [];
   const button = str(input, 'button');
   if (button) facets.push(button);
@@ -1172,30 +1646,59 @@ function browser(verb: string, input: Json | undefined, result: string | null, i
   };
 }
 
-function consoleCard(result: string | null, isError: boolean, verb = 'Console'): ToolCard {
+function consoleCard(
+  result: string | null,
+  isError: boolean,
+  verb = 'Console',
+): ToolCard {
   const blocks: ToolBlock[] = [];
   if (!isError && result && result.length > 0)
-    blocks.push({ type: 'code', label: null, open: false, language: null, text: trimEnd(result) });
+    blocks.push({
+      type: 'code',
+      label: null,
+      open: false,
+      language: null,
+      text: trimEnd(result),
+    });
   return { verb, subject: null, subjectStyle: 'plain', facets: [], blocks };
 }
 
 // ---------------------------------------------------------------- sessions
 
-function searchSessions(input: Json | undefined, result: string | null, isError: boolean): ToolCard {
+function searchSessions(
+  input: Json | undefined,
+  result: string | null,
+  isError: boolean,
+): ToolCard {
   const facets: string[] = [];
   const blocks: ToolBlock[] = [];
   if (!isError && result && result.length > 0) {
     const hits = rows(result);
     if (hits.length > 0) {
       facets.push(count(hits.length, 'hit', 'hits'));
-      blocks.push({ type: 'list', label: null, open: false, entries: hits.map(plainEntry) });
+      blocks.push({
+        type: 'list',
+        label: null,
+        open: false,
+        entries: hits.map(plainEntry),
+      });
     }
   }
 
-  return { verb: 'Search sessions', subject: str(input, 'query'), subjectStyle: 'plain', facets, blocks };
+  return {
+    verb: 'Search sessions',
+    subject: str(input, 'query'),
+    subjectStyle: 'plain',
+    facets,
+    blocks,
+  };
 }
 
-function readSession(input: Json | undefined, result: string | null, isError: boolean): ToolCard {
+function readSession(
+  input: Json | undefined,
+  result: string | null,
+  isError: boolean,
+): ToolCard {
   const facets: string[] = [];
   const from = int(input, 'from');
   if (from !== null) facets.push(`from ${from}`);
@@ -1204,7 +1707,13 @@ function readSession(input: Json | undefined, result: string | null, isError: bo
 
   const blocks: ToolBlock[] = [];
   appendResult(blocks, result, isError, 'text');
-  return { verb: 'Read session', subject: str(input, 'session_id'), subjectStyle: 'plain', facets, blocks };
+  return {
+    verb: 'Read session',
+    subject: str(input, 'session_id'),
+    subjectStyle: 'plain',
+    facets,
+    blocks,
+  };
 }
 
 // ---------------------------------------------------------------- shared shapes
@@ -1238,17 +1747,33 @@ function appendResult(
 
   const trimmed = result.trim();
   if (trimmed.length === 0) return;
-  if (quietWhen !== undefined && trimmed.startsWith(quietWhen) && !trimmed.includes('\n')) return;
+  if (
+    quietWhen !== undefined &&
+    trimmed.startsWith(quietWhen) &&
+    !trimmed.includes('\n')
+  )
+    return;
 
   if (style === 'list') {
     const found = rows(trimmed);
     if (found.length > 0) {
-      blocks.push({ type: 'list', label: 'result', open: false, entries: found.map(plainEntry) });
+      blocks.push({
+        type: 'list',
+        label: 'result',
+        open: false,
+        entries: found.map(plainEntry),
+      });
       return;
     }
   }
 
-  blocks.push({ type: 'text', label: 'result', open: false, tone: 'plain', text: trimmed });
+  blocks.push({
+    type: 'text',
+    label: 'result',
+    open: false,
+    tone: 'plain',
+    text: trimmed,
+  });
 }
 
 // ---------------------------------------------------------------- reading JSON
@@ -1297,7 +1822,11 @@ function render(value: unknown): [string, boolean] {
 }
 
 function isScalar(value: unknown): boolean {
-  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean';
+  return (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  );
 }
 
 /** `true` shows as the bare key; everything else as key and value. */
@@ -1342,7 +1871,9 @@ function languageOf(path: string | null): string | null {
   if (path === null) return null;
   // The extension of the last segment, the way Path.GetExtension reads it — a
   // dot in a directory name is not an extension.
-  const name = path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1);
+  const name = path.slice(
+    Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1,
+  );
   const dot = name.lastIndexOf('.');
   if (dot < 0) return null;
   switch (name.slice(dot).toLowerCase()) {

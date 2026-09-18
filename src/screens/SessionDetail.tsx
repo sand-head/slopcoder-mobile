@@ -7,7 +7,14 @@
  * they are. Liveness comes from `state.pendingApprovalIds`, **never** from the
  * transcript: an approval resolved on the laptop is still in the scrollback here.
  */
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -23,9 +30,11 @@ import {
   SessionStatus,
   type FacetOption,
   type ModelCandidate,
+  type SubSessionInfo,
   type UserQuestionAnswer,
 } from '../api/contracts';
 import { buildProposalCard, buildToolCard } from '../api/toolcard';
+import type { SubSessionMention } from '../api/mentions';
 import {
   groupSubagents,
   subagentDetail,
@@ -55,7 +64,12 @@ import {
 } from '../ui/kit';
 import { animateNextLayout } from '../ui/motion';
 import { Composer, type TurnOptions } from '../ui/Composer';
-import { MAX_IMAGES, pickImages, type ImageSource, type PendingImage } from '../ui/images';
+import {
+  MAX_IMAGES,
+  pickImages,
+  type ImageSource,
+  type PendingImage,
+} from '../ui/images';
 import { Sheet } from '../ui/Sheet';
 import { TerminalSheet } from '../ui/TerminalSheet';
 import { useShake } from '../ui/shake';
@@ -67,9 +81,15 @@ import { useKeyboardHeight } from '../ui/keyboard';
 import { useHeaderInset } from '../navigation/headers';
 import { tapConfirm, tapError, tapRefuse } from '../ui/haptics';
 import { newTokens } from '../api/contracts';
-import { font, mix, radius, useTheme } from '../theme';
+import { font, mix, radius, tintFor, useTheme } from '../theme';
 
-export function SessionDetailScreen({ route, navigation }: { route: any; navigation: any }) {
+export function SessionDetailScreen({
+  route,
+  navigation,
+}: {
+  route: any;
+  navigation: any;
+}) {
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
   const id: string = route.params.id;
@@ -86,11 +106,8 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
 
   const seam = useAuth(s => s.seam);
   const { hub } = useSessionHub();
-  const { state, items, live, loading, error, canLoadEarlier, loadEarlier } = useSession(
-    seam,
-    hub,
-    id,
-  );
+  const { state, items, live, loading, error, canLoadEarlier, loadEarlier } =
+    useSession(seam, hub, id);
 
   const [draft, setDraft] = useState('');
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
@@ -154,7 +171,10 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
       void seam.setThinking(id, { level: next.thinking });
     }
     if (next.approval !== previous.approval) {
-      void seam.setApprovalMode(id, { mode: next.approval, useClassifier: true });
+      void seam.setApprovalMode(id, {
+        mode: next.approval,
+        useClassifier: true,
+      });
     }
     if (next.facet !== previous.facet) {
       void seam.setFacet(id, { facetName: next.facet });
@@ -209,7 +229,9 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
     const result = await pickImages(source, MAX_IMAGES - pendingImages.length);
     if (result.images.length > 0) {
       animateNextLayout();
-      setPendingImages(current => [...current, ...result.images].slice(0, MAX_IMAGES));
+      setPendingImages(current =>
+        [...current, ...result.images].slice(0, MAX_IMAGES),
+      );
     }
     setImageError(result.error);
   };
@@ -224,15 +246,26 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
     const usage = state?.lastUsage;
     if (!usage || usage.contextWindowTokens === 0) return null;
     const prompt =
-      usage.inputTokens + usage.cacheReadInputTokens + usage.cacheCreationInputTokens;
-    return Math.min(100, Math.round((100 * prompt) / usage.contextWindowTokens));
+      usage.inputTokens +
+      usage.cacheReadInputTokens +
+      usage.cacheCreationInputTokens;
+    return Math.min(
+      100,
+      Math.round((100 * prompt) / usage.contextWindowTokens),
+    );
   }, [state?.lastUsage]);
 
   const subtitle = [
-    parentDriven ? (state?.closed ? 'sub-session · closed' : 'sub-session') : null,
+    parentDriven
+      ? state?.closed
+        ? 'sub-session · set aside'
+        : 'sub-session'
+      : null,
     running ? 'running' : 'idle',
     contextPercent === null ? null : `${contextPercent}%`,
-    state?.usage.estimatedCost == null ? null : `$${state.usage.estimatedCost.toFixed(2)}`,
+    state?.usage.estimatedCost == null
+      ? null
+      : `$${state.usage.estimatedCost.toFixed(2)}`,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -248,8 +281,16 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
           onPress={() => setUsageOpen(true)}
           accessibilityRole="button"
           accessibilityLabel={`${title}. ${subtitle}. Session usage`}
-          style={({ pressed }) => ({ alignItems: 'center', maxWidth: 240, opacity: pressed ? 0.6 : 1 })}>
-          <Body numberOfLines={1} style={{ fontFamily: font.sansMedium, fontSize: 15 }}>
+          style={({ pressed }) => ({
+            alignItems: 'center',
+            maxWidth: 240,
+            opacity: pressed ? 0.6 : 1,
+          })}
+        >
+          <Body
+            numberOfLines={1}
+            style={{ fontFamily: font.sansMedium, fontSize: 15 }}
+          >
             {title}
           </Body>
           <Mono numberOfLines={1}>{subtitle}</Mono>
@@ -260,7 +301,9 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
 
   // A gate opening or closing, a question answered: the card changes shape,
   // and the lines below it move rather than jump.
-  const pendingCount = (state?.pendingApprovalIds.length ?? 0) + (state?.pendingQuestionIds.length ?? 0);
+  const pendingCount =
+    (state?.pendingApprovalIds.length ?? 0) +
+    (state?.pendingQuestionIds.length ?? 0);
   useEffect(() => {
     animateNextLayout();
   }, [pendingCount]);
@@ -300,16 +343,42 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
     [seam, id],
   );
 
+  const roster = state?.subSessions ?? EMPTY_ROSTER;
+  // Built from the transcript's own anchors rather than the live roster, so an
+  // old session colours the way it did when it was written — and so the list is
+  // stable while a turn streams.
+  const mentions = useMemo<readonly SubSessionMention[]>(
+    () =>
+      items
+        .filter(
+          (item): item is Extract<Item, { kind: 'subsession' }> =>
+            item.kind === 'subsession',
+        )
+        .filter(item => item.persona.length > 0)
+        .map(item => ({ persona: item.persona, color: item.color })),
+    [items],
+  );
   const handlers = useMemo<RowHandlers>(
     () => ({
       parentDriven,
+      roster,
+      mentions,
       pendingApprovals,
       pendingQuestions,
       onApprove,
       onAnswer,
       onOpenSubSession,
     }),
-    [parentDriven, pendingApprovals, pendingQuestions, onApprove, onAnswer, onOpenSubSession],
+    [
+      parentDriven,
+      roster,
+      mentions,
+      pendingApprovals,
+      pendingQuestions,
+      onApprove,
+      onAnswer,
+      onOpenSubSession,
+    ],
   );
 
   const renderRow = useCallback(
@@ -336,7 +405,10 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
       <View style={{ flex: 1 }}>
         {error ? (
           <View style={{ padding: 20, paddingTop: headerInset + 20 }}>
-            <Body accessibilityLiveRegion="polite" style={{ color: c.destructive }}>
+            <Body
+              accessibilityLiveRegion="polite"
+              style={{ color: c.destructive }}
+            >
               {error}
             </Body>
           </View>
@@ -379,13 +451,17 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
               live ? (
                 <View style={{ gap: 6, paddingTop: 6 }}>
                   {live.thinking ? (
-                    <Body style={{ fontStyle: 'italic', color: c.mutedForeground, fontSize: 13 }}>
+                    <Body
+                      style={{
+                        fontStyle: 'italic',
+                        color: c.mutedForeground,
+                        fontSize: 13,
+                      }}
+                    >
                       {live.thinking}
                     </Body>
                   ) : null}
-                  {live.text ? (
-                    <Prose>{live.text}</Prose>
-                  ) : null}
+                  {live.text ? <Prose>{live.text}</Prose> : null}
                 </View>
               ) : undefined
             }
@@ -404,23 +480,42 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
               right: 0,
               bottom: composerHeight + keyboardHeight + 8,
               alignItems: 'center',
-            }}>
+            }}
+          >
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Jump to the latest"
               onPress={toBottom}
-              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+            >
               <GlassSurface
                 cornerRadius={18}
-                style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}>
-                <Body style={{ fontFamily: font.mono, fontSize: 15, lineHeight: 17 }}>↓</Body>
+                style={{
+                  width: 36,
+                  height: 36,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Body
+                  style={{
+                    fontFamily: font.mono,
+                    fontSize: 15,
+                    lineHeight: 17,
+                  }}
+                >
+                  ↓
+                </Body>
               </GlassSurface>
             </Pressable>
           </View>
         ) : null}
 
         {/* Over the transcript, below the bar: the banner is news, not a row. */}
-        <View pointerEvents="box-none" style={{ position: 'absolute', top: headerInset, left: 0, right: 0 }}>
+        <View
+          pointerEvents="box-none"
+          style={{ position: 'absolute', top: headerInset, left: 0, right: 0 }}
+        >
           <ConnectionBanner />
         </View>
 
@@ -436,47 +531,54 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
             paddingHorizontal: 10,
             paddingBottom: (keyboardUp ? 0 : insets.bottom) + 10,
             paddingTop: 4,
-          }}>
+          }}
+        >
           {parentDriven ? (
             <SubSessionNote closed={state?.closed === true} />
           ) : (
-          <Composer
-            value={draft}
-            onChangeValue={setDraft}
-            placeholder={running ? 'Steer the agent…' : 'Send a message…'}
-            action={action}
-            onAction={send}
-            busy={sending}
-            disabled={!draft.trim()}
-            images={{
-              pending: pendingImages,
-              onPick: pick,
-              onRemove: key => {
-                animateNextLayout();
-                setPendingImages(current => current.filter(image => image.key !== key));
-              },
-              error: imageError,
-            }}
-            running={running}
-            onStop={stop}
-            stopping={state?.stopRequested}
-            options={
-              options ?? {
-                selection: { auto: true, connectionId: null, modelId: null },
-                thinking: null,
-                approval: ApprovalMode.Dangerous,
-                facet: null,
+            <Composer
+              value={draft}
+              onChangeValue={setDraft}
+              placeholder={running ? 'Steer the agent…' : 'Send a message…'}
+              action={action}
+              onAction={send}
+              busy={sending}
+              disabled={!draft.trim()}
+              images={{
+                pending: pendingImages,
+                onPick: pick,
+                onRemove: key => {
+                  animateNextLayout();
+                  setPendingImages(current =>
+                    current.filter(image => image.key !== key),
+                  );
+                },
+                error: imageError,
+              }}
+              running={running}
+              onStop={stop}
+              stopping={state?.stopRequested}
+              options={
+                options ?? {
+                  selection: { auto: true, connectionId: null, modelId: null },
+                  thinking: null,
+                  approval: ApprovalMode.Dangerous,
+                  facet: null,
+                }
               }
-            }
-            onChangeOptions={applyOptions}
-            models={models}
-            facets={facets}
-          />
+              onChangeOptions={applyOptions}
+              models={models}
+              facets={facets}
+            />
           )}
         </View>
       </View>
 
-      <Sheet visible={usageOpen} title="Session usage" onClose={() => setUsageOpen(false)}>
+      <Sheet
+        visible={usageOpen}
+        title="Session usage"
+        onClose={() => setUsageOpen(false)}
+      >
         {state ? (
           <>
             <View style={{ gap: 6 }}>
@@ -486,7 +588,8 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
                   <ContextBar percent={contextPercent ?? 0} />
                   <Mono>
                     last request used {contextPercent}% of{' '}
-                    {state.lastUsage.contextWindowTokens.toLocaleString()} tokens
+                    {state.lastUsage.contextWindowTokens.toLocaleString()}{' '}
+                    tokens
                   </Mono>
                 </>
               ) : (
@@ -498,7 +601,8 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
               <Meta>this session</Meta>
               {/* A cost with no model rows is not "nothing spent" — the two
                   came from the same fold, and saying both is a contradiction. */}
-              {state.usage.models.length === 0 && state.usage.estimatedCost == null ? (
+              {state.usage.models.length === 0 &&
+              state.usage.estimatedCost == null ? (
                 <Mono>Nothing spent yet.</Mono>
               ) : (
                 state.usage.models.map(model => (
@@ -512,7 +616,8 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
                       paddingVertical: 8,
                       borderTopWidth: 1,
                       borderTopColor: c.border,
-                    }}>
+                    }}
+                  >
                     <View style={{ flex: 1, gap: 2 }}>
                       <Body numberOfLines={1} style={{ fontSize: 14 }}>
                         {model.model}
@@ -529,7 +634,9 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
                 ))
               )}
               {state.usage.estimatedCost != null ? (
-                <Mono>estimated cost ${state.usage.estimatedCost.toFixed(2)}</Mono>
+                <Mono>
+                  estimated cost ${state.usage.estimatedCost.toFixed(2)}
+                </Mono>
               ) : null}
             </View>
           </>
@@ -550,7 +657,8 @@ export function SessionDetailScreen({ route, navigation }: { route: any; navigat
 /** The ContextRing, unrolled: a phone has the width for a bar and not the ring. */
 function ContextBar({ percent }: { percent: number }) {
   const { c, status } = useTheme();
-  const tone = percent >= 90 ? c.destructive : percent >= 70 ? status.running : status.ok;
+  const tone =
+    percent >= 90 ? c.destructive : percent >= 70 ? status.running : status.ok;
 
   return (
     <View
@@ -559,15 +667,33 @@ function ContextBar({ percent }: { percent: number }) {
         borderRadius: 3,
         backgroundColor: mix(c.mutedForeground, 20),
         overflow: 'hidden',
-      }}>
-      <View style={{ width: `${Math.min(100, percent)}%`, height: 6, backgroundColor: tone }} />
+      }}
+    >
+      <View
+        style={{
+          width: `${Math.min(100, percent)}%`,
+          height: 6,
+          backgroundColor: tone,
+        }}
+      />
     </View>
   );
 }
 
+/** A stable empty roster, so a session with no partners does not remake the handlers. */
+const EMPTY_ROSTER: readonly SubSessionInfo[] = [];
+
 interface RowHandlers {
   /** A sub-session: the prompts are the driving agent's, not the user's. */
   parentDriven: boolean;
+  /**
+   * This session's partners, live. A sub-session card reads the child's own
+   * state for everything except the one thing only the parent knows: how many
+   * of the agent's messages are still waiting in that partner's mailbox.
+   */
+  roster: readonly SubSessionInfo[];
+  /** Who the agent may name in its prose, and in what colour. */
+  mentions: readonly SubSessionMention[];
   pendingApprovals: readonly string[];
   pendingQuestions: readonly string[];
   onApprove: (requestId: string, approved: boolean) => void;
@@ -583,15 +709,19 @@ interface RowHandlers {
 function SubSessionNote({ closed }: { closed: boolean }) {
   const { c, status } = useTheme();
   return (
-    <GlassSurface cornerRadius={radius.xl} style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
+    <GlassSurface
+      cornerRadius={radius.xl}
+      style={{ paddingHorizontal: 14, paddingVertical: 12 }}
+    >
       <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
         <View style={{ width: 12, alignItems: 'center', paddingTop: 3 }}>
           <Fork color={status.subagent} />
         </View>
         <Body style={{ flex: 1, fontSize: 13, color: c.mutedForeground }}>
-          This is a sub-session: its prompts come from the agent in its parent session
-          {closed ? ', which has closed it' : ''}. Watch it work and approve what it asks — the
-          conversation is the parent's.
+          This is a sub-session: its prompts come from the agent in its parent
+          session
+          {closed ? ', which has set it aside for now' : ''}. Watch it work and
+          approve what it asks — the conversation is the parent's.
         </Body>
       </View>
     </GlassSurface>
@@ -615,7 +745,10 @@ const NO_IDS: readonly string[] = [];
 function useStableIds(ids: readonly string[] | undefined): readonly string[] {
   const held = useRef<readonly string[]>(NO_IDS);
   const next = ids ?? NO_IDS;
-  if (next.length !== held.current.length || next.some((value, at) => value !== held.current[at])) {
+  if (
+    next.length !== held.current.length ||
+    next.some((value, at) => value !== held.current[at])
+  ) {
     held.current = next;
   }
   return held.current;
@@ -630,12 +763,13 @@ function useStableIds(ids: readonly string[] | undefined): readonly string[] {
  * memo would be a bug — a tool call's result would land in an item React had no
  * reason to look at again.
  */
-const RowView = React.memo(({ row, handlers }: { row: Row; handlers: RowHandlers }) =>
-  row.kind === 'subagent' ? (
-    <SubagentBlock group={row} handlers={handlers} />
-  ) : (
-    <TranscriptRow item={row} handlers={handlers} />
-  ),
+const RowView = React.memo(
+  ({ row, handlers }: { row: Row; handlers: RowHandlers }) =>
+    row.kind === 'subagent' ? (
+      <SubagentBlock group={row} handlers={handlers} />
+    ) : (
+      <TranscriptRow item={row} handlers={handlers} />
+    ),
 );
 RowView.displayName = 'RowView';
 
@@ -647,28 +781,36 @@ RowView.displayName = 'RowView';
  * agent's. The row's own status is derived, never carried: a failure wins,
  * then a stop, then a clean finish.
  */
-function SubagentBlock({ group, handlers }: { group: SubagentGroup; handlers: RowHandlers }) {
+function SubagentBlock({
+  group,
+  handlers,
+}: {
+  group: SubagentGroup;
+  handlers: RowHandlers;
+}) {
   const { c, status } = useTheme();
   const [open, setOpen] = useState(false);
 
   const state = subagentState(group.items);
-  const failure = group.items.find((item): item is Extract<Item, { kind: 'error' }> => item.kind === 'error');
+  const failure = group.items.find(
+    (item): item is Extract<Item, { kind: 'error' }> => item.kind === 'error',
+  );
   const detail =
     state === 'failed'
       ? summarize(failure?.message || 'failed', 40)
       : state === 'cancelled'
-        ? 'stopped'
-        : state === 'done'
-          ? 'done'
-          : subagentDetail(group.items);
+      ? 'stopped'
+      : state === 'done'
+      ? 'done'
+      : subagentDetail(group.items);
   const tone =
     state === 'failed'
       ? c.destructive
       : state === 'done'
-        ? status.ok
-        : state === 'cancelled'
-          ? c.mutedForeground
-          : status.running;
+      ? status.ok
+      : state === 'cancelled'
+      ? c.mutedForeground
+      : status.running;
 
   return (
     <View>
@@ -679,7 +821,9 @@ function SubagentBlock({ group, handlers }: { group: SubagentGroup; handlers: Ro
         }}
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
-        accessibilityLabel={`Subagent ${group.subagentId}, ${group.task || 'no task'}, ${detail}`}
+        accessibilityLabel={`Subagent ${group.subagentId}, ${
+          group.task || 'no task'
+        }, ${detail}`}
         style={({ pressed }) => ({
           flexDirection: 'row',
           alignItems: 'center',
@@ -689,27 +833,54 @@ function SubagentBlock({ group, handlers }: { group: SubagentGroup; handlers: Ro
           borderRadius: radius.md,
           minHeight: 36,
           backgroundColor: pressed ? mix(c.mutedForeground, 10) : 'transparent',
-        })}>
+        })}
+      >
         <View style={{ width: 12, alignItems: 'center' }}>
           <Fork color={status.subagent} />
         </View>
-        <Body style={{ flexShrink: 0, fontFamily: font.monoSemiBold, fontSize: 12.5 }}>
+        <Body
+          style={{
+            flexShrink: 0,
+            fontFamily: font.monoSemiBold,
+            fontSize: 12.5,
+          }}
+        >
           subagent #{group.subagentId}
         </Body>
         <Mono numberOfLines={1} style={{ flex: 1 }}>
           {[group.model, summarize(group.task)].filter(Boolean).join(' · ')}
         </Mono>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 1 }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 5,
+            flexShrink: 1,
+          }}
+        >
           {state === 'failed' ? (
-            <Body style={{ fontFamily: font.mono, fontSize: 12, color: c.destructive }}>{GLYPHS.error}</Body>
+            <Body
+              style={{
+                fontFamily: font.mono,
+                fontSize: 12,
+                color: c.destructive,
+              }}
+            >
+              {GLYPHS.error}
+            </Body>
           ) : (
             <Dot color={tone} filled={state !== 'cancelled'} size={7} />
           )}
-          <Mono numberOfLines={1} style={{ fontSize: 11, color: tone, flexShrink: 1 }}>
+          <Mono
+            numberOfLines={1}
+            style={{ fontSize: 11, color: tone, flexShrink: 1 }}
+          >
             {detail}
           </Mono>
         </View>
-        <Mono style={{ transform: [{ rotate: open ? '90deg' : '0deg' }] }}>&gt;</Mono>
+        <Mono style={{ transform: [{ rotate: open ? '90deg' : '0deg' }] }}>
+          &gt;
+        </Mono>
       </Pressable>
 
       {open ? (
@@ -721,7 +892,8 @@ function SubagentBlock({ group, handlers }: { group: SubagentGroup; handlers: Ro
             borderLeftColor: mix(status.subagent, 45),
             gap: 4,
             paddingBottom: 4,
-          }}>
+          }}
+        >
           {group.items.length === 0 ? (
             <Mono style={{ paddingVertical: 4 }}>Nothing yet.</Mono>
           ) : (
@@ -744,7 +916,11 @@ function strip({ mediaType, base64Data }: PendingImage) {
  * The images a prompt carried, in the scrollback. Thumbnails in a row; a tap
  * opens one at the width of the bubble, and another tap folds it back.
  */
-function PromptImages({ images }: { images: readonly { mediaType: string; base64Data: string }[] }) {
+function PromptImages({
+  images,
+}: {
+  images: readonly { mediaType: string; base64Data: string }[];
+}) {
   const { c } = useTheme();
   const [open, setOpen] = useState<number | null>(null);
 
@@ -759,7 +935,9 @@ function PromptImages({ images }: { images: readonly { mediaType: string; base64
               setOpen(open === index ? null : index);
             }}
             accessibilityRole="imagebutton"
-            accessibilityLabel={`Attached image ${index + 1} of ${images.length}`}
+            accessibilityLabel={`Attached image ${index + 1} of ${
+              images.length
+            }`}
             style={{
               width: open === index ? '100%' : 72,
               aspectRatio: open === index ? undefined : 1,
@@ -768,9 +946,12 @@ function PromptImages({ images }: { images: readonly { mediaType: string; base64
               borderWidth: 1,
               borderColor: mix(c.primary, 25),
               overflow: 'hidden',
-            }}>
+            }}
+          >
             <Image
-              source={{ uri: `data:${image.mediaType};base64,${image.base64Data}` }}
+              source={{
+                uri: `data:${image.mediaType};base64,${image.base64Data}`,
+              }}
               resizeMode={open === index ? 'contain' : 'cover'}
               style={{ width: '100%', height: '100%' }}
             />
@@ -783,7 +964,16 @@ function PromptImages({ images }: { images: readonly { mediaType: string; base64
 
 const TranscriptRow = React.memo(function Transcript({
   item,
-  handlers: { parentDriven, pendingApprovals, pendingQuestions, onApprove, onAnswer, onOpenSubSession },
+  handlers: {
+    parentDriven,
+    roster,
+    mentions,
+    pendingApprovals,
+    pendingQuestions,
+    onApprove,
+    onAnswer,
+    onOpenSubSession,
+  },
 }: {
   item: Item;
   handlers: RowHandlers;
@@ -803,11 +993,18 @@ const TranscriptRow = React.memo(function Transcript({
             backgroundColor: mix(c.primary, isDark ? 8 : 4),
             padding: 12,
             gap: 4,
-          }}>
+          }}
+        >
           <Meta style={{ color: c.primary, fontSize: 10.5 }}>
-            {parentDriven ? 'parent agent' : item.steering ? 'you · steering' : 'you'}
+            {parentDriven
+              ? 'parent agent'
+              : item.steering
+              ? 'you · steering'
+              : 'you'}
           </Meta>
-          {item.images.length > 0 ? <PromptImages images={item.images} /> : null}
+          {item.images.length > 0 ? (
+            <PromptImages images={item.images} />
+          ) : null}
           {item.text ? (
             <Body selectable style={{ fontSize: 14 }}>
               {item.text}
@@ -816,19 +1013,76 @@ const TranscriptRow = React.memo(function Transcript({
         </View>
       );
 
+    case 'subsession-reply': {
+      // A partner's reply is why the turn under it began, so it reads the way a
+      // prompt does — a card with a name on it — in their colour rather than
+      // the user's. Never the 'you' card: nobody typed this.
+      const tint = tintFor(item.color, isDark) ?? status.subagent;
+      const who = item.persona || item.name;
+      return (
+        <View
+          style={{
+            marginVertical: 8,
+            borderRadius: radius.lg,
+            borderWidth: 1,
+            borderColor: mix(tint, 25),
+            backgroundColor: mix(tint, isDark ? 8 : 4),
+            padding: 12,
+            gap: 4,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Fork color={tint} />
+            <Meta style={{ color: tint, fontSize: 10.5 }}>
+              {who}
+              {item.name && item.name !== who ? ` · ${item.name}` : ''}
+              {item.isError ? ' · hit an error' : ''}
+            </Meta>
+          </View>
+          <Body
+            selectable
+            style={{
+              fontSize: 14,
+              color: item.isError ? c.destructive : c.foreground,
+            }}
+          >
+            {item.text}
+          </Body>
+        </View>
+      );
+    }
+
     case 'text':
       // No bubble, no border: assistant prose is the page.
-      return <Prose>{item.text}</Prose>;
+      return <Prose mentions={mentions}>{item.text}</Prose>;
 
     case 'think':
       return (
         <Collapsible
-          mark={<Body style={{ fontFamily: font.mono, fontSize: 12, color: status.thinking }}>{GLYPHS.thinking}</Body>}
+          mark={
+            <Body
+              style={{
+                fontFamily: font.mono,
+                fontSize: 12,
+                color: status.thinking,
+              }}
+            >
+              {GLYPHS.thinking}
+            </Body>
+          }
           name="thinking"
           meta={summarize(item.text)}
           open={open}
-          onToggle={() => setOpen(!open)}>
-          <Body selectable style={{ fontStyle: 'italic', color: c.mutedForeground, fontSize: 12.5 }}>
+          onToggle={() => setOpen(!open)}
+        >
+          <Body
+            selectable
+            style={{
+              fontStyle: 'italic',
+              color: c.mutedForeground,
+              fontSize: 12.5,
+            }}
+          >
             {item.text}
           </Body>
         </Collapsible>
@@ -848,11 +1102,20 @@ const TranscriptRow = React.memo(function Transcript({
           <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
             <Bars color={status.plan} />
             <Meta>
-              plan · {item.steps.filter(s => s.status === 'done').length}/{item.steps.length} done
+              plan · {item.steps.filter(s => s.status === 'done').length}/
+              {item.steps.length} done
             </Meta>
           </View>
           {item.steps.map((step, index) => (
-            <View key={index} style={{ flexDirection: 'row', gap: 8, paddingLeft: 20, alignItems: 'center' }}>
+            <View
+              key={index}
+              style={{
+                flexDirection: 'row',
+                gap: 8,
+                paddingLeft: 20,
+                alignItems: 'center',
+              }}
+            >
               <View style={{ width: 10, alignItems: 'center' }}>
                 {step.status === 'done' ? (
                   <Dot color={status.ok} size={8} />
@@ -866,9 +1129,12 @@ const TranscriptRow = React.memo(function Transcript({
                 style={{
                   flex: 1,
                   fontSize: 12.5,
-                  color: step.status === 'done' ? c.mutedForeground : c.foreground,
-                  textDecorationLine: step.status === 'done' ? 'line-through' : 'none',
-                }}>
+                  color:
+                    step.status === 'done' ? c.mutedForeground : c.foreground,
+                  textDecorationLine:
+                    step.status === 'done' ? 'line-through' : 'none',
+                }}
+              >
                 {step.text}
               </Body>
             </View>
@@ -882,8 +1148,8 @@ const TranscriptRow = React.memo(function Transcript({
       const tint = pending
         ? mix(status.running, 50)
         : item.approved === false
-          ? mix(c.destructive, 30)
-          : c.border;
+        ? mix(c.destructive, 30)
+        : c.border;
 
       return (
         <View
@@ -892,10 +1158,13 @@ const TranscriptRow = React.memo(function Transcript({
             borderRadius: radius.lg,
             borderWidth: 1,
             borderColor: tint,
-            backgroundColor: pending ? mix(status.running, 6) : mix(c.muted, 20),
+            backgroundColor: pending
+              ? mix(status.running, 6)
+              : mix(c.muted, 20),
             padding: 12,
             gap: 8,
-          }}>
+          }}
+        >
           {/* Only when there is something to say. The card below already names
               the tool, so an open gate needs no line of its own. */}
           {!pending || item.refused ? (
@@ -904,17 +1173,19 @@ const TranscriptRow = React.memo(function Transcript({
                 {item.approved === true
                   ? 'approved'
                   : item.approved === false
-                    ? 'denied'
-                    : !pending
-                      ? 'no longer pending'
-                      : 'refused'}
+                  ? 'denied'
+                  : !pending
+                  ? 'no longer pending'
+                  : 'refused'}
               </Meta>
             </View>
           ) : null}
 
           {/* Never truncated: this is the evidence the decision rests on. */}
           {item.reason ? (
-            <Body style={{ fontSize: 12.5, color: c.mutedForeground }}>{item.reason}</Body>
+            <Body style={{ fontSize: 12.5, color: c.mutedForeground }}>
+              {item.reason}
+            </Body>
           ) : null}
 
           {/* Always 'pending', even after a verdict: a cross would say the tool
@@ -927,7 +1198,13 @@ const TranscriptRow = React.memo(function Transcript({
           />
 
           {pending ? (
-            <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                gap: 8,
+                justifyContent: 'flex-end',
+              }}
+            >
               <Button
                 label={item.refused ? 'Keep refused' : 'Deny'}
                 variant="outline"
@@ -966,10 +1243,22 @@ const TranscriptRow = React.memo(function Transcript({
             backgroundColor: mix(c.destructive, 5),
             padding: 10,
             gap: 6,
-          }}>
+          }}
+        >
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Body style={{ color: c.destructive, fontFamily: font.mono, fontSize: 14 }}>{GLYPHS.error}</Body>
-            <Body selectable style={{ flex: 1, fontSize: 13, color: c.destructive }}>
+            <Body
+              style={{
+                color: c.destructive,
+                fontFamily: font.mono,
+                fontSize: 14,
+              }}
+            >
+              {GLYPHS.error}
+            </Body>
+            <Body
+              selectable
+              style={{ flex: 1, fontSize: 13, color: c.destructive }}
+            >
               {item.message}
             </Body>
           </View>
@@ -979,7 +1268,8 @@ const TranscriptRow = React.memo(function Transcript({
               onPress={() => {
                 animateNextLayout();
                 setOpen(!open);
-              }}>
+              }}
+            >
               <Meta>{open ? 'hide detail' : 'what the provider said'}</Meta>
             </Pressable>
           ) : null}
@@ -992,11 +1282,24 @@ const TranscriptRow = React.memo(function Transcript({
       return null;
 
     case 'subsession':
-      return <SubSessionCard item={item} onOpen={onOpenSubSession} />;
+      return (
+        <SubSessionCard
+          item={item}
+          queued={roster.find(sub => sub.id === item.subSessionId)?.queued ?? 0}
+          onOpen={onOpenSubSession}
+        />
+      );
 
     case 'divider':
       return (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+            paddingVertical: 8,
+          }}
+        >
           <View style={{ flex: 1, height: 1, backgroundColor: c.border }} />
           <Meta style={{ fontSize: 10 }}>{item.label}</Meta>
           <View style={{ flex: 1, height: 1, backgroundColor: c.border }} />
@@ -1005,10 +1308,23 @@ const TranscriptRow = React.memo(function Transcript({
 
     case 'note':
       return (
-        <View style={{ flexDirection: 'row', gap: 8, paddingVertical: 3, alignItems: 'center' }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            gap: 8,
+            paddingVertical: 3,
+            alignItems: 'center',
+          }}
+        >
           <View style={{ width: 12, alignItems: 'center' }}>
             <Dot
-              color={item.tone === 'ok' ? status.ok : item.tone === 'warn' ? status.running : c.mutedForeground}
+              color={
+                item.tone === 'ok'
+                  ? status.ok
+                  : item.tone === 'warn'
+                  ? status.running
+                  : c.mutedForeground
+              }
               filled={item.tone !== 'muted'}
               size={7}
             />
@@ -1038,7 +1354,8 @@ function QuestionCard({
 
   // A typed answer counts once it has words in it; picking an option clears
   // it, and typing clears the pick, so a question has one answer.
-  const answerFor = (index: number) => picked[index] ?? (typed[index]?.trim() || undefined);
+  const answerFor = (index: number) =>
+    picked[index] ?? (typed[index]?.trim() || undefined);
   const complete = item.questions.every((_, index) => answerFor(index));
 
   return (
@@ -1050,7 +1367,8 @@ function QuestionCard({
         borderColor: pending ? mix(c.primary, 40) : c.border,
         padding: 12,
         gap: 10,
-      }}>
+      }}
+    >
       <Meta>{pending ? 'question' : 'answered'}</Meta>
 
       {item.questions.map((question, index) => (
@@ -1069,13 +1387,18 @@ function QuestionCard({
                   }}
                   style={{
                     borderWidth: 1,
-                    borderColor: picked[index] === option ? c.primary : c.border,
-                    backgroundColor: picked[index] === option ? mix(c.primary, 8) : 'transparent',
+                    borderColor:
+                      picked[index] === option ? c.primary : c.border,
+                    backgroundColor:
+                      picked[index] === option
+                        ? mix(c.primary, 8)
+                        : 'transparent',
                     borderRadius: radius.md,
                     padding: 10,
                     minHeight: 44,
                     justifyContent: 'center',
-                  }}>
+                  }}
+                >
                   <Body style={{ fontSize: 13 }}>{option}</Body>
                 </Pressable>
               ))}
@@ -1090,7 +1413,11 @@ function QuestionCard({
                       setPicked(rest);
                     }
                   }}
-                  placeholder={question.options.length > 0 ? 'Or type an answer…' : 'Type an answer…'}
+                  placeholder={
+                    question.options.length > 0
+                      ? 'Or type an answer…'
+                      : 'Type an answer…'
+                  }
                   autoCapitalize="sentences"
                   accessibilityLabel={`Answer to: ${question.text}`}
                 />
@@ -1103,8 +1430,14 @@ function QuestionCard({
       ))}
 
       {pending ? (
-        <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>
-          <Button label="Dismiss" variant="outline" onPress={() => onAnswer(null)} />
+        <View
+          style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}
+        >
+          <Button
+            label="Dismiss"
+            variant="outline"
+            onPress={() => onAnswer(null)}
+          />
           <Button
             label="Answer"
             disabled={!complete}
@@ -1157,15 +1490,20 @@ function Collapsible({
           borderRadius: radius.md,
           minHeight: 36,
           backgroundColor: pressed ? mix(c.mutedForeground, 10) : 'transparent',
-        })}>
+        })}
+      >
         <View style={{ width: 12, alignItems: 'center' }}>{mark}</View>
-        <Body style={{ fontFamily: font.monoSemiBold, fontSize: 12.5 }}>{name}</Body>
+        <Body style={{ fontFamily: font.monoSemiBold, fontSize: 12.5 }}>
+          {name}
+        </Body>
         <Mono numberOfLines={1} style={{ flex: 1 }}>
           {meta}
         </Mono>
       </Pressable>
       {open ? (
-        <View style={{ paddingLeft: 24, paddingRight: 4, paddingBottom: 6 }}>{children}</View>
+        <View style={{ paddingLeft: 24, paddingRight: 4, paddingBottom: 6 }}>
+          {children}
+        </View>
       ) : null}
     </View>
   );
@@ -1182,7 +1520,8 @@ function Pre({ text, error }: { text: string; error?: boolean }) {
         backgroundColor: error ? mix(c.destructive, 5) : mix(c.muted, 30),
         borderRadius: radius.md,
       }}
-      nestedScrollEnabled>
+      nestedScrollEnabled
+    >
       <Body
         selectable
         style={{
@@ -1191,10 +1530,10 @@ function Pre({ text, error }: { text: string; error?: boolean }) {
           lineHeight: 17,
           padding: 8,
           color: error ? c.destructive : c.foreground,
-        }}>
+        }}
+      >
         {text}
       </Body>
     </ScrollView>
   );
 }
-

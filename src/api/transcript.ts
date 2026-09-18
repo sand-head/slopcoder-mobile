@@ -11,7 +11,12 @@
  * rather than thrown on — the server adds new ones, and an app in a store is
  * always older than the server it talks to.
  */
-import type { AgentEventEnvelope, ImageAttachment, UserQuestion, UserQuestionAnswer } from './contracts';
+import type {
+  AgentEventEnvelope,
+  ImageAttachment,
+  UserQuestion,
+  UserQuestionAnswer,
+} from './contracts';
 
 export type ItemKind =
   | 'user'
@@ -25,7 +30,8 @@ export type ItemKind =
   | 'error'
   | 'divider'
   | 'subagent-start'
-  | 'subsession';
+  | 'subsession'
+  | 'subsession-reply';
 
 export interface PlanStep {
   text: string;
@@ -131,14 +137,37 @@ export interface SubagentStartItem extends BaseItem {
 export interface SubSessionItem extends BaseItem {
   kind: 'subsession';
   subSessionId: string;
+  /** The beat it was brought on for ("push relay"). */
   name: string;
   model: string;
   profile: string;
   routeReason: string | null;
+  /** The name it goes by ("Ada"); empty on sub-sessions from before personas. */
+  persona: string;
+  /** Its accent (`tintFor`); empty renders untinted. */
+  color: string;
+}
+
+/**
+ * A sub-session's reply arriving. Sub-sessions run on their own clock, so a
+ * reply does not return to anyone — it *starts a turn* for the driving agent,
+ * and this is that turn's prompt. It is its own item rather than a `user` one
+ * because nobody typed it, and the transcript must never suggest otherwise.
+ */
+export interface SubSessionReplyItem extends BaseItem {
+  kind: 'subsession-reply';
+  subSessionId: string;
+  persona: string;
+  /** The beat they are on, for the line under their name. */
+  name: string;
+  text: string;
+  isError: boolean;
+  color: string;
 }
 
 export type Item =
   | UserItem
+  | SubSessionReplyItem
   | TextItem
   | ThinkItem
   | ToolItem
@@ -239,7 +268,11 @@ export class TranscriptFolder {
       return; // A payload we cannot read is not worth a crash.
     }
 
-    const base = { ordinal: envelope.ordinal, sub, key: `${envelope.ordinal}:${sub ?? 'main'}` };
+    const base = {
+      ordinal: envelope.ordinal,
+      sub,
+      key: `${envelope.ordinal}:${sub ?? 'main'}`,
+    };
     const str = (name: string) => (payload[name] as string) ?? '';
 
     switch (envelope.kind) {
@@ -296,7 +329,12 @@ export class TranscriptFolder {
 
         if (open !== undefined) {
           const started = this.items[open] as ToolItem;
-          this.replace(open, { ...started, result: str('result'), isError, running: false });
+          this.replace(open, {
+            ...started,
+            result: str('result'),
+            isError,
+            running: false,
+          });
           this.openTools.delete(`${sub ?? 'main'}:${name}`);
           break;
         }
@@ -370,7 +408,8 @@ export class TranscriptFolder {
       case 'ApprovalResolved': {
         const requestId = str('requestId');
         const at = this.items.findIndex(
-          (item): item is ApprovalItem => item.kind === 'approval' && item.requestId === requestId,
+          (item): item is ApprovalItem =>
+            item.kind === 'approval' && item.requestId === requestId,
         );
         if (at >= 0) {
           const card = this.items[at] as ApprovalItem;
@@ -393,7 +432,8 @@ export class TranscriptFolder {
       case 'QuestionAnswered': {
         const requestId = str('requestId');
         const at = this.items.findIndex(
-          (item): item is QuestionItem => item.kind === 'question' && item.requestId === requestId,
+          (item): item is QuestionItem =>
+            item.kind === 'question' && item.requestId === requestId,
         );
         if (at >= 0) {
           const card = this.items[at] as QuestionItem;
@@ -429,24 +469,43 @@ export class TranscriptFolder {
         break;
 
       case 'TurnCompleted':
-        this.add({ ...base, kind: 'note', text: 'done', tone: 'ok', turn: 'completed' });
+        this.add({
+          ...base,
+          kind: 'note',
+          text: 'done',
+          tone: 'ok',
+          turn: 'completed',
+        });
         break;
 
       case 'TurnCancelled':
-        this.add({ ...base, kind: 'note', text: 'stopped (by you)', tone: 'warn', turn: 'cancelled' });
+        this.add({
+          ...base,
+          kind: 'note',
+          text: 'stopped (by you)',
+          tone: 'warn',
+          turn: 'cancelled',
+        });
         break;
 
       case 'CompletionRetry':
         this.add({
           ...base,
           kind: 'note',
-          text: `retrying (${payload.attempt}/${payload.maxAttempts}) — ${str('reason')}`,
+          text: `retrying (${payload.attempt}/${payload.maxAttempts}) — ${str(
+            'reason',
+          )}`,
           tone: 'warn',
         });
         break;
 
       case 'SandboxStatus':
-        this.add({ ...base, kind: 'note', text: str('message'), tone: 'muted' });
+        this.add({
+          ...base,
+          kind: 'note',
+          text: str('message'),
+          tone: 'muted',
+        });
         break;
 
       case 'CheckpointRestored':
@@ -477,12 +536,47 @@ export class TranscriptFolder {
           model: str('model'),
           profile: str('profile') || 'general',
           routeReason: (payload.routeReason as string | null) ?? null,
+          persona: str('persona'),
+          color: str('color'),
+        });
+        break;
+
+      case 'SubSessionReplied':
+        this.add({
+          ...base,
+          kind: 'subsession-reply',
+          subSessionId: str('subSessionId'),
+          persona: str('persona'),
+          name: str('name'),
+          text: str('text'),
+          isError: payload.isError === true,
+          color: str('color'),
         });
         break;
 
       // The card reads its closed state off the sub-session itself; the close
-      // tool's own row already marks the moment in the stream.
+      // tool's own row already marks the moment in the stream. A revival has no
+      // tool row of its own — prompting renders as a prompt — so that one gets
+      // a note, and so does a profile change.
       case 'SubSessionClosed':
+        break;
+
+      case 'SubSessionReopened':
+        this.add({
+          ...base,
+          kind: 'note',
+          text: 'sub-session picked back up',
+          tone: 'muted',
+        });
+        break;
+
+      case 'SubSessionPromoted':
+        this.add({
+          ...base,
+          kind: 'note',
+          text: `sub-session promoted to ${str('profile')}`,
+          tone: 'muted',
+        });
         break;
 
       case 'SubagentEvent': {
@@ -522,7 +616,12 @@ function readImages(raw: unknown): ImageAttachment[] {
   for (const entry of raw) {
     if (!entry || typeof entry !== 'object') continue;
     const { mediaType, base64Data } = entry as Record<string, unknown>;
-    if (typeof mediaType !== 'string' || typeof base64Data !== 'string' || !base64Data) continue;
+    if (
+      typeof mediaType !== 'string' ||
+      typeof base64Data !== 'string' ||
+      !base64Data
+    )
+      continue;
     images.push({ mediaType, base64Data });
   }
   return images;
@@ -534,7 +633,9 @@ export function summarize(input: string, limit = 80): string {
   let text = input;
   try {
     const parsed = JSON.parse(input) as Record<string, unknown>;
-    const first = Object.values(parsed).find(v => typeof v === 'string') as string | undefined;
+    const first = Object.values(parsed).find(v => typeof v === 'string') as
+      | string
+      | undefined;
     text = first ?? input;
   } catch {
     // Not JSON; show it as-is.
@@ -574,7 +675,14 @@ export function groupSubagents(items: readonly Item[]): Row[] {
   const groupFor = (id: number, start?: SubagentStartItem): SubagentGroup => {
     let group = groups.get(id);
     if (!group) {
-      group = { kind: 'subagent', key: `sub:${id}`, subagentId: id, task: '', model: '', items: [] };
+      group = {
+        kind: 'subagent',
+        key: `sub:${id}`,
+        subagentId: id,
+        task: '',
+        model: '',
+        items: [],
+      };
       groups.set(id, group);
       rows.push(group); // anchored at first sight
     }

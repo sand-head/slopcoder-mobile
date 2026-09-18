@@ -1425,15 +1425,15 @@
     "name": "open a sub-session",
     "tool": "open_subsession",
     "input": {
-      "name": "push relay tests",
+      "name": "push relay",
       "prompt": "Add tests for the push relay.\nReport the files you touched.",
       "profile": "coder",
       "model": "claude-sonnet-5"
     },
-    "result": "[sub-session \u0022push relay tests\u0022 \u00B7 id 0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b \u00B7 turn 1 \u00B7 claude-sonnet-5]\nAdded tests/PushRelayTests.cs with 4 facts. Build green.",
+    "result": "Brought on Priya (push relay) on claude-sonnet-5 \u2014 starting on it now. Their reply does not come back to this call: it arrives on its own and starts a new turn for you.",
     "expected": {
-      "verb": "Open sub-session",
-      "subject": "push relay tests",
+      "verb": "Bring on",
+      "subject": "push relay",
       "subjectStyle": "plain",
       "facets": [
         "coder",
@@ -1452,7 +1452,7 @@
           "label": "result",
           "open": false,
           "tone": "plain",
-          "text": "Added tests/PushRelayTests.cs with 4 facts. Build green."
+          "text": "Brought on Priya (push relay) on claude-sonnet-5 \u2014 starting on it now. Their reply does not come back to this call: it arrives on its own and starts a new turn for you."
         }
       ]
     }
@@ -1461,12 +1461,122 @@
     "name": "prompt a sub-session",
     "tool": "prompt_subsession",
     "input": {
+      "subsession": "Priya",
+      "prompt": "Now cover the duplicate-subscriber case."
+    },
+    "result": "Sent to Priya (push relay) on claude-sonnet-5 \u2014 one earlier message of yours to finish first.",
+    "expected": {
+      "verb": "Send to",
+      "subject": "Priya",
+      "subjectStyle": "plain",
+      "facets": [],
+      "blocks": [
+        {
+          "type": "text",
+          "label": "prompt",
+          "open": false,
+          "tone": "plain",
+          "text": "Now cover the duplicate-subscriber case."
+        },
+        {
+          "type": "text",
+          "label": "result",
+          "open": false,
+          "tone": "plain",
+          "text": "Sent to Priya (push relay) on claude-sonnet-5 \u2014 one earlier message of yours to finish first."
+        }
+      ]
+    }
+  },
+  {
+    "name": "prompt a sub-session nobody answers to",
+    "tool": "prompt_subsession",
+    "input": {
+      "subsession": "Bartholomew",
+      "prompt": "Continue."
+    },
+    "result": "Error: you have no sub-session called \u0022Bartholomew\u0022.",
+    "isError": true,
+    "expected": {
+      "verb": "Send to",
+      "subject": "Bartholomew",
+      "subjectStyle": "plain",
+      "facets": [],
+      "blocks": [
+        {
+          "type": "text",
+          "label": "prompt",
+          "open": false,
+          "tone": "plain",
+          "text": "Continue."
+        },
+        {
+          "type": "text",
+          "label": "error",
+          "open": true,
+          "tone": "error",
+          "text": "Error: you have no sub-session called \u0022Bartholomew\u0022."
+        }
+      ]
+    }
+  },
+  {
+    "name": "promote a sub-session",
+    "tool": "promote_subsession",
+    "input": {
+      "subsession": "Priya",
+      "profile": "coder"
+    },
+    "result": "Priya now works with the coder profile.",
+    "expected": {
+      "verb": "Change profile",
+      "subject": "Priya",
+      "subjectStyle": "plain",
+      "facets": [],
+      "blocks": [
+        {
+          "type": "text",
+          "label": "result",
+          "open": false,
+          "tone": "plain",
+          "text": "Priya now works with the coder profile."
+        }
+      ]
+    }
+  },
+  {
+    "name": "close a sub-session",
+    "tool": "close_subsession",
+    "input": {
+      "subsession": "Priya"
+    },
+    "result": "Priya is set aside. Prompt them to bring them back.",
+    "expected": {
+      "verb": "Set aside",
+      "subject": "Priya",
+      "subjectStyle": "plain",
+      "facets": [],
+      "blocks": [
+        {
+          "type": "text",
+          "label": "result",
+          "open": false,
+          "tone": "plain",
+          "text": "Priya is set aside. Prompt them to bring them back."
+        }
+      ]
+    }
+  },
+  {
+    "name": "prompt a sub-session (legacy inlined reply)",
+    "tool": "prompt_subsession",
+    "input": {
       "subsession_id": "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
       "prompt": "Now cover the duplicate-subscriber case."
     },
     "result": "[sub-session \u0022push relay tests\u0022 \u00B7 id 0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b \u00B7 turn 2 \u00B7 claude-sonnet-5]\nAdded one more fact; all 5 pass.",
     "expected": {
-      "verb": "Prompt sub-session",
+      "verb": "Send to",
       "subject": "push relay tests",
       "subjectStyle": "plain",
       "facets": [],
@@ -1484,61 +1594,6 @@
           "open": false,
           "tone": "plain",
           "text": "Added one more fact; all 5 pass."
-        }
-      ]
-    }
-  },
-  {
-    "name": "prompt a sub-session that failed",
-    "tool": "prompt_subsession",
-    "input": {
-      "subsession_id": "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
-      "prompt": "Continue."
-    },
-    "result": "Error: sub-session \u0022push relay tests\u0022 is closed; open a new one.",
-    "isError": true,
-    "expected": {
-      "verb": "Prompt sub-session",
-      "subject": "0199a1b2",
-      "subjectStyle": "plain",
-      "facets": [],
-      "blocks": [
-        {
-          "type": "text",
-          "label": "prompt",
-          "open": false,
-          "tone": "plain",
-          "text": "Continue."
-        },
-        {
-          "type": "text",
-          "label": "error",
-          "open": true,
-          "tone": "error",
-          "text": "Error: sub-session \u0022push relay tests\u0022 is closed; open a new one."
-        }
-      ]
-    }
-  },
-  {
-    "name": "close a sub-session",
-    "tool": "close_subsession",
-    "input": {
-      "subsession_id": "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
-    },
-    "result": "Closed sub-session 0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b.",
-    "expected": {
-      "verb": "Close sub-session",
-      "subject": "0199a1b2",
-      "subjectStyle": "plain",
-      "facets": [],
-      "blocks": [
-        {
-          "type": "text",
-          "label": "result",
-          "open": false,
-          "tone": "plain",
-          "text": "Closed sub-session 0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b."
         }
       ]
     }

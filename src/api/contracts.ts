@@ -101,7 +101,11 @@ export interface ModelSelection {
   modelId?: string | null;
 }
 
-export const autoRoute: ModelSelection = { auto: true, connectionId: null, modelId: null };
+export const autoRoute: ModelSelection = {
+  auto: true,
+  connectionId: null,
+  modelId: null,
+};
 
 export interface FacetOption {
   name: string;
@@ -170,15 +174,32 @@ export interface AttachedNode {
  */
 export interface SubSessionInfo {
   id: string;
+  /** What it was brought on to cover ("push relay"), not what it is called. */
   name: string;
   model: string;
   profile: string;
   status: SessionStatus;
   /** Prompts the driving agent has sent so far. */
   turns: number;
-  /** The driving agent is done with it; it will not be prompted again. */
+  /**
+   * The driving agent set it aside. Not an ending: prompting it again revives
+   * it with everything it knows.
+   */
   closed: boolean;
   openedAt: string;
+  /**
+   * The name it goes by ("Ada") — how the driving agent addresses it and what
+   * this app calls it. Absent on sub-sessions made before personas, where the
+   * name is still the handle.
+   */
+  persona?: string;
+  /** Prompts waiting in its mailbox behind the one it is working on. */
+  queued?: number;
+  /**
+   * Its accent (`tintFor`), so one partner is the same shade everywhere. Absent
+   * renders untinted.
+   */
+  color?: string;
 }
 
 /**
@@ -222,7 +243,7 @@ export interface SessionState {
   /** Set on a sub-session: the session whose agent drives it. No composer there. */
   parentSessionId?: string | null;
   subSessionProfile?: string | null;
-  /** A sub-session its driving agent has closed. */
+  /** A sub-session its driving agent has set aside. Reversible: a prompt revives it. */
   closed?: boolean;
 }
 
@@ -362,7 +383,9 @@ export function newTokens(t: UsageTotals | ModelUsage): number {
 }
 
 export function totalTokens(t: UsageTotals | ModelUsage): number {
-  return t.inputTokens + t.outputTokens + t.cacheReadTokens + t.cacheWriteTokens;
+  return (
+    t.inputTokens + t.outputTokens + t.cacheReadTokens + t.cacheWriteTokens
+  );
 }
 
 export interface UsageBucket {
@@ -479,7 +502,11 @@ export interface PairRequest {
 }
 
 /** What the server says went wrong, in a form worth branching on. */
-export type LoginFailure = 'invalid' | 'inactive' | 'twofactor' | 'too-many-attempts';
+export type LoginFailure =
+  | 'invalid'
+  | 'inactive'
+  | 'twofactor'
+  | 'too-many-attempts';
 
 export interface ServerProtocol {
   executor: number;
@@ -1039,7 +1066,13 @@ export interface PermissionsCheck {
  * `SlopCoder.Contracts.ArtifactFormats`; a string on both sides on purpose, so
  * neither end can renumber the other into rendering a report as a spreadsheet.
  */
-export type ArtifactFormat = 'markdown' | 'text' | 'html' | 'json' | 'csv' | 'binary';
+export type ArtifactFormat =
+  | 'markdown'
+  | 'text'
+  | 'html'
+  | 'json'
+  | 'csv'
+  | 'binary';
 
 /** A published artifact, without its body. */
 export interface ArtifactSummary {

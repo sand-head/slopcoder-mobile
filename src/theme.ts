@@ -108,6 +108,45 @@ export const accent = {
   colorZinc900: '#18181b',
 } as const;
 
+/**
+ * Sub-session tints: one shade per partner, so Ada is the same colour on her
+ * card, on her replies, and everywhere the agent names her in prose. The server
+ * allocates these round-robin per parent (`SubSessionPalette`), never hashed
+ * and never random, so no two partners on a team collide. Emerald and amber are
+ * absent on purpose — they already mean ok and running here.
+ *
+ * Mirrors slopcoder's `--tint-*` tokens in app.css: the same hues, the same two
+ * lightness levels, written as hex because there is no oklch() in React Native.
+ */
+const tints = {
+  violet: { light: '#7645d8', dark: '#b39bff' },
+  amber: { light: '#8a6410', dark: '#e8c168' },
+  sky: { light: '#0e6f9e', dark: '#7cc6ec' },
+  rose: { light: '#c03259', dark: '#f79aae' },
+  teal: { light: '#0e6d70', dark: '#69c8c6' },
+  fuchsia: { light: '#a33396', dark: '#ec9ae0' },
+  indigo: { light: '#4a51c9', dark: '#9ba5f2' },
+  orange: { light: '#9c5117', dark: '#eaa377' },
+} as const;
+
+/**
+ * A partner's colour by name, or null when there is none to apply — a
+ * sub-session from before tints, or a name this build has never heard of. Null
+ * rather than a fallback shade: an untinted partner reads as untinted, where a
+ * wrong-but-present colour reads as a different partner.
+ */
+export function tintFor(
+  name: string | null | undefined,
+  dark: boolean,
+): string | null {
+  if (!name) return null;
+  const tint = tints[name as keyof typeof tints];
+  return tint ? (dark ? tint.dark : tint.light) : null;
+}
+
+/** Every tint name the server may send, for tests and pickers. */
+export const tintNames = Object.keys(tints) as readonly (keyof typeof tints)[];
+
 /** The lighter variant reads on the dark ground; the darker one on white. */
 export function statusColors(dark: boolean) {
   return {
