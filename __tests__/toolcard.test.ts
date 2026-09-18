@@ -50,6 +50,8 @@ function describe_(card: ToolCard): unknown {
     subjectStyle: card.subjectStyle,
     facets: card.facets,
     blocks: card.blocks.map(describeBlock),
+    // Written only when true, matching the C# encoder: an absent key is false.
+    ...(card.bare ? { bare: true } : null),
   };
 }
 

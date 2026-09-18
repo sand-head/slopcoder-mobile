@@ -78,6 +78,13 @@ export interface ToolCard {
   subjectStyle: SubjectStyle;
   facets: string[];
   blocks: ToolBlock[];
+  /**
+   * This card *is* its content: render the blocks and no header row. For the
+   * one call whose result is an object rather than an account of itself —
+   * publishing an artifact. A call that failed, or has not finished, is never
+   * bare: then there is an account to give, and it needs its mark and its verb.
+   */
+  bare?: boolean;
 }
 
 /** Short scalars promoted to header chips before the rest fall to a pairs block. */
@@ -886,6 +893,31 @@ function publishArtifact(input: Json | undefined, result: string | null, isError
   const format = str(input, 'format') ?? published.format;
   const name = str(input, 'slug') ?? published.slug;
 
+  // It worked and there is a thing: the thing is the card, and the transcript's
+  // usual header would only say its name a second time.
+  if (published.slug && !isError && name) {
+    return {
+      verb: 'Publish',
+      subject: null,
+      subjectStyle: 'plain',
+      facets: [],
+      bare: true,
+      blocks: [
+        {
+          type: 'artifact',
+          label: null,
+          open: true,
+          name,
+          kind: kindLabel(format),
+          size: published.size,
+          artifactId: published.artifactId,
+        },
+      ],
+    };
+  }
+
+  // Still running, refused, or a sentence we could not read: an account of the
+  // call, which is what the header row is for.
   const blocks: ToolBlock[] = [];
   if (name) {
     blocks.push({
@@ -894,24 +926,21 @@ function publishArtifact(input: Json | undefined, result: string | null, isError
       open: true,
       name,
       kind: kindLabel(format),
-      size: published.size,
-      artifactId: published.artifactId,
+      size: null,
+      artifactId: null,
     });
   }
 
   const description = str(input, 'description');
   if (description)
     blocks.push({ type: 'text', label: 'description', open: false, tone: 'plain', text: description });
-  // Where it came from, when it came from a file rather than from the model.
   const path = str(input, 'path');
   if (path) blocks.push({ type: 'text', label: 'file', open: false, tone: 'plain', text: path });
   const content = str(input, 'content');
   if (content) blocks.push({ type: 'text', label: 'content', open: false, tone: 'plain', text: content });
-  if (!published.slug) appendResult(blocks, result, isError, 'text');
+  appendResult(blocks, result, isError, 'text');
 
-  // Only a republish carries a version: every artifact was v1 once.
-  const facets = published.version ? [published.version] : [];
-  return { verb: 'Publish', subject: str(input, 'title'), subjectStyle: 'plain', facets, blocks };
+  return { verb: 'Publish', subject: str(input, 'title'), subjectStyle: 'plain', facets: [], blocks };
 }
 
 /** The format as a person would say it. Unknown formats keep their own word. */

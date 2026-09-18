@@ -55,6 +55,19 @@ export function ToolCard({
 
   const head = <Head card={card} state={state} expanded={expanded} hasChevron={hidden} />;
 
+  // A card that is its own content — a published artifact — goes into the
+  // transcript unwrapped: it has its own border, and a second one around it,
+  // with a header repeating the name above it, reads as a bug.
+  if (card.bare) {
+    return (
+      <View style={{ gap: 6 }}>
+        {card.blocks.map((block, index) => (
+          <Block key={index} block={block} />
+        ))}
+      </View>
+    );
+  }
+
   return (
     <View
       style={

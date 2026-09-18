@@ -63,6 +63,8 @@ it('names the file and its type without being opened', async () => {
   expect(shown).toContain('Markdown · 12.4 KB');
   // The sentence it was read from is not repeated underneath it.
   expect(shown).not.toContain('It is private until they share it.');
+  // Nor is the call wrapped in an account of itself: the card is the tool call.
+  expect(shown).not.toContain('Publish');
 });
 
 it('opens that artifact when the card is tapped', async () => {

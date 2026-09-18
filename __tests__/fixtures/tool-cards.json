@@ -1556,7 +1556,7 @@
     "result": "Published \u0022Battery chemistry landscape\u0022 as artifact \u0060battery-landscape\u0060 (markdown, 1.2 KB). The user can read it at /artifacts/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b. It is private until they share it.",
     "expected": {
       "verb": "Publish",
-      "subject": "Battery chemistry landscape",
+      "subject": null,
       "subjectStyle": "plain",
       "facets": [],
       "blocks": [
@@ -1568,22 +1568,9 @@
           "kind": "Markdown",
           "size": "1.2 KB",
           "artifactId": "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
-        },
-        {
-          "type": "text",
-          "label": "description",
-          "open": false,
-          "tone": "plain",
-          "text": "Where sodium-ion actually stands, with sources."
-        },
-        {
-          "type": "text",
-          "label": "content",
-          "open": false,
-          "tone": "plain",
-          "text": "# Battery chemistry\n\nSodium-ion is shipping in grid storage, not in cars.\n"
         }
-      ]
+      ],
+      "bare": true
     }
   },
   {
@@ -1598,11 +1585,9 @@
     "result": "Republished (v6) \u0022Overnight build log\u0022 as artifact \u0060overnight-build-log\u0060 (text, 84.2 KB). The user can read it at /artifacts/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b. It is private until they share it.",
     "expected": {
       "verb": "Publish",
-      "subject": "Overnight build log",
+      "subject": null,
       "subjectStyle": "plain",
-      "facets": [
-        "v6"
-      ],
+      "facets": [],
       "blocks": [
         {
           "type": "artifact",
@@ -1612,15 +1597,9 @@
           "kind": "Text",
           "size": "84.2 KB",
           "artifactId": "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
-        },
-        {
-          "type": "text",
-          "label": "file",
-          "open": false,
-          "tone": "plain",
-          "text": "home/logs/build.log"
         }
-      ]
+      ],
+      "bare": true
     }
   },
   {
