@@ -1558,11 +1558,17 @@
       "verb": "Publish",
       "subject": "Battery chemistry landscape",
       "subjectStyle": "plain",
-      "facets": [
-        "markdown",
-        "battery-landscape"
-      ],
+      "facets": [],
       "blocks": [
+        {
+          "type": "artifact",
+          "label": null,
+          "open": true,
+          "name": "battery-landscape",
+          "kind": "Markdown",
+          "size": "1.2 KB",
+          "artifactId": "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
+        },
         {
           "type": "text",
           "label": "description",
@@ -1576,13 +1582,6 @@
           "open": false,
           "tone": "plain",
           "text": "# Battery chemistry\n\nSodium-ion is shipping in grid storage, not in cars.\n"
-        },
-        {
-          "type": "text",
-          "label": "result",
-          "open": false,
-          "tone": "plain",
-          "text": "Published \u0022Battery chemistry landscape\u0022 as artifact \u0060battery-landscape\u0060 (markdown, 1.2 KB). The user can read it at /artifacts/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b. It is private until they share it."
         }
       ]
     }
@@ -1602,23 +1601,24 @@
       "subject": "Overnight build log",
       "subjectStyle": "plain",
       "facets": [
-        "text",
-        "overnight-build-log"
+        "v6"
       ],
       "blocks": [
+        {
+          "type": "artifact",
+          "label": null,
+          "open": true,
+          "name": "overnight-build-log",
+          "kind": "Text",
+          "size": "84.2 KB",
+          "artifactId": "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
+        },
         {
           "type": "text",
           "label": "file",
           "open": false,
           "tone": "plain",
           "text": "home/logs/build.log"
-        },
-        {
-          "type": "text",
-          "label": "result",
-          "open": false,
-          "tone": "plain",
-          "text": "Republished (v6) \u0022Overnight build log\u0022 as artifact \u0060overnight-build-log\u0060 (text, 84.2 KB). The user can read it at /artifacts/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b. It is private until they share it."
         }
       ]
     }
@@ -1666,11 +1666,19 @@
       "facets": [],
       "blocks": [
         {
-          "type": "text",
+          "type": "list",
           "label": "result",
           "open": false,
-          "tone": "plain",
-          "text": "- \u0060battery-landscape\u0060 \u2014 Battery chemistry landscape (markdown, 1.2 KB, v1, updated 2026-09-17)\n- \u0060overnight-build-log\u0060 \u2014 Overnight build log (text, 84.2 KB, v6, updated 2026-09-17)"
+          "entries": [
+            [
+              "- \u0060battery-landscape\u0060 \u2014 Battery chemistry landscape (markdown, 1.2 KB, v1, updated 2026-09-17)",
+              null
+            ],
+            [
+              "- \u0060overnight-build-log\u0060 \u2014 Overnight build log (text, 84.2 KB, v6, updated 2026-09-17)",
+              null
+            ]
+          ]
         }
       ]
     }

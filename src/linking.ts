@@ -24,6 +24,7 @@ export const linking: LinkingOptions<Record<string, any>> = {
         screens: {
           SessionsTab: { screens: { Sessions: 'sessions' } },
           RoutinesTab: { screens: { Routines: 'routines' } },
+          ArtifactsTab: { screens: { Artifacts: 'artifacts', Artifact: 'artifacts/:id' } },
           UsageTab: { screens: { Usage: 'usage' } },
           SettingsTab: {
             screens: {

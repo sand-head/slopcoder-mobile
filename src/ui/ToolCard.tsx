@@ -17,8 +17,9 @@
  * device. `__tests__/glyphs.test.ts` scans for it.
  */
 import React, { useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { Image, Pressable, ScrollView, View } from 'react-native';
 import type { DiffLine, ToolBlock, ToolCard as Card } from '../api/toolcard';
+import { useNavigation } from '@react-navigation/native';
 import { Body, Diamond, Dot, GLYPHS, Meta, Mono } from './kit';
 import { animateNextLayout } from './motion';
 import { font, mix, radius, useTheme } from '../theme';
@@ -264,6 +265,9 @@ function Block({ block }: { block: ToolBlock }) {
         </View>
       );
 
+    case 'artifact':
+      return <ArtifactCard block={block} />;
+
     case 'pairs':
       return (
         <View style={{ gap: 3 }}>
@@ -279,6 +283,78 @@ function Block({ block }: { block: ToolBlock }) {
         </View>
       );
   }
+}
+
+/**
+ * A published artifact, as a file card you tap to read.
+ *
+ * The cockpit puts Open and Download beside the name; a phone has one gesture
+ * for "open this" and no use for a second copy of a file it cannot put
+ * anywhere, so the whole card is the button and the destination is the artifact
+ * screen — where downloading, sharing and the unlisted link already live.
+ *
+ * A card with no id is a call waiting at the approval gate: it says what would
+ * be made, and does not pretend to open something that does not exist yet.
+ */
+function ArtifactCard({
+  block,
+}: {
+  block: Extract<ToolBlock, { type: 'artifact' }>;
+}) {
+  const { c } = useTheme();
+  const navigation = useNavigation<any>();
+  const open = block.artifactId
+    ? () =>
+        navigation.navigate('Tabs', {
+          screen: 'ArtifactsTab',
+          params: { screen: 'Artifact', params: { id: block.artifactId, title: block.name } },
+        })
+    : undefined;
+
+  return (
+    <Pressable
+      onPress={open}
+      disabled={!open}
+      accessibilityRole={open ? 'button' : undefined}
+      accessibilityLabel={`${block.name}, ${block.kind}${block.size ? `, ${block.size}` : ''}`}
+      style={({ pressed }) => ({
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        borderWidth: 1,
+        borderColor: c.border,
+        borderRadius: radius.md,
+        backgroundColor: pressed ? mix(c.mutedForeground, 10) : mix(c.muted, 35),
+        paddingHorizontal: 10,
+        paddingVertical: 9,
+      })}>
+      <View
+        style={{
+          width: 30,
+          height: 30,
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: radius.sm,
+          backgroundColor: mix(c.primary, 16),
+        }}>
+        {/* The tab bar's own icon, tinted — a glyph the bundled font lacks
+            fails silently, and this bitmap is already in the app. */}
+        <Image
+          source={require('../../assets/icons/artifacts.png')}
+          resizeMode="contain"
+          style={{ width: 15, height: 15, tintColor: c.primary }}
+        />
+      </View>
+      <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+        <Mono numberOfLines={1} style={{ color: c.foreground, fontSize: 12.5 }}>
+          {block.name}
+        </Mono>
+        <Meta style={{ fontSize: 10.5 }}>{block.size ? `${block.kind} · ${block.size}` : block.kind}</Meta>
+      </View>
+      {/* The same › every row that opens something wears. */}
+      {open ? <Mono style={{ fontSize: 15 }}>›</Mono> : null}
+    </Pressable>
+  );
 }
 
 function Diff({ lines }: { lines: DiffLine[] }) {

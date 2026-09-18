@@ -69,6 +69,8 @@ function describeBlock(block: ToolBlock): unknown {
       return { ...head, entries: block.entries.map(e => [e.text, e.detail]) };
     case 'pairs':
       return { ...head, pairs: block.pairs.map(p => [p.key, p.value]) };
+    case 'artifact':
+      return { ...head, name: block.name, kind: block.kind, size: block.size, artifactId: block.artifactId };
   }
 }
 

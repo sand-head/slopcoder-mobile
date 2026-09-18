@@ -55,7 +55,22 @@ export type ToolBlock =
   | (BlockBase & { type: 'code'; language: string | null; text: string })
   | (BlockBase & { type: 'diff'; lines: DiffLine[] })
   | (BlockBase & { type: 'list'; entries: ListEntry[] })
-  | (BlockBase & { type: 'pairs'; pairs: CardPair[] });
+  | (BlockBase & { type: 'pairs'; pairs: CardPair[] })
+  /**
+   * A published artifact, as the thing itself rather than as a sentence about
+   * it. Carries an id rather than a URL: the phone opens its own screen, the
+   * cockpit navigates its own route, and neither is told by the server how its
+   * own links are spelled. A null id is a call that has not run yet.
+   */
+  | (BlockBase & {
+      type: 'artifact';
+      /** The artifact's own name: its slug, not the prose title. */
+      name: string;
+      /** How to say the format to a person — "Markdown", "PDF". */
+      kind: string;
+      size: string | null;
+      artifactId: string | null;
+    });
 
 export interface ToolCard {
   verb: string;
@@ -437,7 +452,7 @@ function compose(tool: string, input: Json | undefined, result: string | null, i
     case 'publish_artifact':
       return publishArtifact(input, result, isError);
     case 'list_artifacts':
-      return named('Artifacts', null, result, isError);
+      return artifacts(result, isError);
     case 'read_artifact':
       return named('Read artifact', str(input, 'slug'), result, isError);
     case 'delete_artifact':
@@ -858,27 +873,135 @@ function saveMemory(input: Json | undefined, result: string | null, isError: boo
 }
 
 /**
- * Publishing reads as what it is: the title in the header, the format and slug
- * as chips, and — for something the agent wrote rather than a file it picked
- * up — the body behind the disclosure.
+ * Publishing made a thing, so the card is the thing: a header that says what
+ * happened, and under it the artifact itself — name, type, size — as something
+ * to open rather than to read about.
+ *
+ * Its details come back out of the tool's own sentence, which is then dropped:
+ * once its parts are the header and the card, repeating it whole is the noise a
+ * card exists to remove. A result we could not read still shows as it did.
  */
 function publishArtifact(input: Json | undefined, result: string | null, isError: boolean): ToolCard {
-  const facets: string[] = [];
-  const format = str(input, 'format');
-  if (format) facets.push(format);
-  const slug = str(input, 'slug');
-  if (slug) facets.push(slug);
+  const published = readPublished(result);
+  const format = str(input, 'format') ?? published.format;
+  const name = str(input, 'slug') ?? published.slug;
 
   const blocks: ToolBlock[] = [];
+  if (name) {
+    blocks.push({
+      type: 'artifact',
+      label: null,
+      open: true,
+      name,
+      kind: kindLabel(format),
+      size: published.size,
+      artifactId: published.artifactId,
+    });
+  }
+
   const description = str(input, 'description');
   if (description)
     blocks.push({ type: 'text', label: 'description', open: false, tone: 'plain', text: description });
+  // Where it came from, when it came from a file rather than from the model.
   const path = str(input, 'path');
   if (path) blocks.push({ type: 'text', label: 'file', open: false, tone: 'plain', text: path });
   const content = str(input, 'content');
   if (content) blocks.push({ type: 'text', label: 'content', open: false, tone: 'plain', text: content });
-  appendResult(blocks, result, isError, 'text');
+  if (!published.slug) appendResult(blocks, result, isError, 'text');
+
+  // Only a republish carries a version: every artifact was v1 once.
+  const facets = published.version ? [published.version] : [];
   return { verb: 'Publish', subject: str(input, 'title'), subjectStyle: 'plain', facets, blocks };
+}
+
+/** The format as a person would say it. Unknown formats keep their own word. */
+function kindLabel(format: string | null): string {
+  switch (format) {
+    case 'markdown':
+      return 'Markdown';
+    case 'text':
+      return 'Text';
+    case 'html':
+      return 'HTML';
+    case 'json':
+      return 'JSON';
+    case 'csv':
+      return 'CSV';
+    case 'binary':
+      return 'File';
+    case null:
+    case '':
+      return 'Artifact';
+    default:
+      return format;
+  }
+}
+
+/**
+ * The published list, as rows rather than as a paragraph — one artifact per
+ * line is what the tool writes and what a reader scans.
+ */
+function artifacts(result: string | null, isError: boolean): ToolCard {
+  const blocks: ToolBlock[] = [];
+  appendResult(blocks, result, isError, 'list', 'No artifacts published');
+  return { verb: 'Artifacts', subject: null, subjectStyle: 'plain', facets: [], blocks };
+}
+
+/**
+ * What `publish_artifact` said, taken apart. Four independent lookups rather
+ * than one match of the whole sentence: the wording is prose written for the
+ * model to read, and a card that went blank because a comma moved would be
+ * worse than one showing three facets out of four.
+ */
+function readPublished(result: string | null): {
+  slug: string | null;
+  format: string | null;
+  size: string | null;
+  version: string | null;
+  artifactId: string | null;
+} {
+  const none = { slug: null, format: null, size: null, version: null, artifactId: null };
+  if (!result) return none;
+
+  const slug = between(result, 'as artifact `', '`');
+  if (slug === null) return none;
+
+  // "(markdown, 12.4 KB)" — the shape that follows the slug.
+  let format: string | null = null;
+  let size: string | null = null;
+  const shape = between(result, '` (', ')');
+  if (shape !== null) {
+    const comma = shape.indexOf(', ');
+    if (comma > 0) {
+      format = shape.slice(0, comma);
+      size = shape.slice(comma + 2);
+    }
+  }
+
+  const bump = between(result, 'Republished (v', ')');
+  const version = bump ? `v${bump}` : null;
+
+  // The id, not the URL: each client spells its own route to an artifact.
+  let artifactId: string | null = null;
+  const marker = '/artifacts/';
+  const at = result.indexOf(marker);
+  if (at >= 0) {
+    const from = at + marker.length;
+    // A uuid has no dots, so the sentence's full stop is the end of it.
+    const end = result.slice(from).search(/[ .\n]/);
+    artifactId = end < 0 ? result.slice(from) : result.slice(from, from + end);
+  }
+
+  return { slug, format, size, version, artifactId };
+}
+
+/** The text between two markers, or null when either is missing. */
+function between(text: string, open: string, close: string): string | null {
+  const start = text.indexOf(open);
+  if (start < 0) return null;
+  const from = start + open.length;
+  const end = text.indexOf(close, from);
+  return end < 0 ? null : text.slice(from, end);
 }
 
 function memory(verb: string, input: Json | undefined, result: string | null, isError: boolean): ToolCard {
