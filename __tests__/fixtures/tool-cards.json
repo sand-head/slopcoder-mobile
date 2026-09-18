@@ -1545,6 +1545,54 @@
     }
   },
   {
+    "name": "move a sub-session to another model",
+    "tool": "promote_subsession",
+    "input": {
+      "subsession": "Priya",
+      "model": "claude-opus-5",
+      "effort": "high"
+    },
+    "result": "Priya now works with claude-opus-5 (their history carries over; the cache does not) and high effort, from their next turn.",
+    "expected": {
+      "verb": "Move to claude-opus-5",
+      "subject": "Priya",
+      "subjectStyle": "plain",
+      "facets": [],
+      "blocks": [
+        {
+          "type": "text",
+          "label": "result",
+          "open": false,
+          "tone": "plain",
+          "text": "Priya now works with claude-opus-5 (their history carries over; the cache does not) and high effort, from their next turn."
+        }
+      ]
+    }
+  },
+  {
+    "name": "call a sub-session off its work",
+    "tool": "stop_subsession",
+    "input": {
+      "subsession": "Priya"
+    },
+    "result": "Priya is off that work \u2014 their turn was cancelled mid-flight, so it is unfinished, and they sent no reply. They keep everything they know; prompt Priya with what to do instead.",
+    "expected": {
+      "verb": "Call off",
+      "subject": "Priya",
+      "subjectStyle": "plain",
+      "facets": [],
+      "blocks": [
+        {
+          "type": "text",
+          "label": "result",
+          "open": false,
+          "tone": "plain",
+          "text": "Priya is off that work \u2014 their turn was cancelled mid-flight, so it is unfinished, and they sent no reply. They keep everything they know; prompt Priya with what to do instead."
+        }
+      ]
+    }
+  },
+  {
     "name": "close a sub-session",
     "tool": "close_subsession",
     "input": {

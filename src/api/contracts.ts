@@ -195,6 +195,14 @@ export interface SubSessionInfo {
   persona?: string;
   /** Prompts waiting in its mailbox behind the one it is working on. */
   queued?: number;
+  // The server also reports what a partner is blocked on (waitingOn). The card
+  // reads that off the partner's own state instead — it subscribes to their
+  // stream, so it knows both that they are stopped and which approval it is —
+  // and this mirror carries only what the app actually uses.
+  /** Tokens it has cost so far (uncached input + cache writes + output). */
+  newTokens?: number;
+  /** The dollar estimate for those tokens, when its model has a known price. */
+  cost?: number | null;
   /**
    * Its accent (`tintFor`), so one partner is the same shade everywhere. Absent
    * renders untinted.

@@ -225,6 +225,30 @@ describe('TranscriptFolder', () => {
     ]);
   });
 
+  it('a promotion says what actually moved', () => {
+    const folder = new TranscriptFolder();
+
+    folder.fold([
+      // Only the model: a partner whose profile nobody touched must not read
+      // as promoted.
+      event('SubSessionPromoted', {
+        subSessionId: '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b',
+        model: 'claude-opus-5',
+        effort: 'High',
+      }),
+      // And an older server, which knows only about profiles.
+      event('SubSessionPromoted', {
+        subSessionId: '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b',
+        profile: 'coder',
+      }),
+    ]);
+
+    expect(folder.all.map(item => (item.kind === 'note' ? item.text : ''))).toEqual([
+      'sub-session moved to claude-opus-5 and set to high effort',
+      'sub-session promoted to coder',
+    ]);
+  });
+
   it('a revived or promoted sub-session leaves a note, and a failed reply says so', () => {
     const folder = new TranscriptFolder();
 

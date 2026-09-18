@@ -195,6 +195,26 @@ export type Item =
  */
 const FOLDED_TOOLS = new Set(['update_plan', 'ask_user_question']);
 
+/**
+ * What a promotion did, as one phrase — the twin of the server's
+ * `SubSessionMessage.Promotion`. Each field carries only what actually moved,
+ * so a partner whose profile nobody touched must not read as promoted; an
+ * older server sends a profile and nothing else, which still reads right.
+ */
+function promotion(
+  profile: string,
+  model: string,
+  effort: string,
+): string {
+  const parts: string[] = [];
+  if (profile) parts.push(`promoted to ${profile}`);
+  if (model) parts.push(`moved to ${model}`);
+  if (effort) parts.push(`set to ${effort.toLowerCase()} effort`);
+  if (parts.length === 0) return 'changed';
+  if (parts.length === 1) return parts[0];
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+}
+
 export class TranscriptFolder {
   private items: Item[] = [];
   private processed = 0;
@@ -583,7 +603,11 @@ export class TranscriptFolder {
         this.add({
           ...base,
           kind: 'note',
-          text: `sub-session promoted to ${str('profile')}`,
+          text: `sub-session ${promotion(
+            str('profile'),
+            str('model'),
+            str('effort'),
+          )}`,
           tone: 'muted',
         });
         break;

@@ -1286,14 +1286,18 @@ const TranscriptRow = React.memo(function Transcript({
       // Folded into its SubagentBlock by groupSubagents; nothing stands alone.
       return null;
 
-    case 'subsession':
+    case 'subsession': {
+      const known = roster.find(sub => sub.id === item.subSessionId);
       return (
         <SubSessionCard
           item={item}
-          queued={roster.find(sub => sub.id === item.subSessionId)?.queued ?? 0}
+          queued={known?.queued ?? 0}
+          spent={known?.newTokens ?? 0}
+          cost={known?.cost ?? null}
           onOpen={onOpenSubSession}
         />
       );
+    }
 
     case 'divider':
       return (

@@ -52,6 +52,8 @@ export function subSessionTail(
 export function SubSessionCard({
   item,
   queued = 0,
+  spent = 0,
+  cost = null,
   onOpen,
 }: {
   item: SubSessionItem;
@@ -61,6 +63,13 @@ export function SubSessionCard({
    * asynchronous world it is the answer to "has my last prompt been seen yet".
    */
   queued?: number;
+  /**
+   * What this partner has cost so far, from the parent's roster. Shown because
+   * a team is easy to forget about and each member spends on its own clock;
+   * absent (0) on a server that does not report it yet.
+   */
+  spent?: number;
+  cost?: number | null;
   onOpen: (id: string) => void;
 }) {
   const { c, status, isDark } = useTheme();
@@ -156,6 +165,7 @@ export function SubSessionCard({
         ) : null}
         <Mono numberOfLines={1} style={{ flex: 1, fontSize: 11 }}>
           {item.profile} · {item.model}
+          {spent > 0 ? ` · ${spend(spent, cost)}` : ''}
         </Mono>
         <View
           style={{
@@ -198,6 +208,22 @@ export function SubSessionCard({
       )}
     </View>
   );
+}
+
+/**
+ * What a partner has cost, rounded hard: this is for noticing a team member
+ * running away with the budget, not for accounting.
+ */
+function spend(tokens: number, cost: number | null): string {
+  const figure =
+    tokens < 1_000
+      ? `${tokens}`
+      : tokens < 1_000_000
+      ? `${(tokens / 1_000).toFixed(tokens < 10_000 ? 1 : 0)}k`
+      : `${(tokens / 1_000_000).toFixed(1)}M`;
+  return cost === null || cost === undefined
+    ? `${figure} tok`
+    : `${figure} tok ≈ $${cost.toFixed(2)}`;
 }
 
 /** One line of the tail, in the transcript's vocabulary but shorter. */

@@ -535,7 +535,14 @@ function compose(
       );
     case 'promote_subsession':
       return named(
-        'Change profile',
+        promoteVerb(input),
+        str(input, 'subsession') ?? shortId(str(input, 'subsession_id')),
+        result,
+        isError,
+      );
+    case 'stop_subsession':
+      return named(
+        'Call off',
         str(input, 'subsession') ?? shortId(str(input, 'subsession_id')),
         result,
         isError,
@@ -1124,6 +1131,18 @@ function subSession(
     });
   appendResult(blocks, stripSubSessionHeader(result), isError, 'text');
   return { verb, subject, subjectStyle: 'plain', facets, blocks };
+}
+
+/**
+ * What a promotion is called depends on what moved: the model is the part a
+ * reader wants on the card, since it is the one that costs.
+ */
+function promoteVerb(input: Json | undefined): string {
+  const model = str(input, 'model');
+  if (model !== null && model.length > 0) return `Move to ${model}`;
+  if (str(input, 'profile')) return 'Change profile';
+  if (str(input, 'effort')) return 'Change effort';
+  return 'Change';
 }
 
 const SUB_SESSION_HEADER = '[sub-session "';
