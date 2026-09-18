@@ -963,13 +963,13 @@ function readPublished(result: string | null): {
   const none = { slug: null, format: null, size: null, version: null, artifactId: null };
   if (!result) return none;
 
-  const slug = between(result, 'as artifact `', '`');
+  const slug = textBetween(result, 'as artifact `', '`');
   if (slug === null) return none;
 
   // "(markdown, 12.4 KB)" — the shape that follows the slug.
   let format: string | null = null;
   let size: string | null = null;
-  const shape = between(result, '` (', ')');
+  const shape = textBetween(result, '` (', ')');
   if (shape !== null) {
     const comma = shape.indexOf(', ');
     if (comma > 0) {
@@ -978,7 +978,7 @@ function readPublished(result: string | null): {
     }
   }
 
-  const bump = between(result, 'Republished (v', ')');
+  const bump = textBetween(result, 'Republished (v', ')');
   const version = bump ? `v${bump}` : null;
 
   // The id, not the URL: each client spells its own route to an artifact.
@@ -996,7 +996,7 @@ function readPublished(result: string | null): {
 }
 
 /** The text between two markers, or null when either is missing. */
-function between(text: string, open: string, close: string): string | null {
+function textBetween(text: string, open: string, close: string): string | null {
   const start = text.indexOf(open);
   if (start < 0) return null;
   const from = start + open.length;
