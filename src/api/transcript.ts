@@ -150,9 +150,10 @@ export interface SubSessionItem extends BaseItem {
 
 /**
  * A sub-session's reply arriving. Sub-sessions run on their own clock, so a
- * reply does not return to anyone — it *starts a turn* for the driving agent,
- * and this is that turn's prompt. It is its own item rather than a `user` one
- * because nobody typed it, and the transcript must never suggest otherwise.
+ * reply does not return to anyone: it reaches the driving agent on its own —
+ * interrupting the turn the agent was having, or starting one if it was idle.
+ * It is its own item rather than a `user` one because nobody typed it, and the
+ * transcript must never suggest otherwise.
  */
 export interface SubSessionReplyItem extends BaseItem {
   kind: 'subsession-reply';
@@ -163,6 +164,13 @@ export interface SubSessionReplyItem extends BaseItem {
   text: string;
   isError: boolean;
   color: string;
+  /**
+   * It landed inside a turn the agent was already having, rather than starting
+   * one. Worth saying: the same card in the middle of a turn means something
+   * different from one at the top of it. False on rows from before the server
+   * could interrupt.
+   */
+  interjected: boolean;
 }
 
 export type Item =
@@ -551,6 +559,7 @@ export class TranscriptFolder {
           text: str('text'),
           isError: payload.isError === true,
           color: str('color'),
+          interjected: payload.interjected === true,
         });
         break;
 

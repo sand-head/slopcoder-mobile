@@ -997,7 +997,9 @@ const TranscriptRow = React.memo(function Transcript({
         >
           <Meta style={{ color: c.primary, fontSize: 10.5 }}>
             {parentDriven
-              ? 'parent agent'
+              ? item.steering
+                ? 'parent agent · mid-turn'
+                : 'parent agent'
               : item.steering
               ? 'you · steering'
               : 'you'}
@@ -1014,9 +1016,11 @@ const TranscriptRow = React.memo(function Transcript({
       );
 
     case 'subsession-reply': {
-      // A partner's reply is why the turn under it began, so it reads the way a
-      // prompt does — a card with a name on it — in their colour rather than
-      // the user's. Never the 'you' card: nobody typed this.
+      // A partner's reply reads the way a prompt does — a card with a name on
+      // it — in their colour rather than the user's. Never the 'you' card:
+      // nobody typed this. One that arrived mid-turn says so, because the same
+      // card inside a turn means something different from one at the top of it:
+      // it did not start what follows, it interrupted it.
       const tint = tintFor(item.color, isDark) ?? status.subagent;
       const who = item.persona || item.name;
       return (
@@ -1037,6 +1041,7 @@ const TranscriptRow = React.memo(function Transcript({
               {who}
               {item.name && item.name !== who ? ` · ${item.name}` : ''}
               {item.isError ? ' · hit an error' : ''}
+              {item.interjected ? ' · mid-turn' : ''}
             </Meta>
           </View>
           <Body

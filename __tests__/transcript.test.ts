@@ -196,7 +196,32 @@ describe('TranscriptFolder', () => {
         text: 'Relay.cs, Push.cs and Dedupe.cs are the ones that matter.',
         isError: false,
         color: 'violet',
+        // No flag on the wire (or an older server): it started the turn.
+        interjected: false,
       }),
+    ]);
+  });
+
+  it('a reply that interrupted the agent says so', () => {
+    const folder = new TranscriptFolder();
+
+    folder.fold([
+      event('SubSessionReplied', {
+        subSessionId: '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b',
+        persona: 'Ada',
+        name: 'push relay',
+        turn: 4,
+        text: 'the relay tests pass now.',
+        isError: false,
+        color: 'violet',
+        interjected: true,
+      }),
+    ]);
+
+    // Same card, different meaning: this one landed inside a turn the agent was
+    // already having rather than being the reason one began.
+    expect(folder.all).toEqual([
+      expect.objectContaining({ kind: 'subsession-reply', interjected: true }),
     ]);
   });
 
