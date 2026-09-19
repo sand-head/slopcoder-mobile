@@ -8,7 +8,8 @@
  * The Codex sign-in is not here — it is a flow, not a form.
  */
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Alert, Platform, ScrollView, View } from 'react-native';
+import { Alert, Platform, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ProviderKind } from '../../api/contracts';
 import { PROVIDER_PRESETS, providerForm } from '../../api/settings';
@@ -20,6 +21,7 @@ import { ConnectionBanner } from '../../ui/ConnectionBanner';
 import { useHeaderInset } from '../../navigation/headers';
 import { tapConfirm, tapError } from '../../ui/haptics';
 import { useTheme } from '../../theme';
+import { KEYBOARD_GAP } from '../../ui/keyboard';
 
 export function ProviderEditorScreen({ route, navigation }: { route: any; navigation: any }) {
   const { c } = useTheme();
@@ -116,11 +118,16 @@ export function ProviderEditorScreen({ route, navigation }: { route: any; naviga
         <ConnectionBanner />
       </View>
 
-      <ScrollView
+      <KeyboardAwareScrollView
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 24, gap: 18 }}
         keyboardShouldPersistTaps="handled"
-        automaticallyAdjustKeyboardInsets
+        // Scrolls the field being typed in clear of the keyboard, and only
+        // when the keyboard would actually cover it — see ui/keyboard.ts for
+        // what the prop this replaced did instead. Layout mode keeps the
+        // scroll view unwrapped, where the large title can find it.
+        bottomOffset={KEYBOARD_GAP}
+        mode="layout"
         keyboardDismissMode="interactive">
         <Hint>{words.description}</Hint>
         {error ? <Problem>{error}</Problem> : null}
@@ -174,7 +181,7 @@ export function ProviderEditorScreen({ route, navigation }: { route: any; naviga
         ) : null}
 
         {busy ? <Body style={{ fontSize: 13 }}>Validating…</Body> : null}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       <Sheet visible={presetSheet} title="Preset" onClose={() => setPresetSheet(false)}>
         <SheetGroup

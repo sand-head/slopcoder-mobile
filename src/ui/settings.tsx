@@ -11,17 +11,18 @@ import {
   ActivityIndicator,
   Pressable,
   RefreshControl,
-  ScrollView,
   Switch,
   TextInput,
   View,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Body, Check, Field, Hint, Meta, Mono, Skeleton } from './kit';
 import { OverflowMenu, type MenuItem } from './menu';
 import { ConnectionBanner } from './ConnectionBanner';
 import { font, mix, radius, useTheme } from '../theme';
+import { KEYBOARD_GAP } from './keyboard';
 
 /**
  * Load once, again whenever the page is focused (an editor over it may have
@@ -95,19 +96,25 @@ export function SettingsPage({
 }) {
   const { c } = useTheme();
   return (
-    <ScrollView
+    <KeyboardAwareScrollView
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={{ padding: 20, paddingBottom: 40, gap: 18 }}
       keyboardShouldPersistTaps={keyboard ? 'handled' : undefined}
       keyboardDismissMode={keyboard ? 'interactive' : undefined}
-      automaticallyAdjustKeyboardInsets={keyboard}
+      // Scrolls the field being typed in clear of the keyboard, and only when
+      // the keyboard would actually cover it — see ui/keyboard.ts for what the
+      // prop this replaced did instead. Layout mode keeps the scroll view
+      // unwrapped, where the large title can find it.
+      enabled={keyboard}
+      bottomOffset={KEYBOARD_GAP}
+      mode="layout"
       refreshControl={
         onRefresh ? <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} tintColor={c.mutedForeground} /> : undefined
       }>
       <ConnectionBanner onRetry={onRefresh} />
       {error ? <Problem>{error}</Problem> : null}
       {loading ? <Skeleton rows={3} /> : children}
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

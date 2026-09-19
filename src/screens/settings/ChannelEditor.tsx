@@ -10,7 +10,8 @@
  */
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Alert, Platform, ScrollView, View } from 'react-native';
+import { Alert, Platform, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { ChannelKind, type ChannelDraft, type ChannelSummary } from '../../api/contracts';
 import { CHANNEL_KINDS, channelFormOf, channelSettingsJson, emptyChannelForm, type ChannelForm } from '../../api/settings';
 import { useAuth } from '../../state/auth';
@@ -20,6 +21,7 @@ import { BarText, ChoiceRow, FormField, Problem } from '../../ui/settings';
 import { ConnectionBanner } from '../../ui/ConnectionBanner';
 import { useHeaderInset } from '../../navigation/headers';
 import { tapConfirm, tapError, tapSelect } from '../../ui/haptics';
+import { KEYBOARD_GAP } from '../../ui/keyboard';
 
 function kindLabel(kind: ChannelKind): string {
   return CHANNEL_KINDS.find(k => k.kind === kind)?.label ?? 'Channel';
@@ -310,11 +312,16 @@ export function ChannelEditorScreen({ route, navigation }: { route: any; navigat
         <ConnectionBanner />
       </View>
 
-      <ScrollView
+      <KeyboardAwareScrollView
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 24, gap: 18 }}
         keyboardShouldPersistTaps="handled"
-        automaticallyAdjustKeyboardInsets
+        // Scrolls the field being typed in clear of the keyboard, and only
+        // when the keyboard would actually cover it — see ui/keyboard.ts for
+        // what the prop this replaced did instead. Layout mode keeps the
+        // scroll view unwrapped, where the large title can find it.
+        bottomOffset={KEYBOARD_GAP}
+        mode="layout"
         keyboardDismissMode="interactive">
         {error ? <Problem>{error}</Problem> : null}
 
@@ -339,7 +346,7 @@ export function ChannelEditorScreen({ route, navigation }: { route: any; navigat
         {fields}
 
         {creating ? <Hint>Nobody reaches the agent until you pair them: an unknown sender gets a code and nothing else.</Hint> : null}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       <Sheet visible={kindSheet} title="Kind" onClose={() => setKindSheet(false)}>
         <SheetGroup

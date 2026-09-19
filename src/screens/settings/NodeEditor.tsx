@@ -9,7 +9,8 @@
  * the list is where the key can be re-viewed later, so it owns that sheet.
  */
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Alert, Platform, ScrollView, View } from 'react-native';
+import { Alert, Platform, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { RemoteNodeSummary } from '../../api/contracts';
 import { useAuth } from '../../state/auth';
@@ -19,6 +20,7 @@ import { BarText, CodeBox, FormField, Problem } from '../../ui/settings';
 import { ConnectionBanner } from '../../ui/ConnectionBanner';
 import { useHeaderInset } from '../../navigation/headers';
 import { tapConfirm, tapError, tapSelect } from '../../ui/haptics';
+import { KEYBOARD_GAP } from '../../ui/keyboard';
 
 export function NodeEditorScreen({ route, navigation }: { route: any; navigation: any }) {
   const insets = useSafeAreaInsets();
@@ -142,11 +144,16 @@ export function NodeEditorScreen({ route, navigation }: { route: any; navigation
         <ConnectionBanner />
       </View>
 
-      <ScrollView
+      <KeyboardAwareScrollView
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 24, gap: 18 }}
         keyboardShouldPersistTaps="handled"
-        automaticallyAdjustKeyboardInsets
+        // Scrolls the field being typed in clear of the keyboard, and only
+        // when the keyboard would actually cover it — see ui/keyboard.ts for
+        // what the prop this replaced did instead. Layout mode keeps the
+        // scroll view unwrapped, where the large title can find it.
+        bottomOffset={KEYBOARD_GAP}
+        mode="layout"
         keyboardDismissMode="interactive">
         {error ? <Problem>{error}</Problem> : null}
 
@@ -212,7 +219,7 @@ export function NodeEditorScreen({ route, navigation }: { route: any; navigation
             hint={`Unencrypted OpenSSH, PKCS#8, or PuTTY format.${creating ? '' : ' Leave empty to keep the stored key.'}`}
           />
         ) : null}
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </Screen>
   );
 }

@@ -26,6 +26,14 @@
 import { useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+/**
+ * The gap a form keeps between the field being typed in and the keyboard's top
+ * edge. A field flush against the keys reads as covered even when it is not,
+ * and on a page whose next control is right under the field — a Save row, the
+ * second half of a pair — that control is the thing you are about to reach for.
+ */
+export const KEYBOARD_GAP = 16;
+
 export type KeyboardOffset = { closed: number; opened: number };
 
 export function useKeyboardOffset(): KeyboardOffset {

@@ -109,6 +109,33 @@ describe('the wiring under it', () => {
     expect(app).toContain('<KeyboardProvider>');
   });
 
+  /**
+   * Every scroll view with a field in it is the library's now. The prop they
+   * all used asks the first responder where it is and reads any answer it
+   * cannot get as "shift the content up by a whole keyboard" — which is how
+   * the sessions page came to scroll its own composer off the top. Named in
+   * prose above; this looks for it written as a prop.
+   */
+  it('has no page left adjusting its own keyboard insets', () => {
+    const src = path.join(root, 'src');
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/\.tsx?$/.test(entry.name)) {
+          const lines = fs.readFileSync(full, 'utf8').split('\n');
+          if (lines.some(line => /^\s*automaticallyAdjustKeyboardInsets\b/.test(line))) {
+            offenders.push(path.relative(src, full));
+          }
+        }
+      }
+    };
+    walk(src);
+
+    expect(offenders).toEqual([]);
+  });
+
   it('compiles the worklets the tracker runs on the UI thread', () => {
     const babel = fs.readFileSync(path.join(root, 'babel.config.js'), 'utf8');
 

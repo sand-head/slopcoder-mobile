@@ -26,6 +26,7 @@ import {
   View,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { KEYBOARD_GAP } from '../ui/keyboard';
 import {
   ApprovalMode,
   DeleteResult,
@@ -307,7 +308,7 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
         // focused field only when that field is inside *this* scroll view and
         // the keyboard would actually cover it, and it puts the page back
         // where it was when the keyboard goes down.
-        bottomOffset={12}
+        bottomOffset={KEYBOARD_GAP}
         // Layout mode: the space for the keyboard is a spacer at the end of
         // the content rather than a decorator wrapped around the scroll view,
         // and a wrapper is exactly what hides this list from the large title.

@@ -21,11 +21,11 @@ import {
   Alert,
   Pressable,
   RefreshControl,
-  ScrollView,
   Switch,
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import {
   AutomationKind,
   AutomationRunStatus,
@@ -71,6 +71,7 @@ import { useHeaderInset } from '../navigation/headers';
 import { OverflowMenu } from '../ui/menu';
 import { tapConfirm, tapRefuse, tapSelect } from '../ui/haptics';
 import { font, mix, radius, useTheme } from '../theme';
+import { KEYBOARD_GAP } from '../ui/keyboard';
 
 /** How many runs one page of the log carries. */
 const PAGE = 30;
@@ -349,16 +350,19 @@ export function RoutineScreen({ route, navigation }: { route: any; navigation: a
         <ConnectionBanner onRetry={load} />
       </View>
 
-      <ScrollView
+      <KeyboardAwareScrollView
         contentInsetAdjustmentBehavior="automatic"
         // A pushed screen has no tab bar under it, so the page's own foot has
         // to clear the home indicator.
         contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 24, gap: 16 }}
         keyboardShouldPersistTaps="handled"
-        // The prompt editor sits at the foot of this page; without these the
-        // keyboard covered it and the Save row, and the page could not scroll
-        // to the caret.
-        automaticallyAdjustKeyboardInsets
+        // The prompt editor sits at the foot of this page, where the keyboard
+        // covers it: this scrolls it clear, and puts the page back afterwards.
+        // See ui/keyboard.ts for what the prop this replaced did instead.
+        // Layout mode keeps the scroll view unwrapped, where the large title
+        // can find it.
+        bottomOffset={KEYBOARD_GAP}
+        mode="layout"
         keyboardDismissMode="interactive"
         refreshControl={
           <RefreshControl
@@ -626,7 +630,7 @@ export function RoutineScreen({ route, navigation }: { route: any; navigation: a
             ) : null}
           </>
         ) : null}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       <Sheet visible={modelSheet} title="Model" onClose={() => setModelSheet(false)}>
         <SheetGroup

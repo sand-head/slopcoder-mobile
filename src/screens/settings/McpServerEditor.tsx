@@ -5,7 +5,8 @@
  * blank, because stored values never come back across the seam.
  */
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Alert, Platform, ScrollView } from 'react-native';
+import { Alert, Platform } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { McpTransportKind, type McpServerSummary } from '../../api/contracts';
 import { parseSecrets, splitLines } from '../../api/settings';
@@ -17,6 +18,7 @@ import { ConnectionBanner } from '../../ui/ConnectionBanner';
 import { useHeaderInset } from '../../navigation/headers';
 import { tapConfirm, tapError, tapSelect } from '../../ui/haptics';
 import { View } from 'react-native';
+import { KEYBOARD_GAP } from '../../ui/keyboard';
 
 const ARGS_PLACEHOLDER = '-y\n@modelcontextprotocol/server-filesystem\n/workspace';
 
@@ -133,11 +135,16 @@ export function McpServerEditorScreen({ route, navigation }: { route: any; navig
         <ConnectionBanner />
       </View>
 
-      <ScrollView
+      <KeyboardAwareScrollView
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 24, gap: 18 }}
         keyboardShouldPersistTaps="handled"
-        automaticallyAdjustKeyboardInsets
+        // Scrolls the field being typed in clear of the keyboard, and only
+        // when the keyboard would actually cover it — see ui/keyboard.ts for
+        // what the prop this replaced did instead. Layout mode keeps the
+        // scroll view unwrapped, where the large title can find it.
+        bottomOffset={KEYBOARD_GAP}
+        mode="layout"
         keyboardDismissMode="interactive">
         {error ? <Problem>{error}</Problem> : null}
 
@@ -198,7 +205,7 @@ export function McpServerEditorScreen({ route, navigation }: { route: any; navig
             ) : undefined
           }
         />
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </Screen>
   );
 }

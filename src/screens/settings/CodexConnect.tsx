@@ -9,7 +9,8 @@
  * go straight to the server to be encrypted.
  */
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Linking, Platform, ScrollView, View } from 'react-native';
+import { Linking, Platform, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CodexPollStatus, type CodexDeviceStart } from '../../api/contracts';
 import { timeSpanMs } from '../../api/settings';
@@ -20,6 +21,7 @@ import { ConnectionBanner } from '../../ui/ConnectionBanner';
 import { useHeaderInset } from '../../navigation/headers';
 import { tapError, tapSuccess } from '../../ui/haptics';
 import { font, useTheme } from '../../theme';
+import { KEYBOARD_GAP } from '../../ui/keyboard';
 
 /** How long a device code is worth polling for. */
 const DEADLINE_MS = 15 * 60 * 1000;
@@ -165,11 +167,16 @@ export function CodexConnectScreen({ navigation }: { navigation: any }) {
         <ConnectionBanner />
       </View>
 
-      <ScrollView
+      <KeyboardAwareScrollView
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 24, gap: 18 }}
         keyboardShouldPersistTaps="handled"
-        automaticallyAdjustKeyboardInsets
+        // Scrolls the field being typed in clear of the keyboard, and only
+        // when the keyboard would actually cover it — see ui/keyboard.ts for
+        // what the prop this replaced did instead. Layout mode keeps the
+        // scroll view unwrapped, where the large title can find it.
+        bottomOffset={KEYBOARD_GAP}
+        mode="layout"
         keyboardDismissMode="interactive">
         <View style={{ gap: 6 }}>
           <Body style={{ fontFamily: font.sansMedium }}>ChatGPT subscription (Codex)</Body>
@@ -218,7 +225,7 @@ export function CodexConnectScreen({ navigation }: { navigation: any }) {
             ) : null}
           </View>
         )}
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </Screen>
   );
 }
