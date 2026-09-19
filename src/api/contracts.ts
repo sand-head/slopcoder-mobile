@@ -1090,6 +1090,13 @@ export interface ArtifactSummary {
   format: ArtifactFormat;
   contentType: string;
   description: string;
+  /**
+   * The opening of the body, for a card that shows the artifact rather than
+   * describing it. Empty for a binary one — there is nothing to read, and the
+   * card draws the format instead. Markdown arrives as markdown, with any
+   * fence the cut left open closed again; HTML arrives as its words.
+   */
+  preview: string;
   /** The body's size in bytes, text measured as UTF-8. */
   size: number;
   /** Bumped each time the agent republishes this slug. */

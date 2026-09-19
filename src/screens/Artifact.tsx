@@ -87,7 +87,7 @@ export function ArtifactScreen({ route, navigation }: { route: any; navigation: 
         <>
           <View style={{ gap: 4 }}>
             {artifact.description.length > 0 ? <Body style={{ fontSize: 14 }}>{artifact.description}</Body> : null}
-            <Mono>{`${artifact.format} · ${artifactMeta(artifact)}`}</Mono>
+            <Mono>{`${artifact.format} · ${artifact.slug} · ${artifactMeta(artifact)}`}</Mono>
             {artifact.routineName ? <Mono>{`from the ${artifact.routineName} routine`}</Mono> : null}
           </View>
 

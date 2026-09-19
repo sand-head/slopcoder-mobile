@@ -5,35 +5,20 @@
  * the session that made them, which is the whole reason they exist rather than
  * being files in a sandbox nobody can reach from a phone. So this is a tab of
  * its own rather than a row inside Settings.
+ *
+ * A card each, and the card shows the document rather than describing it. A
+ * list of titles makes you remember which report was which; the opening of each
+ * one, drawn small, does not.
  */
 import React, { useLayoutEffect } from 'react';
-import { Alert } from 'react-native';
+import { Alert, View } from 'react-native';
 import type { ArtifactSummary } from '../api/contracts';
 import { useAuth } from '../state/auth';
-import { Hint } from '../ui/kit';
-import { Empty, ListRow, Section, SettingsPage, useFocusLoad } from '../ui/settings';
+import { ArtifactCard, artifactMeta, bytes } from '../ui/ArtifactCard';
+import { Empty, SettingsPage, useFocusLoad } from '../ui/settings';
 import { tapConfirm, tapError } from '../ui/haptics';
 
-/** "12.4 KB" — the same wording the cockpit and `slop` use. */
-export function bytes(size: number): string {
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${trim(size / 1024)} KB`;
-  return `${trim(size / (1024 * 1024))} MB`;
-}
-
-function trim(value: number): string {
-  return value.toFixed(1).replace(/\.0$/, '');
-}
-
-/** "battery-landscape · 12.4 KB · v3 · 17 Sep" — what a row says under its title. */
-export function artifactMeta(artifact: ArtifactSummary): string {
-  const parts = [artifact.slug, bytes(artifact.size)];
-  if (artifact.version > 1) parts.push(`v${artifact.version}`);
-  parts.push(
-    new Date(artifact.updatedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }),
-  );
-  return parts.join(' · ');
-}
+export { artifactMeta, bytes };
 
 export function ArtifactsScreen({ navigation }: { navigation: any }) {
   const seam = useAuth(s => s.seam);
@@ -69,23 +54,15 @@ export function ArtifactsScreen({ navigation }: { navigation: any }) {
       onRefresh={list.refresh}
       error={list.error}
       loading={list.data === null && !list.error}>
-      <Hint>
-        What the agent published — research it wrote up, files a routine generated. These outlive the session that made
-        them. Open one to read it, or to give it an unlisted link anyone can read.
-      </Hint>
       {list.data?.length === 0 ? (
         <Empty>Nothing published yet. Ask the agent to write something up and publish it.</Empty>
       ) : null}
       {list.data && list.data.length > 0 ? (
-        <Section label="published" count={list.data.length}>
+        <View style={{ gap: 14 }}>
           {list.data.map(artifact => (
-            <ListRow
+            <ArtifactCard
               key={artifact.id}
-              title={artifact.title}
-              subtitle={artifactMeta(artifact)}
-              tag={artifact.shared ? 'shared' : artifact.format}
-              tagTone={artifact.shared ? 'ok' : 'muted'}
-              chevron
+              artifact={artifact}
               onPress={() => open(artifact)}
               menu={[
                 { key: 'open', title: 'Open', symbol: 'doc.text', onPress: () => open(artifact) },
@@ -93,7 +70,7 @@ export function ArtifactsScreen({ navigation }: { navigation: any }) {
               ]}
             />
           ))}
-        </Section>
+        </View>
       ) : null}
     </SettingsPage>
   );

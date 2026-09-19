@@ -1,10 +1,12 @@
 /**
  * The artifact screens, mounted — because nothing else here can be.
  *
- * Two things are worth holding still. The list has to say what an artifact *is*
- * without opening it, and the detail screen has to be honest about the share
- * switch in both states: an "Unlisted link" row that only explains itself when
- * it is already on is a switch people flip to find out what it does.
+ * Three things are worth holding still. The list has to say what an artifact
+ * *is* without opening it; it has to *show* it, which is the whole point of a
+ * card and the one part of it a screenshot would catch and a diff would not;
+ * and the detail screen has to be honest about the share switch in both states,
+ * because an "Unlisted link" row that only explains itself once it is already
+ * on is a switch people flip to find out what it does.
  */
 import React from 'react';
 import { act, create } from 'react-test-renderer';
@@ -17,6 +19,7 @@ const report: ArtifactSummary = {
   format: 'markdown',
   contentType: 'text/markdown; charset=utf-8',
   description: 'Where sodium-ion actually stands.',
+  preview: '# Findings\n\nSodium-ion is shipping in grid storage, and the cell makers know it.',
   size: 4096,
   version: 3,
   sessionId: 's-1',
@@ -38,6 +41,7 @@ const log: ArtifactSummary = {
   format: 'text',
   contentType: 'text/plain; charset=utf-8',
   description: '',
+  preview: '04:12  build started\n04:19  bundle written',
   size: 700,
   version: 1,
   routineId: 'r-1',
@@ -112,12 +116,36 @@ describe('the artifacts list', () => {
     const shown = text(tree);
 
     expect(shown).toContain('Battery chemistry landscape');
-    expect(shown).toContain('battery-landscape · 4 KB · v3');
+    expect(shown).toContain('markdown · 4 KB · v3');
     // A version of 1 is the ordinary case and says nothing.
-    expect(shown).toContain('overnight-build-log · 700 B ·');
-    // The tag is the format, unless the link is out — which matters more.
-    expect(shown).toContain('markdown');
+    expect(shown).toContain('text · 700 B ·');
     expect(shown).toContain('shared');
+  });
+
+  /**
+   * The card's whole reason to exist. A preview that renders as its source, or
+   * not at all, leaves a page of grey boxes that a passing screenshot would
+   * catch and nothing else would.
+   */
+  it('shows the opening of each document, rendered', async () => {
+    const { tree } = await mount(navigation => <ArtifactsScreen navigation={navigation} />);
+    const shown = text(tree);
+
+    expect(shown).toContain('Sodium-ion is shipping in grid storage');
+    // Rendered, not printed: the hash belongs to the source.
+    expect(shown).not.toContain('# Findings');
+    // A format that is read as text keeps its own shape.
+    expect(shown).toContain('04:12  build started');
+  });
+
+  it('draws the format when there is nothing to read', async () => {
+    mockSeam.artifacts.mockResolvedValueOnce([
+      { ...report, id: 'a-3', title: 'Chart', format: 'binary', preview: '', size: 21000 },
+    ]);
+
+    const { tree } = await mount(navigation => <ArtifactsScreen navigation={navigation} />);
+
+    expect(text(tree)).toContain('binary');
   });
 
   it('opens one by id, so the screen can load it fresh', async () => {
