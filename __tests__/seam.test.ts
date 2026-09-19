@@ -61,6 +61,43 @@ describe('Seam', () => {
     expect(updated?.sharePath).toBe('a/tok');
   });
 
+  /**
+   * The slash group is mapped at `/slash/` — a request without that trailing
+   * slash is a 404, which the transport reads as "no such session" and the
+   * composer as "no commands". The reference client sends it; so do we.
+   */
+  it('lists a session\'s commands off the slash group\'s own path', async () => {
+    fetchMock.mockReturnValue(reply(200, [{ name: 'compact', help: 'summarize older history' }]));
+    const seam = new Seam({ baseUrl: 'https://slop.example.com', apiKey: 'slop_k' });
+
+    const commands = await seam.slashCommands('s-1');
+
+    expect(fetchMock.mock.calls[0][0]).toBe('https://slop.example.com/api/seam/sessions/s-1/slash/');
+    expect(commands.map(c => c.name)).toEqual(['compact']);
+  });
+
+  /**
+   * A command that handled itself answers 204 and a session that is gone
+   * answers 404. Both mean the same thing to the caller: nothing left to send,
+   * and whatever the command had to say is already in the scrollback.
+   */
+  it('reads a command that produced no prompt as nothing to send', async () => {
+    const seam = new Seam({ baseUrl: 'https://slop.example.com', apiKey: 'slop_k' });
+
+    fetchMock.mockReturnValue(reply(200, { promptToSend: 'review the diff' }));
+    const expanded = await seam.runSlashCommand('s-1', '/review');
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://slop.example.com/api/seam/sessions/s-1/slash/');
+    expect(JSON.parse(init.body)).toEqual({ input: '/review' });
+    expect(expanded?.promptToSend).toBe('review the diff');
+
+    fetchMock.mockReturnValue(reply(204));
+    expect(await seam.runSlashCommand('s-1', '/compact')).toBeNull();
+
+    fetchMock.mockReturnValue(reply(404));
+    expect(await seam.runSlashCommand('s-1', '/compact')).toBeNull();
+  });
+
   it('trims a trailing slash off the server so URLs do not double up', async () => {
     fetchMock.mockReturnValue(reply(200, []));
     const seam = new Seam({ baseUrl: 'https://slop.example.com/', apiKey: 'slop_k' });

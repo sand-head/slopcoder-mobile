@@ -18,15 +18,20 @@
  * Images ride the next prompt as inline attachments, as they do on the web,
  * where they are pasted; here they come from the photo library or the camera
  * through the `+` menu, which is the platform's own menu rather than a sheet.
+ *
+ * A slash in an empty box opens the session's commands over the card. The web
+ * puts the same list in a popover under the input; the phone has the keyboard
+ * where that popover would go, so it grows upward instead — see `SlashMenu`.
  */
 import React, { useEffect, useState } from 'react';
-import { Image, Pressable, TextInput, View } from 'react-native';
+import { Image, Pressable, ScrollView, TextInput, View } from 'react-native';
 import {
   ApprovalMode,
   ThinkingLevel,
   type FacetOption,
   type ModelCandidate,
   type ModelSelection,
+  type SlashCommandInfo,
 } from '../api/contracts';
 import { Body, Dot, GlassSurface, Meta, Mono, SendButton, Sliders } from './kit';
 import { OverflowMenu, type MenuItem } from './menu';
@@ -35,6 +40,8 @@ import { MAX_IMAGES, type ImageSource, type PendingImage } from './images';
 import { useConnection } from '../state/connection';
 import { Field } from './kit';
 import { offer, shouldSearch } from '../api/repoPicker';
+import { commandPrefix, matchCommands } from '../api/slash';
+import { tapSelect } from './haptics';
 import { font, mix, radius, useTheme } from '../theme';
 
 /** A repository or a node the next turn should have. */
@@ -75,6 +82,26 @@ export interface ComposerImages {
   onRemove: (key: string) => void;
   /** Why the last pick fell short, or null. Cleared by the screen on the next pick. */
   error: string | null;
+}
+
+/**
+ * The session's slash commands, and how to get them.
+ *
+ * Only the cockpit has these: a command runs against a session, and the
+ * launcher has none yet. The list arrives from the server rather than being
+ * hard-coded, because each attached repository may define its own templates in
+ * `.slopcoder/commands/*.md` — so what `/` offers differs session to session.
+ */
+export interface ComposerCommands {
+  /** Every command on offer; empty until they have been fetched. */
+  list: SlashCommandInfo[];
+  /**
+   * Called when a slash opens the menu, so the screen can refresh the list —
+   * once per opening, not once per keystroke. What the sandbox can list grows
+   * as the session's repositories land, so the answer at open is not the
+   * answer half an hour later.
+   */
+  onNeeded: () => void;
 }
 
 export interface TurnOptions {
@@ -121,6 +148,7 @@ export function Composer({
   facets,
   attachments,
   images,
+  commands,
 }: {
   value: string;
   onChangeValue: (next: string) => void;
@@ -143,6 +171,8 @@ export function Composer({
   attachments?: Attachments;
   /** Omitted where a prompt cannot carry an image. */
   images?: ComposerImages;
+  /** Omitted by the launcher: a command needs a session to run against. */
+  commands?: ComposerCommands;
 }) {
   const { c, status } = useTheme();
   const reachable = useConnection(s => s.reachable);
@@ -199,6 +229,16 @@ export function Composer({
 
   return (
     <View style={{ gap: 8 }}>
+      {commands ? (
+        <SlashMenu
+          commands={commands}
+          draft={value}
+          onPick={name => {
+            tapSelect();
+            onChangeValue(`/${name} `);
+          }}
+        />
+      ) : null}
       {attachments ? <AttachChips attachments={attachments} /> : null}
       {images ? <ImageChips images={images} /> : null}
 
@@ -349,6 +389,80 @@ export function Composer({
         <AttachSheet visible={sheet === 'attach'} onClose={() => setSheet(null)} attachments={attachments} />
       ) : null}
     </View>
+  );
+}
+
+/**
+ * The commands on offer, over the composer, while a slash is being typed.
+ *
+ * A menu rather than the web's popover: on a phone the composer already sits
+ * on the keyboard, so the only room is upward, and a list that grows off the
+ * top of the card is what every native picker does there. It is its own
+ * surface, not a lid on the composer — the composer is glass and a taller
+ * glass card would refract the transcript differently as it grew.
+ *
+ * The keyboard stays up through a tap (`keyboardShouldPersistTaps`), which is
+ * not a nicety: without it the first tap only dismisses the keyboard and the
+ * command is never picked.
+ */
+function SlashMenu({
+  commands,
+  draft,
+  onPick,
+}: {
+  commands: ComposerCommands;
+  draft: string;
+  onPick: (name: string) => void;
+}) {
+  const { c } = useTheme();
+  const prefix = commandPrefix(draft);
+  const wanted = prefix !== null;
+
+  // Once per opening: the effect runs on the edge where the menu appears, not
+  // on every keystroke inside it.
+  const ask = commands.onNeeded;
+  useEffect(() => {
+    if (wanted) ask();
+  }, [wanted, ask]);
+
+  if (prefix === null) return null;
+
+  const matches = matchCommands(commands.list, prefix);
+  // Nothing matched: the prefix is a typo, or the list has not arrived yet.
+  // Either way an empty card would only be in the way of the transcript.
+  if (matches.length === 0) return null;
+
+  return (
+    <GlassSurface cornerRadius={radius.xl} style={{ maxHeight: 240, overflow: 'hidden' }}>
+      <ScrollView
+        keyboardShouldPersistTaps="always"
+        keyboardDismissMode="none"
+        contentContainerStyle={{ paddingVertical: 6 }}
+      >
+        {matches.map(command => (
+          <Pressable
+            key={command.name}
+            onPress={() => onPick(command.name)}
+            accessibilityRole="button"
+            accessibilityLabel={`/${command.name}`}
+            accessibilityHint={command.help}
+            style={({ pressed }) => ({
+              paddingHorizontal: 14,
+              paddingVertical: 9,
+              gap: 2,
+              backgroundColor: pressed ? mix(c.mutedForeground, 14) : 'transparent',
+            })}
+          >
+            <Mono style={{ fontSize: 14, color: c.primary }}>/{command.name}</Mono>
+            {command.help ? (
+              <Body numberOfLines={1} style={{ fontSize: 12.5, color: c.mutedForeground }}>
+                {command.help}
+              </Body>
+            ) : null}
+          </Pressable>
+        ))}
+      </ScrollView>
+    </GlassSurface>
   );
 }
 

@@ -30,9 +30,11 @@ import {
   SessionStatus,
   type FacetOption,
   type ModelCandidate,
+  type SlashCommandInfo,
   type SubSessionInfo,
   type UserQuestionAnswer,
 } from '../api/contracts';
+import { parseSlashCommand } from '../api/slash';
 import { buildProposalCard, buildToolCard } from '../api/toolcard';
 import type { SubSessionMention } from '../api/mentions';
 import {
@@ -117,6 +119,7 @@ export function SessionDetailScreen({
   const [imageError, setImageError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [models, setModels] = useState<ModelCandidate[]>([]);
+  const [commands, setCommands] = useState<SlashCommandInfo[]>([]);
   const [facets, setFacets] = useState<FacetOption[]>([]);
   const [options, setOptions] = useState<TurnOptions | null>(null);
   // Measured, not guessed: the composer grows with the text and with however
@@ -165,6 +168,22 @@ export function SessionDetailScreen({
     });
   }, [state, options]);
 
+  // The commands behind `/`: fetched when the screen opens, so the menu is
+  // already there the instant a slash is typed, and again each time the menu
+  // opens. Listing walks every repository's `.slopcoder/commands` through the
+  // sandbox — which answers with the built-ins alone while the container is
+  // still cold, and gains a template the moment one is added — so a list read
+  // once at open would be the wrong one for the rest of the session. A failed
+  // read keeps whatever we last had rather than emptying the menu.
+  const loadCommands = useCallback(() => {
+    if (!seam) return;
+    seam.slashCommands(id).then(setCommands, () => {});
+  }, [seam, id]);
+
+  useEffect(() => {
+    loadCommands();
+  }, [loadCommands]);
+
   const applyOptions = (next: TurnOptions) => {
     const previous = options;
     setOptions(next);
@@ -192,12 +211,25 @@ export function SessionDetailScreen({
 
   const send = async () => {
     if (!seam || !state) return;
-    const prompt = draft.trim();
-    if (!prompt) return;
+    const typed = draft.trim();
+    if (!typed) return;
     setSending(true);
     try {
       setDraft('');
       tapConfirm();
+
+      // Slash commands run on the server — they want the sandbox, the facet
+      // catalogue and the live model. Most of them answer into the scrollback
+      // and there is nothing more to do; a repo template expands to a prompt,
+      // which falls through and is sent as if it had been typed.
+      let prompt = typed;
+      if (parseSlashCommand(prompt)) {
+        const result = await seam
+          .runSlashCommand(id, prompt)
+          .catch(() => ({ promptToSend: null }));
+        if (!result?.promptToSend) return;
+        prompt = result.promptToSend;
+      }
 
       // Steering only lands while a turn is in flight; a false means it ended
       // between the render and the tap, so start a new one instead. Steering
@@ -216,9 +248,10 @@ export function SessionDetailScreen({
         },
         images,
       });
-      // A refused start leaves what was typed and attached where it was.
+      // A refused start leaves what was typed and attached where it was — what
+      // was typed, not what a template expanded to.
       if (!started) {
-        setDraft(prompt);
+        setDraft(typed);
         setPendingImages(pendingImages);
         tapError();
       }
@@ -580,6 +613,7 @@ export function SessionDetailScreen({
               onChangeOptions={applyOptions}
               models={models}
               facets={facets}
+              commands={{ list: commands, onNeeded: loadCommands }}
             />
           )}
         </KeyboardStickyView>

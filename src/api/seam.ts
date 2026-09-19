@@ -68,6 +68,8 @@ import type {
   SetApprovalRequest,
   SetFacetRequest,
   SetThinkingRequest,
+  SlashCommandInfo,
+  SlashResult,
   StartSessionRequest,
   SteerRequest,
   TerminalDefaults,
@@ -356,6 +358,36 @@ export class Seam {
    */
   presence(id: string) {
     return this.post(`api/seam/sessions/${id}/presence`);
+  }
+
+  // ---- slash commands ----
+  //
+  // Parsing happens here (`api/slash.ts`), running happens there: the commands
+  // want the sandbox, the facet catalogue and the live model.
+
+  /**
+   * Every command this session offers — the built-ins, plus whatever
+   * `.slopcoder/commands/*.md` each attached repository defines.
+   *
+   * Reading the repo templates walks the sandbox, so this is asked for the
+   * first time a slash is typed rather than when the screen opens: a session
+   * nobody runs a command in never wakes a container to list them.
+   */
+  async slashCommands(id: string, signal?: AbortSignal): Promise<SlashCommandInfo[]> {
+    return (await this.get<SlashCommandInfo[]>(`api/seam/sessions/${id}/slash/`, signal)) ?? [];
+  }
+
+  /**
+   * Runs it, and answers with the prompt to send when a repo template expanded.
+   *
+   * Null covers three things the caller treats alike — a command that handled
+   * itself (204), a session that is gone or not ours (404), and an input the
+   * server did not read as a command at all. In every one of them there is
+   * nothing left to send; what the command had to say is already in the
+   * scrollback.
+   */
+  runSlashCommand(id: string, input: string) {
+    return this.send<SlashResult>('POST', `api/seam/sessions/${id}/slash/`, { input });
   }
 
   approve(id: string, request: ResolveApprovalRequest) {

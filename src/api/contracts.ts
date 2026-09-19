@@ -1173,3 +1173,18 @@ export interface DevicePairingCode {
   code: string;
   expiresAt: string;
 }
+
+/** A slash command's name and one-line help, for the composer's menu. */
+export interface SlashCommandInfo {
+  name: string;
+  help: string;
+}
+
+/**
+ * What running a slash command produced. A null `promptToSend` means the
+ * command handled itself — it appended to the scrollback and there is nothing
+ * to send; a string is an expanded template to submit as an ordinary prompt.
+ */
+export interface SlashResult {
+  promptToSend: string | null;
+}

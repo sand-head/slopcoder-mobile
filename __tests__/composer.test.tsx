@@ -27,14 +27,16 @@ function mount(props: {
   running: boolean;
   value: string;
   onStop?: () => void;
+  onChangeValue?: (next: string) => void;
   images?: React.ComponentProps<typeof Composer>['images'];
+  commands?: React.ComponentProps<typeof Composer>['commands'];
 }) {
   let tree: ReturnType<typeof create> | undefined;
   act(() => {
     tree = create(
       <Composer
         value={props.value}
-        onChangeValue={() => {}}
+        onChangeValue={props.onChangeValue ?? (() => {})}
         placeholder="Send a message…"
         action={props.running ? 'Steer' : 'Send'}
         onAction={() => {}}
@@ -45,6 +47,7 @@ function mount(props: {
         models={[]}
         facets={[]}
         images={props.images}
+        commands={props.commands}
       />,
     );
   });
@@ -116,6 +119,62 @@ describe('the composer', () => {
       tree.root.find(node => node.props.accessibilityLabel === 'Remove image 2 of 2').props.onPress();
     });
     expect(onRemove).toHaveBeenCalledWith('b');
+  });
+
+  /**
+   * The slash menu: a bare "/" offers the lot, and opening it is what asks the
+   * screen to refresh the list — a composer nobody types a slash into never
+   * sends the server looking through the sandbox for repo templates.
+   */
+  it('offers every command on a bare slash, and asks for the list as it opens', () => {
+    const onNeeded = jest.fn();
+    const list = [
+      { name: 'compact', help: 'summarize older history' },
+      { name: 'cost', help: 'what this session has spent' },
+    ];
+
+    const idle = mount({ running: false, value: '', commands: { list, onNeeded } });
+    expect(onNeeded).not.toHaveBeenCalled();
+    expect(labels(idle)).not.toContain('/compact');
+
+    const open = mount({ running: false, value: '/', commands: { list, onNeeded } });
+    expect(onNeeded).toHaveBeenCalled();
+    expect(labels(open)).toEqual(expect.arrayContaining(['/compact', '/cost']));
+  });
+
+  it('narrows to the prefix, and a tap puts the command in the box ready for arguments', () => {
+    const onChangeValue = jest.fn();
+    const list = [
+      { name: 'compact', help: 'summarize older history' },
+      { name: 'rewind', help: 'restore a checkpoint' },
+    ];
+
+    const tree = mount({
+      running: false,
+      value: '/com',
+      onChangeValue,
+      commands: { list, onNeeded: () => {} },
+    });
+
+    expect(labels(tree)).toContain('/compact');
+    expect(labels(tree)).not.toContain('/rewind');
+
+    act(() => {
+      tree.root.find(node => node.props.accessibilityLabel === '/compact').props.onPress();
+    });
+    expect(onChangeValue).toHaveBeenCalledWith('/compact ');
+  });
+
+  /** Once the arguments start, the name is settled and the menu is in the way. */
+  it('closes the menu as soon as an argument is typed', () => {
+    const list = [{ name: 'rewind', help: 'restore a checkpoint' }];
+    const tree = mount({
+      running: false,
+      value: '/rewind 3',
+      commands: { list, onNeeded: () => {} },
+    });
+
+    expect(labels(tree)).not.toContain('/rewind');
   });
 
   it('offers no Stop when nothing is running', () => {
