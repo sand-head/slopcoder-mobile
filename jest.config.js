@@ -1,5 +1,8 @@
 module.exports = {
   preset: '@react-native/jest-preset',
+  // Mocks that have to be in place before a module is even imported; see the
+  // file for why the keyboard tracker is one of them.
+  setupFiles: ['<rootDir>/jest.setup.js'],
   // The first screen a suite mounts pays for loading every native mock on a
   // cold CI runner; the routines board hit 7s once. Five seconds is jest's
   // default, not a budget anyone chose.
@@ -9,9 +12,11 @@ module.exports = {
   // glass view, so every suite that touches a component pulls it in;
   // react-native-url-polyfill because its own suite proves it does the thing
   // React Native's URL cannot; @ronradtke and the two packages it renders with
-  // because the kit's `Prose` imports the markdown display, which ships JSX.
+  // because the kit's `Prose` imports the markdown display, which ships JSX;
+  // react-native-keyboard-controller because the stand-in it ships for its own
+  // native view is ESM.
   transformIgnorePatterns: [
-    'node_modules/(?!((jest-)?react-native|@react-native(-community)?|@react-navigation|react-native-url-polyfill|@lodev09|@ronradtke|prism-react-renderer)/)',
+    'node_modules/(?!((jest-)?react-native|@react-native(-community)?|@react-navigation|react-native-url-polyfill|react-native-keyboard-controller|@lodev09|@ronradtke|prism-react-renderer)/)',
   ],
   moduleNameMapper: {
     '^@callstack/liquid-glass$': '<rootDir>/__mocks__/liquid-glass.js',

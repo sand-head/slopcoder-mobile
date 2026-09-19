@@ -17,6 +17,7 @@
 import React, { useEffect } from 'react';
 import { Platform, StatusBar, useColorScheme, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from './state/auth';
@@ -75,40 +76,45 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar barStyle={scheme === 'dark' ? 'light-content' : 'dark-content'} />
-      <NavigationContainer theme={navTheme} linking={linking}>
-        <Root.Navigator screenOptions={stackOptions(theme)}>
-          {credential ? (
-            <>
-              <Root.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
-              <Root.Screen name="Session" component={SessionDetailScreen} options={{ title: '', ...glassBar }} />
-              <Root.Screen name="Routine" component={RoutineScreen} options={{ title: '', ...glassBar }} />
-              <Root.Screen
-                name="RoutineEditor"
-                component={RoutineEditorScreen}
-                options={{ title: '', presentation: 'modal', ...glassBar }}
-              />
-              {/* The settings editors: each a form presented as a sheet over
-                  the list it came from, Cancel on the left, Save on the right. */}
-              <Root.Screen name="DocEditor" component={DocEditorScreen} options={{ title: '', presentation: 'modal', ...glassBar }} />
-              <Root.Screen name="ProviderEditor" component={ProviderEditorScreen} options={{ title: '', presentation: 'modal', ...glassBar }} />
-              <Root.Screen name="CodexConnect" component={CodexConnectScreen} options={{ title: '', presentation: 'modal', ...glassBar }} />
-              <Root.Screen name="McpServerEditor" component={McpServerEditorScreen} options={{ title: '', presentation: 'modal', ...glassBar }} />
-              <Root.Screen name="NodeEditor" component={NodeEditorScreen} options={{ title: '', presentation: 'modal', ...glassBar }} />
-              <Root.Screen name="ChannelEditor" component={ChannelEditorScreen} options={{ title: '', presentation: 'modal', ...glassBar }} />
-            </>
-          ) : (
-            <>
-              <Root.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
-              <Root.Screen
-                name="Scan"
-                component={ScanScreen}
-                options={{ title: 'Scan a pairing code', presentation: 'fullScreenModal' }}
-              />
-            </>
-          )}
-        </Root.Navigator>
-      </NavigationContainer>
+      {/* Every frame of the keyboard's movement, published to the UI thread.
+          The composer rides it rather than running an animation of its own —
+          see ui/keyboard.ts. */}
+      <KeyboardProvider>
+        <StatusBar barStyle={scheme === 'dark' ? 'light-content' : 'dark-content'} />
+        <NavigationContainer theme={navTheme} linking={linking}>
+          <Root.Navigator screenOptions={stackOptions(theme)}>
+            {credential ? (
+              <>
+                <Root.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
+                <Root.Screen name="Session" component={SessionDetailScreen} options={{ title: '', ...glassBar }} />
+                <Root.Screen name="Routine" component={RoutineScreen} options={{ title: '', ...glassBar }} />
+                <Root.Screen
+                  name="RoutineEditor"
+                  component={RoutineEditorScreen}
+                  options={{ title: '', presentation: 'modal', ...glassBar }}
+                />
+                {/* The settings editors: each a form presented as a sheet over
+                    the list it came from, Cancel on the left, Save on the right. */}
+                <Root.Screen name="DocEditor" component={DocEditorScreen} options={{ title: '', presentation: 'modal', ...glassBar }} />
+                <Root.Screen name="ProviderEditor" component={ProviderEditorScreen} options={{ title: '', presentation: 'modal', ...glassBar }} />
+                <Root.Screen name="CodexConnect" component={CodexConnectScreen} options={{ title: '', presentation: 'modal', ...glassBar }} />
+                <Root.Screen name="McpServerEditor" component={McpServerEditorScreen} options={{ title: '', presentation: 'modal', ...glassBar }} />
+                <Root.Screen name="NodeEditor" component={NodeEditorScreen} options={{ title: '', presentation: 'modal', ...glassBar }} />
+                <Root.Screen name="ChannelEditor" component={ChannelEditorScreen} options={{ title: '', presentation: 'modal', ...glassBar }} />
+              </>
+            ) : (
+              <>
+                <Root.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
+                <Root.Screen
+                  name="Scan"
+                  component={ScanScreen}
+                  options={{ title: 'Scan a pairing code', presentation: 'fullScreenModal' }}
+                />
+              </>
+            )}
+          </Root.Navigator>
+        </NavigationContainer>
+      </KeyboardProvider>
     </SafeAreaProvider>
   );
 }

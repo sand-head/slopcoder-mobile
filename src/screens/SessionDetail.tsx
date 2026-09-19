@@ -77,7 +77,8 @@ import { ConnectionBanner } from '../ui/ConnectionBanner';
 import { ToolCard } from '../ui/ToolCard';
 import { SubSessionCard } from '../ui/SubSessionCard';
 import { useAtBottom } from '../ui/atBottom';
-import { useKeyboardHeight } from '../ui/keyboard';
+import { KeyboardStickyView } from 'react-native-keyboard-controller';
+import { useKeyboardOffset } from '../ui/keyboard';
 import { useHeaderInset } from '../navigation/headers';
 import { tapConfirm, tapError, tapRefuse } from '../ui/haptics';
 import { newTokens } from '../api/contracts';
@@ -101,8 +102,10 @@ export function SessionDetailScreen({
   // The composer clears the home indicator when the keyboard is down, and
   // sits straight on the keyboard when it is up — the inset is the phone's
   // bottom edge, and with the keyboard there the bottom edge is the keyboard.
-  const keyboardHeight = useKeyboardHeight();
-  const keyboardUp = keyboardHeight > 0;
+  // Everything that has to hold still against the keyboard — the transcript,
+  // the composer, the jump button — takes this same offset, so they move as
+  // one thing on the keyboard's own frames.
+  const keyboardOffset = useKeyboardOffset();
 
   const seam = useAuth(s => s.seam);
   const { hub } = useSessionHub();
@@ -393,11 +396,11 @@ export function SessionDetailScreen({
       // than stopping short — which is the whole point of a material that
       // refracts what is behind it. Inverted, so the container's top is the
       // visual bottom.
-      paddingTop: composerHeight + keyboardHeight + 16,
+      paddingTop: composerHeight + 16,
       paddingBottom: headerInset + 16,
       gap: 4,
     }),
-    [composerHeight, keyboardHeight, headerInset],
+    [composerHeight, headerInset],
   );
 
   return (
@@ -413,72 +416,79 @@ export function SessionDetailScreen({
             </Body>
           </View>
         ) : (
-          <FlatList
-            ref={listRef}
-            data={reversed}
-            inverted
-            keyExtractor={keyOf}
-            // Dragging the transcript down takes the keyboard with it, as
-            // every chat on the platform does.
-            keyboardDismissMode="interactive"
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={transcriptStyle}
-            // How much of a long run is mounted at once. The default window is
-            // ten screens either side of the viewport, and a row here is not a
-            // row — it is a whole markdown document, a diff, a subagent's
-            // folded thread. Four either side is still more than a fast flick
-            // covers, and it is the difference between a hundred mounted cells
-            // and four hundred. The batch numbers keep the fill from landing in
-            // one frame when it does have to happen.
-            windowSize={9}
-            initialNumToRender={12}
-            maxToRenderPerBatch={8}
-            updateCellsBatchingPeriod={50}
-            {...bottom}
-            // The visual top: reaching it pulls in earlier scrollback.
-            onEndReached={canLoadEarlier ? loadEarlier : undefined}
-            onEndReachedThreshold={0.6}
-            ListFooterComponent={
-              canLoadEarlier || loading ? (
-                <View style={{ paddingVertical: 12, alignItems: 'center' }}>
-                  <ActivityIndicator color={c.mutedForeground} />
-                </View>
-              ) : undefined
-            }
-            renderItem={renderRow}
-            // The streaming tail, which in an inverted list is the header.
-            ListHeaderComponent={
-              live ? (
-                <View style={{ gap: 6, paddingTop: 6 }}>
-                  {live.thinking ? (
-                    <Body
-                      style={{
-                        fontStyle: 'italic',
-                        color: c.mutedForeground,
-                        fontSize: 13,
-                      }}
-                    >
-                      {live.thinking}
-                    </Body>
-                  ) : null}
-                  {live.text ? <Prose>{live.text}</Prose> : null}
-                </View>
-              ) : undefined
-            }
-          />
+          // The list moves with the keyboard rather than being re-padded by
+          // it: inverted, it is pinned to its own bottom edge, so a translate
+          // carries the newest line up on the keyboard's frames and costs no
+          // re-layout of a transcript that can be hundreds of rows long.
+          <KeyboardStickyView style={{ flex: 1 }} offset={keyboardOffset}>
+            <FlatList
+              ref={listRef}
+              data={reversed}
+              inverted
+              keyExtractor={keyOf}
+              // Dragging the transcript down takes the keyboard with it, as
+              // every chat on the platform does.
+              keyboardDismissMode="interactive"
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={transcriptStyle}
+              // How much of a long run is mounted at once. The default window is
+              // ten screens either side of the viewport, and a row here is not a
+              // row — it is a whole markdown document, a diff, a subagent's
+              // folded thread. Four either side is still more than a fast flick
+              // covers, and it is the difference between a hundred mounted cells
+              // and four hundred. The batch numbers keep the fill from landing in
+              // one frame when it does have to happen.
+              windowSize={9}
+              initialNumToRender={12}
+              maxToRenderPerBatch={8}
+              updateCellsBatchingPeriod={50}
+              {...bottom}
+              // The visual top: reaching it pulls in earlier scrollback.
+              onEndReached={canLoadEarlier ? loadEarlier : undefined}
+              onEndReachedThreshold={0.6}
+              ListFooterComponent={
+                canLoadEarlier || loading ? (
+                  <View style={{ paddingVertical: 12, alignItems: 'center' }}>
+                    <ActivityIndicator color={c.mutedForeground} />
+                  </View>
+                ) : undefined
+              }
+              renderItem={renderRow}
+              // The streaming tail, which in an inverted list is the header.
+              ListHeaderComponent={
+                live ? (
+                  <View style={{ gap: 6, paddingTop: 6 }}>
+                    {live.thinking ? (
+                      <Body
+                        style={{
+                          fontStyle: 'italic',
+                          color: c.mutedForeground,
+                          fontSize: 13,
+                        }}
+                      >
+                        {live.thinking}
+                      </Body>
+                    ) : null}
+                    {live.text ? <Prose>{live.text}</Prose> : null}
+                  </View>
+                ) : undefined
+              }
+            />
+          </KeyboardStickyView>
         )}
 
         {/* Mounted, never faded: the glass is a UIVisualEffectView, and an
             ancestor animating its opacity leaves it drawing nothing at all —
             the arrow floated on its own with no circle behind it. */}
         {!pinned ? (
-          <View
+          <KeyboardStickyView
             pointerEvents="box-none"
+            offset={keyboardOffset}
             style={{
               position: 'absolute',
               left: 0,
               right: 0,
-              bottom: composerHeight + keyboardHeight + 8,
+              bottom: composerHeight + 8,
               alignItems: 'center',
             }}
           >
@@ -508,7 +518,7 @@ export function SessionDetailScreen({
                 </Body>
               </GlassSurface>
             </Pressable>
-          </View>
+          </KeyboardStickyView>
         ) : null}
 
         {/* Over the transcript, below the bar: the banner is news, not a row. */}
@@ -519,17 +529,18 @@ export function SessionDetailScreen({
           <ConnectionBanner />
         </View>
 
-        <View
+        <KeyboardStickyView
           onLayout={event => setComposerHeight(event.nativeEvent.layout.height)}
+          offset={keyboardOffset}
           style={{
             position: 'absolute',
             left: 0,
             right: 0,
-            // Straight on the keyboard: the height is in this style because a
-            // parent's padding would not move an absolute child at all.
-            bottom: keyboardHeight,
+            bottom: 0,
             paddingHorizontal: 10,
-            paddingBottom: (keyboardUp ? 0 : insets.bottom) + 10,
+            // The indicator's strip, which the offset hands back to the
+            // keyboard when it is up.
+            paddingBottom: insets.bottom + 10,
             paddingTop: 4,
           }}
         >
@@ -571,7 +582,7 @@ export function SessionDetailScreen({
               facets={facets}
             />
           )}
-        </View>
+        </KeyboardStickyView>
       </View>
 
       <Sheet

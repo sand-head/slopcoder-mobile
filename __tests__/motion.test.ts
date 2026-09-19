@@ -9,11 +9,11 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { slide, withKeyboard } from '../src/ui/motion';
+import { slide } from '../src/ui/motion';
 
 describe('layout motion', () => {
   it('moves views without a create or delete phase', () => {
-    for (const config of [slide(), slide(120), withKeyboard(250), withKeyboard(0)]) {
+    for (const config of [slide(), slide(120)]) {
       expect(config.create).toBeUndefined();
       expect(config.delete).toBeUndefined();
       expect(config.update).toBeDefined();

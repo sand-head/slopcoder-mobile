@@ -25,11 +25,6 @@ export function slide(duration = 300): LayoutAnimationConfig {
   return { duration, update: { type: LayoutAnimation.Types.easeInEaseOut } };
 }
 
-/** Move with the keyboard, on its curve, rather than jumping ahead of it. */
-export function withKeyboard(duration: number): LayoutAnimationConfig {
-  return { duration: duration || 250, update: { type: LayoutAnimation.Types.keyboard } };
-}
-
 /** `LayoutAnimation.configureNext`, with the rule above built in. */
 export function animateNextLayout(config: LayoutAnimationConfig = slide()) {
   LayoutAnimation.configureNext(config);
