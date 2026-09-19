@@ -23,10 +23,9 @@ import {
   Platform,
   Pressable,
   RefreshControl,
-  ScrollView,
   View,
 } from 'react-native';
-import { useIsFocused } from '@react-navigation/native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import {
   ApprovalMode,
   DeleteResult,
@@ -71,7 +70,6 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
   const seam = useAuth(s => s.seam);
   const { hub } = useSessionHub();
   const setFailed = useRoutineAlert(s => s.setFailed);
-  const focused = useIsFocused();
 
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -275,9 +273,9 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
   const running = visible.filter(s => s.status === SessionStatus.Running);
   const idle = visible.filter(s => s.status !== SessionStatus.Running);
 
-  // The keyboard goes down before the page does, while the list is still the
-  // page that adjusts for it: dismissed after the list stops listening, the
-  // inset it added for the keyboard would stay behind.
+  // Leaving with the keyboard up lands on a page with a composer of its own
+  // and a keyboard already open for something else, which reads as the tap
+  // having gone somewhere it did not.
   const leaveFor = (route: string, params: object) => {
     Keyboard.dismiss();
     navigation.navigate(route, params);
@@ -291,20 +289,29 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
     // around this one hides it. The rename sheet is a sibling *after* it, which
     // leaves the walk alone, and renders nothing on iOS anyway.
     <>
-      <ScrollView
+      <KeyboardAwareScrollView
         contentInsetAdjustmentBehavior="automatic"
         // The composer's buttons sit inside this scroll view. Without this, a
         // tap on one while the keyboard is up only dismisses the keyboard and
         // the button is not pressed until the second tap.
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
-        // iOS: the page grows to keep the composer's caret above the keyboard.
-        // Only while this is the page on screen. The native scroll view hears
-        // every keyboard in the app, and a keyboard raised for the session
-        // screen's composer pushed this list's offset down by its own height
-        // underneath the session; the list was then found scrolled past the
-        // composer for a frame on the way back, until layout clamped it.
-        automaticallyAdjustKeyboardInsets={focused}
+        // The composer sits at the top of this page, where the keyboard never
+        // reaches it, so the right amount to scroll when it is tapped is none.
+        // `automaticallyAdjustKeyboardInsets` could not say that: it asks the
+        // first responder where it is, and every answer it failed to get — a
+        // keyboard raised on another screen, a field it could not place inside
+        // this scroll view — it read as "shift the content up by a keyboard",
+        // which scrolled the composer off the top of its own page and left it
+        // there, because nothing put the offset back. This scrolls for the
+        // focused field only when that field is inside *this* scroll view and
+        // the keyboard would actually cover it, and it puts the page back
+        // where it was when the keyboard goes down.
+        bottomOffset={12}
+        // Layout mode: the space for the keyboard is a spacer at the end of
+        // the content rather than a decorator wrapped around the scroll view,
+        // and a wrapper is exactly what hides this list from the large title.
+        mode="layout"
         contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 24, gap: 18 }}
         refreshControl={
           <RefreshControl
@@ -444,7 +451,7 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
             }}
           />
         ) : null}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {/* Android has no `Alert.prompt`; a sheet with the field already focused
           is the nearest thing to one. */}

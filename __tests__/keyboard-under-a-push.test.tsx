@@ -1,16 +1,22 @@
 /**
- * A keyboard raised on the screen pushed over the session list is not the
- * list's keyboard.
+ * A keyboard raised somewhere else is not this list's keyboard, and this
+ * list's own composer never needs it to move.
  *
- * The native scroll view listens for every keyboard in the app, and with
- * `automaticallyAdjustKeyboardInsets` on it answers each one: it pads its
- * bottom, and when the first responder is a field outside it, it also moves
- * its offset by the keyboard's height. It did that under the session screen,
- * every time a message was typed there — so coming back, the list sat scrolled
- * past its own composer for a frame until layout clamped it home.
+ * `automaticallyAdjustKeyboardInsets` asks the first responder where it is,
+ * and it read every answer it could not get — a keyboard raised for the
+ * session screen's composer, a field it failed to place inside this scroll
+ * view — as "shift the content up by a whole keyboard". Gating it on focus
+ * only covered the first of those. The second showed up as the page scrolling
+ * its own composer off the top the moment it was tapped, and staying there,
+ * because nothing puts the offset back when the keyboard goes down: open the
+ * app later and the list is still sitting past its composer.
  *
- * So the flag follows focus. This mounts the list the way the navigator does,
- * pushes a screen over it, and reads the flag on the way in and the way out.
+ * The keyboard-aware scroll view answers both. It scrolls for the focused
+ * field only when that field belongs to this scroll view and the keyboard
+ * would actually cover it, and it restores the position afterwards. Neither
+ * half can be exercised here — the package's stand-in draws it as a plain
+ * `ScrollView` — so what is checked is that the list is that component, and
+ * that the prop whose failure mode was the bug is gone.
  */
 import React from 'react';
 import { Text } from 'react-native';
@@ -50,7 +56,7 @@ function find(node: unknown, type: string): Node {
   return null;
 }
 
-it('adjusts for the keyboard only while it is the page on screen', async () => {
+it('leaves the page where it is unless its own field is under the keyboard', async () => {
   const Stack = createNativeStackNavigator();
   const nav = createNavigationContainerRef<{ Sessions: undefined; Session: undefined }>();
   const Session = () => <Text>a session</Text>;
@@ -69,21 +75,27 @@ it('adjusts for the keyboard only while it is the page on screen', async () => {
     );
   });
 
-  const flag = () => {
+  try {
     const list = find(tree!.toJSON(), 'RCTScrollView') as Exclude<Node, string | null>;
     expect(list).not.toBeNull();
-    return list.props.automaticallyAdjustKeyboardInsets;
-  };
 
-  try {
-    expect(flag()).toBe(true);
+    // The keyboard-aware scroll view, by the two props only it takes. Layout
+    // mode because the alternative wraps the scroll view in a decorator, and a
+    // wrapper is what hides this list from the large title.
+    expect(list.props.mode).toBe('layout');
+    expect(list.props.bottomOffset).toBeGreaterThan(0);
 
+    // And not the prop that moved the page for a keyboard that was not its own.
+    expect(list.props.automaticallyAdjustKeyboardInsets).toBeUndefined();
+
+    // Still true on the way in and out of a pushed screen: nothing about this
+    // is conditional on which page is on top any more.
     await act(async () => nav.navigate('Session'));
-    // Still mounted underneath, no longer listening.
-    expect(flag()).toBe(false);
-
+    expect(
+      (find(tree!.toJSON(), 'RCTScrollView') as Exclude<Node, string | null>).props
+        .automaticallyAdjustKeyboardInsets,
+    ).toBeUndefined();
     await act(async () => nav.goBack());
-    expect(flag()).toBe(true);
   } finally {
     // A live navigator holds the safe-area provider open and the run never
     // ends — a failure above must still get here.
