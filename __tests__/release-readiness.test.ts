@@ -352,3 +352,34 @@ describe('App Store Connect chores', () => {
     expect(WORKFLOW).toContain(`<key>${EXTENSION_BUNDLE_ID}</key>`);
   });
 });
+
+/**
+ * A font that is not in the bundle draws a box where the glyph should be, and
+ * only on a device: the simulator has the developer's fonts, and jest has no
+ * glyphs at all. The markdown display labels a fence's copy button with an
+ * icon font it brings along itself, but it is a *transitive* dependency — the
+ * CLI autolinks nothing it cannot find in this project's package.json, so the
+ * pod that carries the .ttf is never installed and the button rendered tofu in
+ * every code block. `patches/` takes the icon back out; this is the guard that
+ * the patch is still applied to the copy Metro actually bundles, which is
+ * `dist/`, not the `src/` jest resolves.
+ */
+describe('fonts the app does not ship', () => {
+  const MARKDOWN_FENCE = path.join(
+    ROOT,
+    'node_modules',
+    '@ronradtke',
+    'react-native-markdown-display',
+    'dist',
+    'lib',
+    'view',
+    'FenceBlock.js',
+  );
+
+  it('draws the fence copy button without an icon font', () => {
+    const fence = fs.readFileSync(MARKDOWN_FENCE, 'utf8');
+
+    expect(fence).not.toContain('@react-native-vector-icons');
+    expect(fence).toContain("'Copied!' : 'Copy'");
+  });
+});

@@ -1138,6 +1138,57 @@ export function markdownStyles(c: Palette) {
       fontSize: 15,
       lineHeight: 23,
     },
+    // Headings size themselves, because the library's do not finish the job.
+    // Its own are a web page's — a 32px h1 — and none of them names a line
+    // height, so `body`'s 23 came down the inheritance chain and a 32px line
+    // was drawn in 23px of room: every heading in an artifact was clipped, and
+    // its wrapped lines overlapped each other. These are a phone's sizes, each
+    // with the leading it needs, and margins that hold a heading nearer the
+    // text it titles than the text above it.
+    heading1: {
+      fontFamily: font.sansMedium,
+      fontSize: 22,
+      lineHeight: 28,
+      marginTop: 12,
+      marginBottom: 2,
+    },
+    heading2: {
+      fontFamily: font.sansMedium,
+      fontSize: 19,
+      lineHeight: 25,
+      marginTop: 12,
+      marginBottom: 2,
+    },
+    heading3: {
+      fontFamily: font.sansMedium,
+      fontSize: 17,
+      lineHeight: 23,
+      marginTop: 10,
+      marginBottom: 2,
+    },
+    heading4: {
+      fontFamily: font.sansMedium,
+      fontSize: 15,
+      lineHeight: 22,
+      marginTop: 10,
+      marginBottom: 2,
+    },
+    heading5: {
+      fontFamily: font.sansMedium,
+      fontSize: 14,
+      lineHeight: 20,
+      marginTop: 10,
+      marginBottom: 2,
+    },
+    // The sixth level is a label more than a heading, so it reads as one.
+    heading6: {
+      fontFamily: font.sansMedium,
+      fontSize: 13,
+      lineHeight: 19,
+      marginTop: 10,
+      marginBottom: 2,
+      color: c.mutedForeground,
+    },
     code_inline: {
       fontFamily: font.mono,
       fontSize: 12.5,

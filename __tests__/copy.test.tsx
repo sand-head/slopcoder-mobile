@@ -29,6 +29,18 @@ jest.mock('../src/ui/haptics', () => ({
 import { copyText } from '../src/ui/clipboard';
 import { Prose } from '../src/ui/kit';
 
+/** Every string drawn anywhere in the tree. */
+function strings(node: unknown, out: string[] = []): string[] {
+  if (node == null) return out;
+  if (typeof node === 'string') {
+    out.push(node);
+    return out;
+  }
+  const element = node as { children?: unknown[] };
+  (element.children ?? []).forEach(child => strings(child, out));
+  return out;
+}
+
 /** Every node of a type, anywhere in the tree. */
 function findAll(node: unknown, type: string, out: Record<string, unknown>[] = []) {
   if (node == null || typeof node === 'string') return out;
@@ -82,6 +94,24 @@ describe('Prose', () => {
       props => props.accessibilityLabel === 'Copy code',
     );
     expect(buttons).toHaveLength(1);
+
+    await act(async () => tree!.unmount());
+  });
+
+  /**
+   * The library labels that button with an icon font it brings along itself,
+   * and nothing links that font: it is a transitive dependency, so the CLI
+   * never autolinks it and its pod — which is where the .ttf lives — is never
+   * installed. On the phone the button drew a missing-glyph box. The patch in
+   * `patches/` says the word instead, in the mono this app does ship.
+   */
+  it('says the word, because the icon font it wanted is not in this app', async () => {
+    let tree: ReturnType<typeof create> | undefined;
+    await act(async () => {
+      tree = create(<Prose>{'```bash\nnpm run bundle:check\n```\n'}</Prose>);
+    });
+
+    expect(strings(tree!.toJSON())).toContain('Copy');
 
     await act(async () => tree!.unmount());
   });
