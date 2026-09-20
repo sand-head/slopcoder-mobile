@@ -17,6 +17,11 @@
  *   at the width the PTY was told about. Letting `<Text>` wrap on top of that
  *   double-breaks long lines and puts the grid out of step with the cursor.
  * - **The sheet is dark in both app themes.** A terminal is a terminal.
+ * - **The keyboard takes its room out of the grid.** A phone keyboard is half
+ *   the screen, and a terminal under one is a terminal you cannot read. The
+ *   box shrinks by the keyboard's height instead, so the rows the emulator is
+ *   told about are the rows you can see — which is the whole contract the
+ *   measured cell above exists to keep.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -32,6 +37,7 @@ import {
   type TextLayoutEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useKeyboardState } from 'react-native-keyboard-controller';
 import { TrueSheet } from '@lodev09/react-native-true-sheet';
 import { KEYS } from '../api/terminal';
 import { useTerminal, type TerminalStatus } from '../state/terminal';
@@ -91,6 +97,18 @@ export function TerminalSheet({
   const window = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
+  // The keyboard's height, taken at the start of its rise and the end of its
+  // fall rather than every frame: this drives a *layout*, and a layout change
+  // here resizes the PTY. Riding the keyboard frame by frame would send the
+  // server sixty resizes and reflow the grid on each of them, which is a
+  // different and much worse bug than arriving a beat early.
+  //
+  // Zero unless the sheet is up. The hook is global, so the composer on the
+  // session screen behind us would otherwise shrink a terminal nobody has
+  // open.
+  const rising = useKeyboardState(state => state.height);
+  const keyboard = visible ? rising : 0;
+
   const [cellWidth, setCellWidth] = useState(0);
   const [box, setBox] = useState({ width: 0, height: 0 });
   const [pinned, setPinned] = useState(true);
@@ -146,7 +164,7 @@ export function TerminalSheet({
       onDidDismiss={onClose}>
       <View
         style={{
-          height: Math.round(window.height * SHEET_FRACTION),
+          height: Math.round(window.height * SHEET_FRACTION) - keyboard,
           backgroundColor: TERMINAL_BACKGROUND,
         }}>
         {/* Measured off-screen rather than drawn: this is the ruler, and it
@@ -188,28 +206,41 @@ export function TerminalSheet({
           </Text>
         </View>
 
-        <ScrollView
-          ref={scroll}
-          style={{ flex: 1 }}
-          onLayout={onBox}
-          onContentSizeChange={onContentSize}
-          onScroll={event => {
-            const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-            setPinned(
-              contentOffset.y + layoutMeasurement.height >= contentSize.height - LINE_HEIGHT,
-            );
-          }}
-          scrollEventThrottle={32}
-          // A tap on the output should not dismiss the keyboard mid-command.
-          keyboardShouldPersistTaps="always"
-          contentContainerStyle={{ paddingHorizontal: 10 }}>
-          <Grid rows={term.rows} cursor={term.cursor} cellWidth={cellWidth} version={term.version} />
-        </ScrollView>
+        {/* A tap on the output raises the keyboard. The `abc` key does the
+            same, but nobody goes looking for a key to type with: on a phone you
+            tap the thing you mean to type into, and in a terminal that is the
+            screen. Not accessible itself — the key row carries the label. */}
+        <Pressable accessible={false} style={{ flex: 1 }} onPress={() => input.current?.focus()}>
+          <ScrollView
+            ref={scroll}
+            style={{ flex: 1 }}
+            onLayout={onBox}
+            onContentSizeChange={onContentSize}
+            onScroll={event => {
+              const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+              setPinned(
+                contentOffset.y + layoutMeasurement.height >= contentSize.height - LINE_HEIGHT,
+              );
+            }}
+            scrollEventThrottle={32}
+            // A tap on the output should not dismiss the keyboard mid-command.
+            keyboardShouldPersistTaps="always"
+            contentContainerStyle={{ paddingHorizontal: 10 }}>
+            <Grid
+              rows={term.rows}
+              cursor={term.cursor}
+              cellWidth={cellWidth}
+              version={term.version}
+            />
+          </ScrollView>
+        </Pressable>
 
         <KeyRow
           onKey={term.send}
           onFocusInput={() => input.current?.focus()}
-          bottomInset={insets.bottom}
+          // With the keyboard up the home indicator is behind it, and the row
+          // belongs against the keys.
+          bottomInset={keyboard > 0 ? 0 : insets.bottom}
         />
 
         <HiddenInput ref={input} onText={term.send} />
@@ -425,6 +456,14 @@ function KeyRow({
  * invisible, so there is nothing for it to look wrong in, and the bundled mono
  * face has no U+200B — a glyph the font lacks is drawn as nothing, which is
  * fine until the day someone makes this field visible.
+ *
+ * **It is not fully transparent, and must not be.** A view at zero alpha is not
+ * there as far as UIKit is concerned: it cannot become first responder, and
+ * since 0.76 React Native's own hit test rejects anything under 0.01 alpha too.
+ * `opacity: 0` on a one-pixel field is therefore a keyboard that never comes
+ * up, which is what this sheet shipped with. The transparent text colour and
+ * hidden caret are what actually make it invisible; the alpha only has to be
+ * small enough that a pixel of background does not show through.
  */
 const SENTINEL = ' ';
 
@@ -456,13 +495,23 @@ const HiddenInput = React.forwardRef<TextInputInstance, { onText: (text: string)
         spellCheck={false}
         keyboardAppearance="dark"
         accessibilityLabel="Terminal input"
+        caretHidden
         // Present but out of the way: it has to be a real, focusable field for
         // the keyboard to come up, and it must never look like the input,
         // because the line the reader is typing on is the one in the grid.
         // One pixel rather than none — a zero-sized view is not focusable on
         // Android, and an invisible field that cannot take focus is a terminal
-        // that cannot be typed into.
-        style={{ position: 'absolute', bottom: 0, left: 0, width: 1, height: 1, opacity: 0, padding: 0 }}
+        // that cannot be typed into. See the note above about the alpha.
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          width: 1,
+          height: 1,
+          opacity: 0.02,
+          color: 'transparent',
+          padding: 0,
+        }}
       />
     );
   },
