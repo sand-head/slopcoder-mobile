@@ -8,14 +8,16 @@
  *
  * The name line is the transcript's file card, unchanged on purpose: the tinted
  * tile, the name, the line of what it is. The same object should not wear two
- * faces depending on which screen it is standing on.
+ * faces depending on which screen it is standing on — with a `…` at its end for
+ * everything that is not "open this", which is where the rest of the app keeps
+ * a row's menu.
  */
 import React from 'react';
 import { Image, Pressable, View } from 'react-native';
 import type { ArtifactSummary } from '../api/contracts';
 import { Body, Meta, Mono, Prose } from './kit';
-import { Tag } from './settings';
-import { OverflowMenu, type MenuItem } from './menu';
+import { RowMenuButton, Tag } from './settings';
+import { type MenuItem } from './menu';
 import { mix, radius, font, useTheme } from '../theme';
 
 /** How tall a preview is. Enough for a heading and the paragraph under it. */
@@ -62,7 +64,7 @@ export function ArtifactCard({
 }) {
   const { c } = useTheme();
 
-  const card = (
+  return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
@@ -113,16 +115,15 @@ export function ArtifactCard({
         </View>
 
         {artifact.shared ? <Tag tone="ok">shared</Tag> : null}
-        <Mono style={{ fontSize: 15 }}>›</Mono>
+        {/* The `…` where a row's chevron would be: the whole card is already
+            the tap, so a chevron would only repeat it. */}
+        {menu && menu.length > 0 ? (
+          <RowMenuButton title={artifact.title} items={menu} />
+        ) : (
+          <Mono style={{ fontSize: 15 }}>›</Mono>
+        )}
       </View>
     </Pressable>
-  );
-
-  if (!menu || menu.length === 0) return card;
-  return (
-    <OverflowMenu title={artifact.title} items={menu} longPress style={{ alignSelf: 'stretch' }}>
-      {card}
-    </OverflowMenu>
   );
 }
 

@@ -6,13 +6,13 @@
  * with a generated key: that line is the one thing a fresh node needs.
  */
 import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
-import { Alert, Platform, Share, View } from 'react-native';
+import { Alert, Platform, Share } from 'react-native';
 import { NodeKeyKind, type RemoteNodeSummary } from '../../api/contracts';
 import { installCommand, nodeTarget, stamp } from '../../api/settings';
 import { useAuth } from '../../state/auth';
 import { Button, Hint, Mono } from '../../ui/kit';
 import { Sheet } from '../../ui/Sheet';
-import { BarText, CopyBox, Empty, ListRow, RowMenuButton, Section, SettingsPage, useFocusLoad } from '../../ui/settings';
+import { BarText, CopyBox, Empty, ListRow, Section, SettingsPage, useFocusLoad } from '../../ui/settings';
 import { barButton } from '../../navigation/headers';
 import type { MenuItem } from '../../ui/menu';
 import { tapConfirm, tapError, tapRefuse } from '../../ui/haptics';
@@ -163,12 +163,9 @@ export function RemoteNodesScreen({ route, navigation }: { route?: any; navigati
             dimmed={!node.enabled}
             onPress={() => edit(node)}
             menu={menuFor(node)}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Mono numberOfLines={1} style={{ flex: 1 }}>
-                {node.hostKeyFingerprint ?? 'unpinned'} · seen {node.lastConnectedAt ? stamp(node.lastConnectedAt) : 'never'}
-              </Mono>
-              <RowMenuButton title={node.name} items={menuFor(node)} />
-            </View>
+            <Mono numberOfLines={1}>
+              {node.hostKeyFingerprint ?? 'unpinned'} · seen {node.lastConnectedAt ? stamp(node.lastConnectedAt) : 'never'}
+            </Mono>
           </ListRow>
         ))}
       </Section>

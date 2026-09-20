@@ -192,9 +192,14 @@ export function Tag({ children, tone = 'muted' }: { children: string; tone?: 'mu
 
 /**
  * One row of a settings list: a title, a line under it, and on the right a
- * switch, a chevron, or nothing. A long press opens the row's menu, which is
- * where edit and remove live — a phone has no hover, and a row of link
- * buttons is a table's idea of actions.
+ * switch, a chevron, or nothing. Edit and remove live in the row's menu, behind
+ * a `…` at the end — a phone has no hover, and a row of link buttons is a
+ * table's idea of actions.
+ *
+ * The `…` is a button rather than a long press of the row because a long press
+ * meant wrapping the row in the native menu, and the native menu eats the tap
+ * of anything inside it (see {@link OverflowMenu}). A row with a menu could
+ * therefore only be opened from the menu. The tap is the thing worth keeping.
  */
 export function ListRow({
   title,
@@ -237,13 +242,12 @@ export function ListRow({
       accessibilityRole={onPress ? 'button' : undefined}
       accessibilityLabel={subtitle ? `${title}, ${subtitle}` : title}
       style={({ pressed }) => ({
+        flex: 1,
         minHeight: 52,
         flexDirection: 'row',
         alignItems: 'center',
         gap: 12,
         paddingVertical: 10,
-        borderTopWidth: 1,
-        borderTopColor: c.border,
         backgroundColor: pressed ? mix(c.mutedForeground, 8) : 'transparent',
         opacity: dimmed ? 0.55 : 1,
       })}>
@@ -275,26 +279,58 @@ export function ListRow({
     </Pressable>
   );
 
-  if (!menu || menu.length === 0) return body;
+  // The hairline moves to the wrapper so it runs the full width of the row
+  // rather than stopping where the pressable does.
   return (
-    <OverflowMenu title={menuTitle ?? title} items={menu} longPress style={{ alignSelf: 'stretch' }}>
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderTopWidth: 1,
+        borderTopColor: c.border,
+      }}>
       {body}
-    </OverflowMenu>
+      {menu && menu.length > 0 ? (
+        <RowMenuButton title={menuTitle ?? title} items={menu} dimmed={dimmed} />
+      ) : null}
+    </View>
   );
 }
 
-/** A `…` at the end of a row that opens the same menu a long press does. */
-export function RowMenuButton({ title, items }: { title: string; items: MenuItem[] }) {
+/**
+ * A `…` at the end of a row: everything that is not the row's own tap.
+ *
+ * The trigger is a `Pressable` and not a plain `View` for two reasons: it gets
+ * the press feedback every other control in the app has, and it takes the
+ * responder, so a `…` sitting inside a card that is itself pressable opens the
+ * menu instead of also opening the card.
+ */
+export function RowMenuButton({
+  title,
+  items,
+  dimmed,
+}: {
+  title: string;
+  items: MenuItem[];
+  /** Follows a disabled row's own half strength. */
+  dimmed?: boolean;
+}) {
   const { c } = useTheme();
   return (
     <OverflowMenu title={title} items={items}>
-      <View
-        accessible
+      <Pressable
+        hitSlop={8}
         accessibilityRole="button"
         accessibilityLabel={`Actions for ${title}`}
-        style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
+        style={({ pressed }) => ({
+          width: 32,
+          height: 32,
+          alignItems: 'center',
+          justifyContent: 'center',
+          opacity: pressed ? 0.5 : dimmed ? 0.55 : 1,
+        })}>
         <Mono style={{ fontSize: 16, color: c.foreground }}>…</Mono>
-      </View>
+      </Pressable>
     </OverflowMenu>
   );
 }
