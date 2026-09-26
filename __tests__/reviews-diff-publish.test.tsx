@@ -280,3 +280,319 @@ test('newRequestId mints a fresh id per confirmation', () => {
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
   );
 });
+
+// -- publishing, per finding: the panel as it now works ------------------------
+//
+// The user's report that started this: "hitting submit on review comments
+// does nothing on mobile." No handler was unwired — the failures were silent
+// (a message below the fold, a shared busy flag, a dead checkbox list). These
+// mount the detail screen with a mocked seam and press the real buttons: the
+// words must be in the tree where the thumb tapped, not nowhere.
+
+import {
+  CodeReviewAnalysisState as AnalysisState,
+  CodeReviewCompleteness,
+  CodeReviewFindingDisposition as FindingDisposition,
+  CodeReviewFindingProvenance as FindingProvenance,
+  CodeReviewMode as ReviewMode,
+  CodeReviewPublicationPlacement as PublicationPlacement,
+  CodeReviewSourceKind as SourceKind,
+  CodeReviewTargetKind as TargetKind,
+  GitServiceKind as ServiceKind,
+  type CodeReviewDetail,
+  type CodeReviewFindingList,
+  type CodeReviewFindingSummary,
+  type CodeReviewPublicationOverview,
+  type CodeReviewPublicationPreview,
+} from '../src/api/contracts';
+import { ReviewDetailScreen } from '../src/screens/Reviews';
+
+const score = {
+  impact: 300,
+  triggerBreadth: 200,
+  evidenceQuality: 400,
+  verifierConfidence: 500,
+  ruleRelevance: 100,
+  duplicateSupport: 50,
+  total: 640,
+};
+
+const summary = (
+  id: string,
+  rank: number,
+  overrides: Partial<CodeReviewFindingSummary> = {},
+): CodeReviewFindingSummary => ({
+  id,
+  rank,
+  fingerprint: `fp-${id}`,
+  version: 4,
+  category: 0 as never,
+  severity: 1 as never,
+  path: 'src/relay.ts',
+  side: 0 as never,
+  startLine: 10,
+  endLine: 12,
+  inline: true,
+  title: `Relay drops message ${rank}`,
+  score,
+  capped: false,
+  reports: 1,
+  disposition: FindingDisposition.Open,
+  priorDisposition: null,
+  provenance: FindingProvenance.Pipeline,
+  authorSessionId: null,
+  hasSuggestion: false,
+  ...overrides,
+});
+
+const twoFindings = (): CodeReviewFindingList => ({
+  reviewId: 'r-1',
+  state: AnalysisState.Completed,
+  consolidationDigest: 'digest-1',
+  superseded: false,
+  findings: [summary('f-1', 1), summary('f-2', 2)],
+});
+
+const detail = (): CodeReviewDetail => ({
+  id: 'r-1',
+  state: AnalysisState.Completed,
+  target: {
+    forgeKind: ServiceKind.GitHub,
+    canonicalAuthority: 'github.com',
+    repositoryOwner: 'acme',
+    repositoryName: 'app',
+    pullRequestNumber: 12,
+    headSha: 'cccc2222dddd',
+    kind: TargetKind.PullRequest,
+    rangeBaseSha: '',
+  },
+  pipelineVersion: 3,
+  policyDigest: 'digest',
+  policy: { maxChangedFiles: 200 },
+  createdAt: '2026-09-24T09:00:00Z',
+  updatedAt: '2026-09-24T09:30:00Z',
+  snapshotFinalizedAt: '2026-09-24T09:05:00Z',
+  failureReason: null,
+  supersededByRunId: null,
+  supersededAt: null,
+  fileCounts: [],
+  snapshot: null,
+  progress: {
+    planned: true,
+    completeness: CodeReviewCompleteness.Complete,
+    partialReasons: [],
+    workItems: [],
+    verifierItems: [],
+    candidates: [],
+    coverage: null,
+    failures: [],
+    failuresOmitted: 0,
+  },
+  mode: ReviewMode.Pipeline,
+  source: SourceKind.Forge,
+  sourceSessionId: null,
+  sourcePath: null,
+});
+
+const overview = (
+  findings: CodeReviewPublicationOverview['findings'],
+  publications: CodeReviewPublicationOverview['publications'] = [],
+): CodeReviewPublicationOverview => ({
+  reviewId: 'r-1',
+  canPublish: true,
+  blocker: null,
+  completeness: CodeReviewCompleteness.Complete,
+  findings,
+  publications,
+  target: CodeReviewElevationTarget.PullRequestReview,
+  repository: 'acme/app',
+});
+
+const publishablePlace = (findingId: string) => ({
+  findingId,
+  placement: PublicationPlacement.Inline,
+  refusal: null,
+  publishedIn: null,
+});
+
+const previewFor = (findingId: string): CodeReviewPublicationPreview => ({
+  reviewId: 'r-1',
+  headSha: 'cccc2222dddd',
+  event: CodeReviewPublicationEvent.Comment,
+  completeness: CodeReviewCompleteness.Complete,
+  coverageNotice: null,
+  reviewBody: 'Findings from the review.',
+  items: [
+    {
+      findingId,
+      rank: 1,
+      severity: 1 as never,
+      title: 'Relay drops message 1',
+      placement: PublicationPlacement.Inline,
+      path: 'src/relay.ts',
+      side: 0 as never,
+      startLine: 10,
+      line: 12,
+      body: 'The loop exits before the flush.',
+      refusal: null,
+      issueTitle: null,
+    },
+  ],
+  target: CodeReviewElevationTarget.PullRequestReview,
+  repository: 'acme/app',
+});
+
+// The mocked seam. The names must carry the `mock` prefix: jest hoists
+// jest.mock factories above these declarations, and its guard only lets a
+// factory close over out-of-scope variables named mock* (anything else binds
+// to an uninitialized copy — the seam reads as absent and the screen idles).
+const mockSeam = {
+  reviewDetail: jest.fn((): Promise<CodeReviewDetail | null> => Promise.resolve(detail())),
+  reviewFindings: jest.fn((): Promise<CodeReviewFindingList | null> => Promise.resolve(twoFindings())),
+  reviewPublications: jest.fn(
+    (): Promise<CodeReviewPublicationOverview | null> =>
+      Promise.resolve(
+        overview([
+          publishablePlace('f-1'),
+          {
+            findingId: 'f-2',
+            placement: null,
+            refusal: 'its anchor is not on a changed line',
+            publishedIn: null,
+          },
+        ]),
+      ),
+  ),
+  previewReviewPublication: jest.fn(
+    (): Promise<CodeReviewPublicationPreview | null> => Promise.resolve(previewFor('f-1')),
+  ),
+  publishReview: jest.fn(
+    (): Promise<{ status: number; reason: string | null; publication: unknown }> =>
+      Promise.resolve({ status: 0, reason: null, publication: null }),
+  ),
+};
+// One stable object identity for every render: zustand selects through
+// useSyncExternalStore, and a fresh object per call re-renders forever.
+const mockAuthState = { seam: mockSeam };
+
+jest.mock('../src/state/auth', () => ({
+  useAuth: (select: (state: unknown) => unknown) => select(mockAuthState),
+}));
+
+jest.mock('../src/navigation/headers', () => ({
+  useHeaderInset: () => 0,
+  barButton: () => ({
+    headerRight: () => null,
+    unstable_headerRightItems: () => [],
+  }),
+}));
+
+async function mountDetail() {
+  let tree!: ReturnType<typeof create>;
+  await act(async () => {
+    tree = create(
+      <ReviewDetailScreen
+        route={{ params: { reviewId: 'r-1' } }}
+        navigation={{ setOptions: jest.fn(), addListener: () => () => {}, push: jest.fn() } as never}
+      />,
+    );
+    // The screen chains several awaits (detail, then findings, then the
+    // publication overview); drain the microtask queue, bounded so a hang
+    // fails rather than blocks.
+    for (let i = 0; i < 20; i++) {
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+  });
+  return tree;
+}
+
+/** Press by accessibility label: the kit Button sets it from its label.
+ * Found by scanning for the onPress prop, not by component type — the RN
+ * jest preset's Pressable stand-in does not match findAllByType. */
+function press(tree: ReturnType<typeof create>, label: string) {
+  const hit = tree.root
+    .findAll(
+      n => n.props.accessibilityLabel === label && typeof n.props.onPress === 'function',
+    )
+    .pop();
+  if (hit == null) throw new Error(`no pressable labelled ${JSON.stringify(label)}`);
+  act(() => {
+    hit.props.onPress();
+  });
+}
+
+const strings = (tree: ReturnType<typeof create>): string =>
+  JSON.stringify(tree.root.findAllByType(Text).map(t => t.props.children));
+
+test('a publishable finding is actionable on its own card', async () => {
+  const tree = await mountDetail();
+  const text = strings(tree);
+  // The card says the two things the web's select row says.
+  expect(text).toContain('supported · inline');
+  // The refused finding says its refusal where its action would be.
+  expect(text).toContain('its anchor is not on a changed line');
+  // And the actionable one carries its own buttons.
+  expect(text).toContain('Post comment');
+  expect(text).toContain('Post as change request');
+});
+
+test('pressing a card action previews exactly that finding, and publish posts it alone', async () => {
+  const tree = await mountDetail();
+  await act(async () => {
+    press(tree, 'Post comment');
+    await Promise.resolve();
+  });
+  expect(mockSeam.previewReviewPublication).toHaveBeenCalledWith(
+    'r-1',
+    ['f-1'],
+    CodeReviewPublicationEvent.Comment,
+  );
+  await act(async () => {
+    press(tree, 'Post review');
+    await Promise.resolve();
+  });
+  // The publish posts the previewed finding only, with a fresh requestId.
+  const call = mockSeam.publishReview.mock.calls[0] as unknown as [
+    string,
+    string,
+    { findingIds: string[]; event: number },
+  ];
+  const [requestId, reviewId, request] = call;
+  expect(reviewId).toBe('r-1');
+  expect(request.findingIds).toEqual(['f-1']);
+  expect(request.event).toBe(CodeReviewPublicationEvent.Comment);
+  expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
+});
+
+test('a failed preview says so on the card that was tapped — the dead-tap regression', async () => {
+  const tree = await mountDetail();
+  mockSeam.previewReviewPublication.mockRejectedValueOnce(new Error('offline'));
+  await act(async () => {
+    press(tree, 'Post comment');
+    await Promise.resolve();
+  });
+  // Not below the list, not nowhere: the failure words are in the tree at the
+  // tap point. This is the string that was silently missing.
+  expect(strings(tree)).toContain('Could not prepare the preview. Try again.');
+});
+
+test('when every finding is already published or refused, the panel says so instead of a dead list', async () => {
+  mockSeam.reviewPublications.mockImplementationOnce(() =>
+    Promise.resolve(
+      overview([
+        { findingId: 'f-1', placement: null, refusal: null, publishedIn: 'pub-9' },
+        { findingId: 'f-2', placement: null, refusal: 'no changed line', publishedIn: null },
+      ]),
+    ),
+  );
+  const tree = await mountDetail();
+  const text = strings(tree);
+  // The hint says the state; the cards stay to say what became of each.
+  expect(text).toContain(
+    'Nothing here can still be published: every finding was already posted, or cannot be raised.',
+  );
+  expect(text).toContain('already published');
+  // No action button survives anywhere.
+  expect(text).not.toContain('Post comment');
+});
