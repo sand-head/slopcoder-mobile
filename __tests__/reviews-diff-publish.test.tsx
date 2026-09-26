@@ -70,9 +70,22 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 
+/** A Text's children, flattened to a string: children can be strings, arrays,
+ * or nested elements (a Body inside a Body, whose React element is circular
+ * and cannot be JSON.stringify'd). */
+function textOf(children: unknown): string {
+  if (typeof children === 'string') return children;
+  if (typeof children === 'number') return String(children);
+  if (Array.isArray(children)) return children.map(textOf).join('');
+  if (React.isValidElement(children)) {
+    return textOf((children.props as { children?: unknown }).children);
+  }
+  return '';
+}
+
 function renderedText(tree: ReturnType<typeof create>): string {
   return JSON.stringify(
-    tree.root.findAllByType(Text).map(t => t.props.children),
+    tree.root.findAllByType(Text).map(t => textOf(t.props.children)),
   );
 }
 
@@ -281,13 +294,16 @@ test('newRequestId mints a fresh id per confirmation', () => {
   );
 });
 
-// -- publishing, per finding: the panel as it now works ------------------------
+// -- publishing, fused into the findings list: one card per finding and a
+// publish bar at the bottom -----------------------------------------------
 //
 // The user's report that started this: "hitting submit on review comments
 // does nothing on mobile." No handler was unwired — the failures were silent
 // (a message below the fold, a shared busy flag, a dead checkbox list). These
-// mount the detail screen with a mocked seam and press the real buttons: the
-// words must be in the tree where the thumb tapped, not nowhere.
+// mount the detail screen with a mocked seam and press the real controls: the
+// words must be in the tree where the thumb tapped, not nowhere. The cards
+// are one per finding and never collapsible: a second card per finding is
+// what this layout replaced.
 
 import {
   CodeReviewAnalysisState as AnalysisState,
@@ -523,24 +539,31 @@ function press(tree: ReturnType<typeof create>, label: string) {
 }
 
 const strings = (tree: ReturnType<typeof create>): string =>
-  JSON.stringify(tree.root.findAllByType(Text).map(t => t.props.children));
+  tree.root.findAllByType(Text).map(t => textOf(t.props.children)).join('\n');
 
-test('a publishable finding is actionable on its own card', async () => {
+test('one card per finding, never collapsible: the publish checkbox rides on it', async () => {
   const tree = await mountDetail();
   const text = strings(tree);
   // The card says the two things the web's select row says.
   expect(text).toContain('supported · inline');
-  // The refused finding says its refusal where its action would be.
+  // The refused finding says its refusal where its checkbox would be.
   expect(text).toContain('its anchor is not on a changed line');
-  // And the actionable one carries its own buttons.
-  expect(text).toContain('Post comment');
-  expect(text).toContain('Post as change request');
+  // Exactly one publish bar, carrying the web's button words.
+  expect(text).toContain('Review what will be posted');
+  // The finding bodies are on their cards — no second card, no collapse: the
+  // claims are already in the tree without tapping anything.
+  expect(text).toContain('Relay drops message 1');
+  expect(text).toContain('Relay drops message 2');
 });
 
-test('pressing a card action previews exactly that finding, and publish posts it alone', async () => {
+test('checking a finding and pressing the bar previews it, and publish posts it', async () => {
   const tree = await mountDetail();
   await act(async () => {
-    press(tree, 'Post comment');
+    press(tree, 'Publish Relay drops message 1');
+    await Promise.resolve();
+  });
+  await act(async () => {
+    press(tree, 'Review what will be posted (1)…');
     await Promise.resolve();
   });
   expect(mockSeam.previewReviewPublication).toHaveBeenCalledWith(
@@ -552,7 +575,7 @@ test('pressing a card action previews exactly that finding, and publish posts it
     press(tree, 'Post review');
     await Promise.resolve();
   });
-  // The publish posts the previewed finding only, with a fresh requestId.
+  // The publish posts the checked finding only, with a fresh requestId.
   const call = mockSeam.publishReview.mock.calls[0] as unknown as [
     string,
     string,
@@ -565,16 +588,31 @@ test('pressing a card action previews exactly that finding, and publish posts it
   expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
 });
 
-test('a failed preview says so on the card that was tapped — the dead-tap regression', async () => {
+test('a failed preview says so at the publish bar — the dead-tap regression', async () => {
   const tree = await mountDetail();
+  await act(async () => {
+    press(tree, 'Publish Relay drops message 1');
+  });
   mockSeam.previewReviewPublication.mockRejectedValueOnce(new Error('offline'));
   await act(async () => {
-    press(tree, 'Post comment');
+    press(tree, 'Review what will be posted (1)…');
     await Promise.resolve();
   });
   // Not below the list, not nowhere: the failure words are in the tree at the
-  // tap point. This is the string that was silently missing.
+  // bar. This is the string that was silently missing.
   expect(strings(tree)).toContain('Could not prepare the preview. Try again.');
+});
+
+test('pressing the bar with nothing checked says so instead of doing nothing', async () => {
+  mockSeam.previewReviewPublication.mockClear();
+  const tree = await mountDetail();
+  await act(async () => {
+    // The refused finding cannot be checked; nothing is.
+    press(tree, 'Review what will be posted…');
+    await Promise.resolve();
+  });
+  expect(strings(tree)).toContain('Check the findings to publish first.');
+  expect(mockSeam.previewReviewPublication).not.toHaveBeenCalled();
 });
 
 test('when every finding is already published or refused, the panel says so instead of a dead list', async () => {
@@ -593,6 +631,6 @@ test('when every finding is already published or refused, the panel says so inst
     'Nothing here can still be published: every finding was already posted, or cannot be raised.',
   );
   expect(text).toContain('already published');
-  // No action button survives anywhere.
-  expect(text).not.toContain('Post comment');
+  // No publish bar survives anywhere.
+  expect(text).not.toContain('Review what will be posted');
 });
