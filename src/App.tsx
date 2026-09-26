@@ -23,6 +23,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from './state/auth';
 import { LoginScreen, ScanScreen } from './screens/Login';
 import { SessionDetailScreen } from './screens/SessionDetail';
+import { ReviewsScreen, ReviewDetailScreen } from './screens/Reviews';
 import { RoutineScreen } from './screens/Routine';
 import { RoutineEditorScreen } from './screens/RoutineEditor';
 import { DocEditorScreen } from './screens/settings/DocEditor';
@@ -87,6 +88,8 @@ export default function App() {
               <>
                 <Root.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
                 <Root.Screen name="Session" component={SessionDetailScreen} options={{ title: '', ...glassBar }} />
+                <Root.Screen name="Reviews" component={ReviewsScreen} options={{ title: 'Reviews', ...glassBar }} />
+                <Root.Screen name="ReviewDetail" component={ReviewDetailScreen} options={{ title: '', ...glassBar }} />
                 <Root.Screen name="Routine" component={RoutineScreen} options={{ title: '', ...glassBar }} />
                 <Root.Screen
                   name="RoutineEditor"

@@ -65,6 +65,7 @@ import type {
   ServerProtocol,
   SessionState,
   SessionSummary,
+  RecentRepo,
   SetApprovalRequest,
   SetFacetRequest,
   SetThinkingRequest,
@@ -76,8 +77,25 @@ import type {
   TerminalPrefs,
   TextResult,
   UsageDashboard,
+  CodexQuotaSummary,
+  SessionSearchHit,
   UserFacetSummary,
   UserSkillSummary,
+  CodeReviewCancelResult,
+  CodeReviewDetail,
+  CodeReviewFindingDetail,
+  CodeReviewFindingDiff,
+  CodeReviewFindingDispositionRequest,
+  CodeReviewFindingDispositionResult,
+  CodeReviewFindingList,
+  CodeReviewSessionReview,
+  CodeReviewPublicationOverview,
+  CodeReviewPublicationPreview,
+  CodeReviewPublicationPreviewRequest,
+  CodeReviewPublishRequest,
+  CodeReviewPublicationRetryRequest,
+  CodeReviewPublishResult,
+  CodeReviewPublicationEvent,
 } from './contracts';
 import { CodexPollStatus, UsageRange } from './contracts';
 
@@ -428,8 +446,12 @@ export class Seam {
     return (await this.get<FacetOption[]>('api/seam/user-config/facet-catalog', signal)) ?? [];
   }
 
-  async recentRepos(take = 6, signal?: AbortSignal): Promise<string[]> {
-    return (await this.get<string[]>(`api/seam/sessions/recent-repos?take=${take}`, signal)) ?? [];
+  /** Labeled rows — owner/name and the forge mark — since the seam grew them. */
+  async recentRepos(take = 6, signal?: AbortSignal): Promise<RecentRepo[]> {
+    return (await this.get<RecentRepo[]>(
+      `api/seam/sessions/recent-repos?take=${take}`,
+      signal,
+    )) ?? [];
   }
 
   async repos(signal?: AbortSignal): Promise<GitRepoListing> {
@@ -627,6 +649,19 @@ export class Seam {
     return this.get<UsageDashboard>(`api/seam/usage?range=${UsageRange[range]}`, signal);
   }
 
+  /** Advisory Codex allowances; `refresh` asks the upstream again rather than serving the cache. */
+  async codexQuotas(refresh = false, signal?: AbortSignal): Promise<CodexQuotaSummary[]> {
+    return (await this.get<CodexQuotaSummary[]>(`api/seam/usage/codex-quotas?refresh=${refresh}`, signal)) ?? [];
+  }
+
+  /** Full-text search over the caller's own past sessions — what was said, not titles. */
+  async sessionSearch(query: string, limit = 10, signal?: AbortSignal): Promise<SessionSearchHit[]> {
+    return (await this.get<SessionSearchHit[]>(
+      `api/seam/session-search?query=${encodeURIComponent(query)}&limit=${limit}`,
+      signal,
+    )) ?? [];
+  }
+
   protocol(signal?: AbortSignal) {
     return this.get<ServerProtocol>('api/seam/protocol', signal);
   }
@@ -692,6 +727,19 @@ export class Seam {
 
   setModelEnabled(id: string, modelId: string, enabled: boolean) {
     return this.landed('PUT', `api/seam/connections/${id}/models/enabled`, { modelId, enabled });
+  }
+
+  /**
+   * The hand-written model catalog, or null when the connection lists from its
+   * endpoint. Carries no key material — it is the JSON the user typed.
+   */
+  async modelCatalog(id: string, signal?: AbortSignal): Promise<string | null> {
+    return (await this.get<TextResult>(`api/seam/connections/${id}/model-catalog`, signal))?.value ?? null;
+  }
+
+  /** Replace (null/empty clears) a catalog; a string answer is the problem with the JSON. */
+  setModelCatalog(id: string, json: string | null) {
+    return this.textResult('PUT', `api/seam/connections/${id}/model-catalog`, { value: json }, 'That connection is gone.');
   }
 
   async gitConnections(signal?: AbortSignal): Promise<GitConnectionSummary[]> {
@@ -762,6 +810,110 @@ export class Seam {
 
   deleteMcpServer(id: string) {
     return this.landed('DELETE', `api/seam/mcp/${id}`);
+  }
+
+  // -- code reviews --
+  //
+  // Over `/api/seam/reviews/*` (the web's `HttpCodeReviewsApi`). A 404 is null
+  // here for every route: another owner's review reads the same as one that
+  // does not exist, and each screen words it. Reviews are requested by an
+  // agent's tools, never from here. The diff and publication routes arrive
+  // with their slices.
+
+  /** The reviews this session started and those its agent commented on, newest first. Null: no such session. */
+  sessionReviews(sessionId: string, signal?: AbortSignal) {
+    return this.get<CodeReviewSessionReview[]>(
+      `api/seam/reviews/sessions/${sessionId}`,
+      signal,
+    );
+  }
+
+  reviewDetail(reviewId: string, signal?: AbortSignal) {
+    return this.get<CodeReviewDetail>(`api/seam/reviews/${reviewId}`, signal);
+  }
+
+  /** Cancel: terminal; queued and running work is cancelled with it. Null: not yours or gone. */
+  cancelReview(reviewId: string) {
+    return this.send<CodeReviewCancelResult>('POST', `api/seam/reviews/${reviewId}/cancel`);
+  }
+
+  reviewFindings(reviewId: string, signal?: AbortSignal) {
+    return this.get<CodeReviewFindingList>(`api/seam/reviews/${reviewId}/findings`, signal);
+  }
+
+  reviewFinding(reviewId: string, findingId: string, signal?: AbortSignal) {
+    return this.get<CodeReviewFindingDetail>(
+      `api/seam/reviews/${reviewId}/findings/${findingId}`,
+      signal,
+    );
+  }
+
+  /**
+   * Accept, dismiss or reopen one finding. A refused update is a 200 whose
+   * `status` says so (a version conflict, a rebuilt consolidation, superseded,
+   * invalid) — never an overwrite; the screen words it and reloads.
+   */
+  setFindingDisposition(
+    reviewId: string,
+    findingId: string,
+    request: CodeReviewFindingDispositionRequest,
+  ) {
+    return this.send<CodeReviewFindingDispositionResult>(
+      'POST',
+      `api/seam/reviews/${reviewId}/findings/${findingId}/disposition`,
+      request,
+    );
+  }
+
+  /** The finding's anchored lines with context, from the review's pinned commits. */
+  reviewFindingDiff(reviewId: string, findingId: string, signal?: AbortSignal) {
+    return this.get<CodeReviewFindingDiff>(
+      `api/seam/reviews/${reviewId}/findings/${findingId}/diff`,
+      signal,
+    );
+  }
+
+  // -- code review publications --
+  //
+  // Whether the review can be published, where each finding would go, and its
+  // publications so far; then the confirm-gated publish and retry. The request
+  // id is minted when the confirmation opens, so a resend is the same
+  // publication, and nothing is ever sent without `confirmed: true`.
+
+  reviewPublications(reviewId: string, signal?: AbortSignal) {
+    return this.get<CodeReviewPublicationOverview>(
+      `api/seam/reviews/${reviewId}/publications`,
+      signal,
+    );
+  }
+
+  /** Exactly what publishing these findings would post; nothing is sent. */
+  previewReviewPublication(
+    reviewId: string,
+    findingIds: string[],
+    event: CodeReviewPublicationEvent,
+  ) {
+    return this.send<CodeReviewPublicationPreview>(
+      'POST',
+      `api/seam/reviews/${reviewId}/publications/preview`,
+      { findingIds, event } as CodeReviewPublicationPreviewRequest,
+    );
+  }
+
+  publishReview(requestId: string, reviewId: string, request: Omit<CodeReviewPublishRequest, 'requestId' | 'confirmed'>) {
+    return this.send<CodeReviewPublishResult>(
+      'POST',
+      `api/seam/reviews/${reviewId}/publications`,
+      { ...request, requestId, confirmed: true } as CodeReviewPublishRequest,
+    );
+  }
+
+  retryReviewPublication(reviewId: string, publicationId: string) {
+    return this.send<CodeReviewPublishResult>(
+      'POST',
+      `api/seam/reviews/${reviewId}/publications/${publicationId}/retry`,
+      { confirmed: true } as CodeReviewPublicationRetryRequest,
+    );
   }
 
   // -- remote nodes --

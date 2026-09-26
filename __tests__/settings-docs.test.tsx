@@ -32,6 +32,7 @@ const mockSeam = {
   saveHooks: jest.fn(() => Promise.resolve()),
   connections: jest.fn(() => Promise.resolve([{}, {}])),
   gitConnections: jest.fn(() => Promise.resolve([])),
+  protocol: jest.fn(() => Promise.resolve({ executor: 1, version: '1.4.2' })),
   nodes: jest.fn(() => Promise.resolve([])),
   facets: jest.fn(() => Promise.resolve([{ name: 'execute' }])),
   channels: jest.fn(() => Promise.resolve([])),

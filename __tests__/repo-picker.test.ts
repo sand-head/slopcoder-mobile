@@ -11,6 +11,7 @@
  * right.
  */
 import {
+  kindFromUrl,
   localMatches,
   offer,
   remoteMatches,
@@ -100,7 +101,7 @@ describe('what the sheet offers', () => {
     expect(urlIn(url)).toBe(url);
 
     const shown = offer({ query: url, recent, owned, found: [], searching: false });
-    expect(shown.options).toEqual([{ key: url, label: url }]);
+    expect(shown.options).toEqual([{ key: url, label: url, kind: kindFromUrl(url) }]);
     // And there is nothing to search a forge for.
     expect(shouldSearch(owned, url, true)).toBe(false);
   });
@@ -122,7 +123,23 @@ describe('what the sheet offers', () => {
       key: row.cloneUrl,
       label: row.fullName,
       description: 'private',
+      kind: GitServiceKind.Forgejo,
     });
     expect(rowToChoice({ ...row, private: false }).description).toBeUndefined();
+  });
+
+  /**
+   * The mark beside a pasted URL. github.com is the one host a URL names on
+   * its own; a Forgejo host belongs to whichever connection names it, which
+   * the server resolves for labeled rows — a bare pasted URL keeps the
+   * generic Git mark rather than guessing.
+   */
+  it.each([
+    ['https://github.com/torvalds/linux.git', GitServiceKind.GitHub],
+    ['https://github.com/torvalds/linux', GitServiceKind.GitHub],
+    ['git@github.com:torvalds/linux.git', null],
+    ['https://git.sand.town/sand_head/slopcoder.git', null],
+  ])('marks %s', (url, kind) => {
+    expect(kindFromUrl(url)).toBe(kind);
   });
 });

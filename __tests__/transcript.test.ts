@@ -302,6 +302,34 @@ describe('TranscriptFolder', () => {
       kind: 'approval',
       refused: true,
       approved: false,
+      // Absent on the wire reads as no preview, never undefined — the card
+      // renders on this field being nullable.
+      preview: null,
+    });
+  });
+
+  /**
+   * A tool that always asks (posting to a forge) says exactly what approving
+   * it would post. The card shows it in full as text; if the fold dropped it,
+   * the phone would ask for a verdict on evidence the cockpit shows.
+   */
+  it('carries a preview through to the approval card', () => {
+    const folder = new TranscriptFolder();
+
+    folder.fold([
+      event('ApprovalRequested', {
+        requestId: 'abc',
+        toolName: 'PostComment',
+        inputJson: '{}',
+        reason: 'posting to a forge',
+        refused: false,
+        preview: 'The comment, rendered.',
+      }),
+    ]);
+
+    expect(folder.all[0]).toMatchObject({
+      kind: 'approval',
+      preview: 'The comment, rendered.',
     });
   });
 

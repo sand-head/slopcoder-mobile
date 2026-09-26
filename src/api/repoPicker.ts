@@ -16,13 +16,15 @@
  * wrongly, so the search always came back empty and the sheet only ever showed
  * step 1. "Does it only use repos from existing sessions?" was exactly right.
  */
-import type { GitRepoRow } from './contracts';
+import { GitServiceKind, type GitRepoRow } from './contracts';
 
 export interface RepoChoice {
   /** The clone URL, which is what a session is actually attached to. */
   key: string;
   label: string;
   description?: string;
+  /** Which forge the row came from — picks the mark beside the name. */
+  kind?: GitServiceKind | null;
 }
 
 /** How many of your own repositories to show for one query. */
@@ -35,7 +37,22 @@ const REMOTE_LIMIT = 15;
 const MIN_QUERY = 2;
 
 export function rowToChoice(row: GitRepoRow): RepoChoice {
-  return { key: row.cloneUrl, label: row.fullName, description: row.private ? 'private' : undefined };
+  return {
+    key: row.cloneUrl,
+    label: row.fullName,
+    description: row.private ? 'private' : undefined,
+    kind: row.kind,
+  };
+}
+
+/**
+ * The mark for a repo the sheet only has a URL for — a recent one the server
+ * has not labeled yet, or a pasted clone URL. github.com is the one host a
+ * name alone recognizes; a bare URL row keeps the generic Git mark.
+ */
+export function kindFromUrl(url: string): GitServiceKind | null {
+  const host = /^https?:\/\/([^/]+)/i.exec(url.trim())?.[1]?.toLowerCase();
+  return host === 'github.com' ? GitServiceKind.GitHub : null;
 }
 
 /** A query that is a clone URL is an instruction, not a search. */
@@ -104,7 +121,7 @@ export function offer({
   if (url !== null) {
     return {
       label: 'clone url',
-      options: [{ key: url, label: url }],
+      options: [{ key: url, label: url, kind: kindFromUrl(url) }],
       empty: '',
     };
   }

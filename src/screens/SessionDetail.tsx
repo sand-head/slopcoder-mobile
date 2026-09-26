@@ -81,7 +81,7 @@ import { SubSessionCard } from '../ui/SubSessionCard';
 import { useAtBottom } from '../ui/atBottom';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useKeyboardOffset } from '../ui/keyboard';
-import { useHeaderInset } from '../navigation/headers';
+import { barButton, useHeaderInset } from '../navigation/headers';
 import { tapConfirm, tapError, tapRefuse } from '../ui/haptics';
 import { newTokens } from '../api/contracts';
 import { font, mix, radius, tintFor, useTheme } from '../theme';
@@ -332,8 +332,21 @@ export function SessionDetailScreen({
           <Mono numberOfLines={1}>{subtitle}</Mono>
         </Pressable>
       ),
+      // The only header action: everything else the session does lives in
+      // sheets from the composer. Reviews are a separate surface on the web
+      // too, so they get the button.
+      ...barButton(
+        {
+          label: 'Reviews',
+          symbol: 'doc.text.magnifyingglass',
+          onPress: () => navigation.navigate('Reviews', { sessionId: id }),
+        },
+        ({ label, onPress }) => (
+          <Button label={label} variant="ghost" onPress={onPress} />
+        ),
+      ),
     });
-  }, [navigation, title, subtitle]);
+  }, [navigation, title, subtitle, id]);
 
   // A gate opening or closing, a question answered: the card changes shape,
   // and the lines below it move rather than jump.
@@ -1246,6 +1259,28 @@ const TranscriptRow = React.memo(function Transcript({
             state="pending"
             forceOpen
           />
+
+          {/* A tool that always asks (posting to a forge) says exactly what
+              approving it posts: the rendered text, as text, in full — never
+              truncated, because this is the evidence the verdict rests on. */}
+          {item.preview ? (
+            <View
+              style={{
+                borderRadius: radius.md,
+                borderWidth: 1,
+                borderColor: c.border,
+                backgroundColor: mix(c.muted, 40),
+                padding: 8,
+                gap: 4,
+              }}>
+              <Meta style={{ fontSize: 10 }}>
+                What will be posted — read it before approving
+              </Meta>
+              <Body selectable style={{ fontFamily: font.mono, fontSize: 12, lineHeight: 17 }}>
+                {item.preview}
+              </Body>
+            </View>
+          ) : null}
 
           {pending ? (
             <View

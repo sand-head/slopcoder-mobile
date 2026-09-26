@@ -65,7 +65,15 @@ jest.mock('../src/ui/ConnectionBanner', () => ({ ConnectionBanner: () => null })
 jest.mock('../src/ui/TerminalSheet', () => ({ TerminalSheet: () => null }));
 jest.mock('../src/ui/shake', () => ({ useShake: () => {} }));
 jest.mock('../src/ui/keyboard', () => ({ useKeyboardOffset: () => 0 }));
-jest.mock('../src/navigation/headers', () => ({ useHeaderInset: () => 0 }));
+jest.mock('../src/navigation/headers', () => ({
+  useHeaderInset: () => 0,
+  // SessionDetail's Reviews button goes through barButton; the native item
+  // array it builds is the navigator's business, not this test's.
+  barButton: () => ({
+    headerRight: () => null,
+    unstable_headerRightItems: () => [],
+  }),
+}));
 jest.mock('../src/state/auth', () => ({
   useAuth: (select: (state: unknown) => unknown) => select({ seam: mockSeam }),
 }));

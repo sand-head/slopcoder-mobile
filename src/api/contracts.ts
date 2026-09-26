@@ -417,6 +417,35 @@ export interface UsageDashboard {
   breakdown: UsageBreakdown[];
 }
 
+/**
+ * Browser-safe advisory Codex allowance, per Codex connection. No token,
+ * account or upstream payload crosses this seam — only what the plan's windows
+ * say. `error` set means the refresh failed and this row is the reason, not
+ * the numbers; `isStale` means what it says.
+ */
+export interface CodexQuotaSummary {
+  connectionId: string;
+  connectionName: string;
+  planType?: string | null;
+  windows: LimitWindow[];
+  observedAt?: string | null;
+  isStale: boolean;
+  error?: string | null;
+}
+
+/**
+ * One matching moment in a past session: which session, when, who said it
+ * ("user" | "assistant" — the server maps the event kinds), and a short
+ * excerpt around the match. Scoped to the caller's own sessions.
+ */
+export interface SessionSearchHit {
+  sessionId: string;
+  sessionTitle: string;
+  when: string;
+  kind: string;
+  snippet: string;
+}
+
 // ---- catalogs the create screen needs ----
 
 export interface ModelCandidate {
@@ -442,6 +471,13 @@ export interface GitRepoRow {
 export interface GitRepoListing {
   repos: GitRepoRow[];
   errors: string[];
+}
+
+/** A recently used repository: the URL is the identity; label and kind are presentation. */
+export interface RecentRepo {
+  cloneUrl: string;
+  label: string;
+  kind?: GitServiceKind | null;
 }
 
 export enum NodeKeyKind {
@@ -914,10 +950,15 @@ export interface ChannelSummary {
 // contracts each page injects. Secrets go out in a request body and never
 // come back: a summary says `hasSecret`/`hasSecrets`, a key answers its prefix.
 
-/** The two-field answer a create gives: one of the two is set. */
+/**
+ * The two-field answer a create gives: one of the two is set. When
+ * `needsModelCatalog` is true the endpoint answered but won't enumerate its
+ * models — the form should ask for a catalog rather than report a bad key.
+ */
 export interface CreateResult {
   id: string | null;
   error: string | null;
+  needsModelCatalog?: boolean;
 }
 
 /** `{value}` — null is success, a string is the problem to show. */
@@ -948,6 +989,8 @@ export interface ConnectionSummary {
   lastValidatedAt: string | null;
   accountLabel: string | null;
   enabled: boolean;
+  /** True when models come from the hand-written catalog, not the endpoint. */
+  hasModelCatalog: boolean;
 }
 
 export interface CreateConnectionRequest {
@@ -955,6 +998,12 @@ export interface CreateConnectionRequest {
   displayName: string;
   apiKey: string;
   baseUrl: string | null;
+  /**
+   * For OpenAI-compatible endpoints that don't implement `GET /models`: the
+   * catalog (the Codex `models.json` shape) pasted from the provider's docs.
+   * The connection lists from it instead of asking the endpoint.
+   */
+  modelCatalogJson?: string | null;
 }
 
 export interface ModelOption {
@@ -1187,4 +1236,699 @@ export interface SlashCommandInfo {
  */
 export interface SlashResult {
   promptToSend: string | null;
+}
+
+// ---- code reviews ----
+//
+// Ported from src/SlopCoder.Contracts (ICodeReviewsApi and the records it
+// carries): numeric enums, camelCase fields, the exact wire shapes the server
+// sends. Only what the review screens read — enqueue stays an agent tool, and
+// the publication records arrive with slice 3.
+
+export enum CodeReviewTargetKind {
+  PullRequest = 0,
+  CommitRange = 1,
+  WorkingChanges = 2,
+  Snapshot = 3,
+}
+
+export enum CodeReviewSourceKind {
+  Forge = 0,
+  SessionBundle = 1,
+}
+
+/** An agent review and a pipeline review of the same head are different reviews. */
+export enum CodeReviewMode {
+  Pipeline = 0,
+  Agent = 1,
+}
+
+export enum CodeReviewAnalysisState {
+  Queued = 0,
+  Snapshotting = 1,
+  Captured = 2,
+  Failed = 3,
+  Superseded = 4,
+  Planning = 5,
+  Investigating = 6,
+  Cancelled = 7,
+  Validating = 8,
+  Falsifying = 9,
+  Completed = 10,
+  Partial = 11,
+  Consolidating = 12,
+}
+
+export enum CodeReviewSeverity {
+  P0 = 0,
+  P1 = 1,
+  P2 = 2,
+  P3 = 3,
+}
+
+export enum CodeReviewCategory {
+  Correctness = 0,
+  Compatibility = 1,
+  Concurrency = 2,
+  ResourceLifecycle = 3,
+  Security = 4,
+  Tests = 5,
+  RepositoryRules = 6,
+  Maintainability = 7,
+}
+
+export enum CodeReviewAnchorSide {
+  Head = 0,
+  Base = 1,
+}
+
+export enum CodeReviewManifestDisposition {
+  PendingReview = 0,
+  GeneratedOrVendorExclusion = 1,
+  BinaryExclusion = 2,
+  PolicyExclusion = 3,
+  UnsupportedContent = 4,
+  TooLarge = 5,
+  Unavailable = 6,
+}
+
+export enum CodeReviewCaptureCompleteness {
+  Complete = 0,
+  CompleteWithExclusions = 1,
+  Incomplete = 2,
+}
+
+export enum CodeReviewCompleteness {
+  Pending = 0,
+  Complete = 1,
+  CompleteWithExclusions = 2,
+  Partial = 3,
+  Stale = 4,
+  NotAssessed = 5,
+}
+
+export enum CodeReviewCaptureIncompleteReason {
+  None = 0,
+  PaginationLimitReached = 1,
+  SourceUnavailable = 2,
+  SourceMalformed = 3,
+  ResponseTooLarge = 4,
+  FileCountMismatch = 5,
+  SnapshotLimitReached = 6,
+}
+
+export enum CodeReviewPlanPartialReason {
+  WorkItemCap = 0,
+  CaptureIncomplete = 1,
+  ContentUnavailable = 2,
+}
+
+export enum CodeReviewWorkKind {
+  Generator = 0,
+  Verifier = 1,
+}
+
+export enum CodeReviewWorkItemOutcome {
+  Pending = 0,
+  Running = 1,
+  Completed = 2,
+  Failed = 3,
+  Cancelled = 4,
+  Deferred = 5,
+}
+
+export enum CodeReviewLens {
+  LocalCorrectness = 0,
+  Compatibility = 1,
+  ConcurrencyAndLifecycle = 2,
+  Security = 3,
+  TestsAndCoverage = 4,
+  RepositoryRules = 5,
+}
+
+export enum CodeReviewFailureClass {
+  TransientNetwork = 0,
+  RateLimited = 1,
+  LeaseExpired = 2,
+  ProcessInterrupted = 3,
+  SchemaViolation = 4,
+  InvalidAnchor = 5,
+  Authorization = 6,
+  UnsafePath = 7,
+  DeterministicIncompatibility = 8,
+  BudgetExhausted = 9,
+  ModelUnavailable = 10,
+}
+
+export enum CodeReviewFindingDisposition {
+  Open = 0,
+  Accepted = 1,
+  Dismissed = 2,
+}
+
+export enum CodeReviewFindingSource {
+  Candidate = 0,
+  VerifierCorrection = 1,
+}
+
+export enum CodeReviewFindingProvenance {
+  Pipeline = 0,
+  AgentSession = 1,
+}
+
+export enum CodeReviewFindingUpdateStatus {
+  Updated = 0,
+  Unchanged = 1,
+  VersionConflict = 2,
+  ConsolidationChanged = 3,
+  Superseded = 4,
+  Invalid = 5,
+}
+
+export enum CodeReviewElevationTarget {
+  PullRequestReview = 0,
+  Issues = 1,
+}
+
+/** Part of a review's identity: which pull request, range, working tree or snapshot. */
+export interface CodeReviewTarget {
+  forgeKind: GitServiceKind;
+  canonicalAuthority: string;
+  repositoryOwner: string;
+  repositoryName: string;
+  pullRequestNumber: number;
+  headSha: string;
+  kind: CodeReviewTargetKind;
+  /** `""` for a pull request. */
+  rangeBaseSha: string;
+}
+
+/** A consolidated review's canonical findings by severity, and how many are still undecided. */
+export interface CodeReviewFindingCounts {
+  p0: number;
+  p1: number;
+  p2: number;
+  p3: number;
+  open: number;
+}
+
+export interface CodeReviewCoverage {
+  reviewed: number;
+  inProgress: number;
+  excluded: number;
+  notReviewed: number;
+}
+
+/** One of the caller's reviews, as a list shows it. */
+export interface CodeReviewListItem {
+  id: string;
+  target: CodeReviewTarget;
+  title: string | null;
+  state: CodeReviewAnalysisState;
+  /** Null until capture is finalized. */
+  captureCompleteness: CodeReviewCaptureCompleteness | null;
+  createdAt: string;
+  updatedAt: string;
+  /** The stored completeness verdict; null until capture is finalized. */
+  reviewCompleteness: CodeReviewCompleteness | null;
+  /** Set once a newer head of the pull request was captured. */
+  supersededByRunId: string | null;
+  /** Canonical finding counts; null until the review is consolidated. */
+  findings: CodeReviewFindingCounts | null;
+  mode: CodeReviewMode;
+  source: CodeReviewSourceKind;
+  sourceSessionId: string | null;
+}
+
+export interface CodeReviewDispositionCount {
+  disposition: CodeReviewManifestDisposition;
+  count: number;
+}
+
+export interface CodeReviewWorkItemStateCount {
+  state: CodeReviewWorkItemOutcome;
+  count: number;
+}
+
+export interface CodeReviewCandidateStateCount {
+  state: number;
+  count: number;
+}
+
+export interface CodeReviewWorkItemFailure {
+  workItemKey: string;
+  kind: CodeReviewWorkKind;
+  lens: CodeReviewLens;
+  state: CodeReviewWorkItemOutcome;
+  failureClass: CodeReviewFailureClass | null;
+  reason: string | null;
+  attempts: number;
+}
+
+/** A review's progress as the API shows it. */
+export interface CodeReviewProgress {
+  planned: boolean;
+  completeness: CodeReviewCompleteness;
+  partialReasons: CodeReviewPlanPartialReason[];
+  workItems: CodeReviewWorkItemStateCount[];
+  verifierItems: CodeReviewWorkItemStateCount[];
+  candidates: CodeReviewCandidateStateCount[];
+  /** Manifest files by coverage; null until a plan is stored. */
+  coverage: CodeReviewCoverage | null;
+  failures: CodeReviewWorkItemFailure[];
+  failuresOmitted: number;
+}
+
+export interface CodeReviewManifestFile {
+  ordinal: number;
+  oldPath: string | null;
+  newPath: string | null;
+  changeKind: number;
+  additions: number;
+  deletions: number;
+  isBinary: boolean;
+  isSubmodule: boolean;
+  hasModeChange: boolean;
+  isPatchMissing: boolean;
+  isPatchTruncated: boolean;
+  disposition: CodeReviewManifestDisposition;
+  contentDigest: string;
+}
+
+/** Metadata, capture and review completeness, and the manifest. Null until capture is finalized. */
+export interface CodeReviewSnapshot {
+  forgeKind: GitServiceKind;
+  canonicalAuthority: string;
+  repositoryOwner: string;
+  repositoryName: string;
+  pullRequestNumber: number;
+  title: string;
+  providerUrl: string;
+  state: string;
+  isDraft: boolean;
+  baseRef: string;
+  baseSha: string;
+  headRef: string;
+  headSha: string;
+  mergeBaseSha: string | null;
+  files: CodeReviewManifestFile[];
+  captureCompleteness: CodeReviewCaptureCompleteness;
+  reviewCompleteness: CodeReviewCompleteness;
+  incompleteReason: CodeReviewCaptureIncompleteReason;
+  metadataDigest: string;
+  manifestDigest: string;
+  snapshotDigest: string;
+  targetKind: CodeReviewTargetKind;
+}
+
+export interface CodeReviewPolicy {
+  maxChangedFiles: number;
+  [key: string]: unknown;
+}
+
+/** One review in full. */
+export interface CodeReviewDetail {
+  id: string;
+  state: CodeReviewAnalysisState;
+  target: CodeReviewTarget;
+  pipelineVersion: number;
+  policyDigest: string;
+  policy: CodeReviewPolicy;
+  createdAt: string;
+  updatedAt: string;
+  snapshotFinalizedAt: string | null;
+  failureReason: string | null;
+  supersededByRunId: string | null;
+  supersededAt: string | null;
+  fileCounts: CodeReviewDispositionCount[];
+  snapshot: CodeReviewSnapshot | null;
+  progress: CodeReviewProgress;
+  mode: CodeReviewMode;
+  source: CodeReviewSourceKind;
+  sourceSessionId: string | null;
+  /** For code taken from a session: the workspace-relative directory it came from. */
+  sourcePath?: string | null;
+}
+
+/** One finding as a card lists it: enough to name it and point at its lines. */
+export interface CodeReviewFindingBrief {
+  id: string;
+  rank: number;
+  severity: CodeReviewSeverity;
+  title: string;
+  path: string;
+  side: CodeReviewAnchorSide;
+  startLine: number;
+  endLine: number;
+  provenance: CodeReviewFindingProvenance;
+  disposition: CodeReviewFindingDisposition;
+}
+
+/** One review a session started, or that its agent commented on. */
+export interface CodeReviewSessionReview {
+  review: CodeReviewListItem;
+  /** This session requested it (otherwise its agent only commented on it). */
+  startedHere: boolean;
+  sourcePath: string | null;
+  incompleteReason: CodeReviewCaptureIncompleteReason;
+  coverage: CodeReviewCoverage | null;
+  topFindings: CodeReviewFindingBrief[];
+  findingTotal: number;
+  elevation: CodeReviewElevationTarget | null;
+  elevationBlocker: string | null;
+}
+
+/** A finding's persisted ranking components, each 0 to 1000, and their weighted total. */
+export interface CodeReviewFindingScore {
+  impact: number;
+  triggerBreadth: number;
+  evidenceQuality: number;
+  verifierConfidence: number;
+  ruleRelevance: number;
+  duplicateSupport: number;
+  total: number;
+}
+
+/** A same-fingerprint finding the owner decided on in an earlier review of the same pull request. */
+export interface CodeReviewFindingPriorDisposition {
+  reviewId: string;
+  headSha: string;
+  disposition: CodeReviewFindingDisposition;
+  decidedAt: string;
+}
+
+/** One canonical finding as a list shows it, in rank order. */
+export interface CodeReviewFindingSummary {
+  id: string;
+  rank: number;
+  fingerprint: string;
+  /** Bumped by every disposition change; an update must name the version it saw. */
+  version: number;
+  category: CodeReviewCategory;
+  severity: CodeReviewSeverity;
+  path: string;
+  side: CodeReviewAnchorSide;
+  startLine: number;
+  endLine: number;
+  /** False for a summary-level finding (no changed line in its anchor). */
+  inline: boolean;
+  title: string;
+  score: CodeReviewFindingScore;
+  /** Past the policy's low-severity cap: kept and listed, flagged rather than dropped. */
+  capped: boolean;
+  /** Supported candidates merged into it. */
+  reports: number;
+  disposition: CodeReviewFindingDisposition;
+  priorDisposition: CodeReviewFindingPriorDisposition | null;
+  provenance: CodeReviewFindingProvenance;
+  authorSessionId: string | null;
+  /** An agent comment carrying a suggested replacement for its anchored lines. */
+  hasSuggestion: boolean;
+}
+
+/**
+ * A review's canonical findings. `consolidationDigest` is null until the
+ * review is consolidated (and `findings` empty); an update must name the
+ * digest it saw.
+ */
+export interface CodeReviewFindingList {
+  reviewId: string;
+  state: CodeReviewAnalysisState;
+  consolidationDigest: string | null;
+  /** True once a newer head was captured: findings stay readable but take no decisions. */
+  superseded: boolean;
+  findings: CodeReviewFindingSummary[];
+}
+
+/** What a disposition request did. */
+export interface CodeReviewFindingDispositionResult {
+  findingId: string;
+  status: CodeReviewFindingUpdateStatus;
+  disposition: CodeReviewFindingDisposition;
+  version: number;
+}
+
+export interface CodeReviewCancelResult {
+  reviewId: string;
+  cancelled: boolean;
+  state: CodeReviewAnalysisState;
+}
+
+/** Accept, dismiss or reopen a finding, naming the version and digest the caller last read. */
+export interface CodeReviewFindingDispositionRequest {
+  disposition: CodeReviewFindingDisposition;
+  expectedVersion: number;
+  expectedConsolidationDigest: string;
+}
+
+/** One finding in full, plus the report lineage and merged evidence. */
+export interface CodeReviewFindingDetail {
+  reviewId: string;
+  consolidationDigest: string;
+  superseded: boolean;
+  finding: CodeReviewFindingSummary;
+  commitSha: string;
+  anchorSource: CodeReviewFindingSource;
+  severitySource: CodeReviewFindingSource;
+  trigger: string;
+  badBehavior: string;
+  causalChange: string;
+  suggestedRemediation: string;
+  verifierRationale: string;
+  lineage: CodeReviewFindingReport[];
+  evidence: CodeReviewFindingEvidence[];
+  evidenceOmitted: number;
+  decidedAt: string | null;
+  suggestion: string | null;
+}
+
+export interface CodeReviewFindingReport {
+  candidateId: string;
+  verdictId: string;
+  workItemKey: string;
+  lens: CodeReviewLens;
+  verificationRound: number;
+  title: string;
+  candidateSeverity: CodeReviewSeverity;
+  correctedSeverity: CodeReviewSeverity | null;
+  anchorCorrected: boolean;
+  representative: boolean;
+  mergeBasis: string | null;
+}
+
+export interface CodeReviewFindingEvidence {
+  kind: string;
+  side: CodeReviewAnchorSide;
+  commitSha: string;
+  path: string;
+  startLine: number;
+  endLine: number;
+  /** `candidate` or `verdict`: who cited it first. */
+  source: string;
+  excerpt: string | null;
+  citedBy: string[];
+}
+
+export enum CodeReviewFindingDiffStatus {
+  Available = 0,
+  ContentUnavailable = 1,
+  AnchorMismatch = 2,
+}
+
+export enum CodeReviewDiffLineKind {
+  Context = 0,
+  Add = 1,
+  Delete = 2,
+}
+
+export enum CodeReviewSuggestionStatus {
+  Available = 0,
+  ContentUnavailable = 1,
+  BaseMismatch = 2,
+}
+
+/** One line of a finding's anchored diff, typed by the server — never parsed client-side. */
+export interface CodeReviewFindingDiffLine {
+  kind: CodeReviewDiffLineKind;
+  oldLine: number | null;
+  newLine: number | null;
+  text: string;
+  anchored: boolean;
+  textTruncated: boolean;
+}
+
+export interface CodeReviewSuggestionLine {
+  kind: CodeReviewDiffLineKind;
+  oldLine: number | null;
+  newLine: number | null;
+  text: string;
+  textTruncated: boolean;
+}
+
+/** A finding's suggested replacement as a before/after line diff; text only. */
+export interface CodeReviewFindingSuggestion {
+  status: CodeReviewSuggestionStatus;
+  applicable: boolean;
+  lines: CodeReviewSuggestionLine[];
+}
+
+/** The finding's anchored lines with context, read from the review's pinned commits by the server. */
+export interface CodeReviewFindingDiff {
+  findingId: string;
+  status: CodeReviewFindingDiffStatus;
+  path: string;
+  side: CodeReviewAnchorSide;
+  startLine: number;
+  endLine: number;
+  fromSha: string | null;
+  headSha: string | null;
+  lines: CodeReviewFindingDiffLine[];
+  truncated: boolean;
+  suggestion?: CodeReviewFindingSuggestion | null;
+}
+
+// -- publications --
+
+export enum CodeReviewPublicationEvent {
+  Comment = 0,
+  RequestChanges = 1,
+}
+
+export enum CodeReviewPublicationState {
+  Pending = 0,
+  Publishing = 1,
+  PartiallyPublished = 2,
+  Published = 3,
+  Failed = 4,
+  Obsolete = 5,
+}
+
+export enum CodeReviewPublicationItemState {
+  Pending = 0,
+  Published = 1,
+  Failed = 2,
+  NotPublishable = 3,
+  Obsolete = 4,
+}
+
+export enum CodeReviewPublicationPlacement {
+  Inline = 0,
+  Summary = 1,
+  Issue = 2,
+}
+
+export enum CodeReviewPublishStatus {
+  Ran = 0,
+  Replayed = 1,
+  NotConfirmed = 2,
+  Invalid = 3,
+  NotPublishable = 4,
+  AlreadyPublished = 5,
+  Busy = 6,
+  HeadMoved = 7,
+  ConnectionUnavailable = 8,
+  ForgeUnavailable = 9,
+}
+
+/** Only ids and a choice: the server renders every body and places every comment itself. */
+export interface CodeReviewPublishRequest {
+  /** Made once when the confirmation opens; a replay returns the publication it created. */
+  requestId: string;
+  findingIds: string[];
+  event: CodeReviewPublicationEvent;
+  confirmed: boolean;
+}
+
+export interface CodeReviewPublishResult {
+  status: CodeReviewPublishStatus;
+  reason: string | null;
+  publication: CodeReviewPublicationView | null;
+}
+
+export interface CodeReviewPublicationItemView {
+  findingId: string;
+  rank: number;
+  severity: CodeReviewSeverity;
+  title: string;
+  placement: CodeReviewPublicationPlacement | null;
+  state: CodeReviewPublicationItemState;
+  /** The comment's, the issue's, or the review's link; http(s) only. */
+  remoteUrl: string | null;
+  attempts: number;
+  error: string | null;
+}
+
+export interface CodeReviewPublicationView {
+  id: string;
+  state: CodeReviewPublicationState;
+  event: CodeReviewPublicationEvent;
+  headSha: string;
+  confirmedAt: string;
+  updatedAt: string;
+  attempts: number;
+  remoteReviewUrl: string | null;
+  remoteSubmitted: boolean;
+  error: string | null;
+  items: CodeReviewPublicationItemView[];
+  target: CodeReviewElevationTarget;
+}
+
+/** Whether one of the review's findings could be published, and where it would go. */
+export interface CodeReviewPublishableFinding {
+  findingId: string;
+  placement: CodeReviewPublicationPlacement | null;
+  refusal: string | null;
+  publishedIn: string | null;
+}
+
+export interface CodeReviewPublicationOverview {
+  reviewId: string;
+  canPublish: boolean;
+  blocker: string | null;
+  completeness: CodeReviewCompleteness;
+  findings: CodeReviewPublishableFinding[];
+  publications: CodeReviewPublicationView[];
+  target?: CodeReviewElevationTarget;
+  repository?: string | null;
+}
+
+/** Which findings to preview and as what event; nothing is sent. */
+export interface CodeReviewPublicationPreviewRequest {
+  findingIds: string[];
+  event: CodeReviewPublicationEvent;
+}
+
+/** Try an unfinished publication again; the server reconciles with the forge before it writes. */
+export interface CodeReviewPublicationRetryRequest {
+  confirmed: boolean;
+}
+
+export interface CodeReviewPublicationPreviewItem {
+  findingId: string;
+  rank: number;
+  severity: CodeReviewSeverity;
+  title: string;
+  placement: CodeReviewPublicationPlacement | null;
+  path: string;
+  side: CodeReviewAnchorSide;
+  startLine: number | null;
+  line: number;
+  /** The server-rendered comment body; null for a summary finding (part of the review body). */
+  body: string | null;
+  refusal: string | null;
+  /** For an issue: its title, exactly as it would be posted. */
+  issueTitle?: string | null;
+}
+
+/** Exactly what a publication would post — the review body and each inline comment, as text. */
+export interface CodeReviewPublicationPreview {
+  reviewId: string;
+  headSha: string;
+  event: CodeReviewPublicationEvent;
+  completeness: CodeReviewCompleteness;
+  coverageNotice: string | null;
+  reviewBody: string;
+  items: CodeReviewPublicationPreviewItem[];
+  target: CodeReviewElevationTarget;
+  repository: string | null;
 }

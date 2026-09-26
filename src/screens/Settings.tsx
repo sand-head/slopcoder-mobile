@@ -43,6 +43,7 @@ export function SettingsScreen({ navigation }: { navigation: any }) {
   const seam = useAuth(s => s.seam);
   const signOut = useAuth(s => s.signOut);
   const [counts, setCounts] = useState<Counts>({});
+  const [serverVersion, setServerVersion] = useState<string | null>(null);
 
   useLayoutEffect(() => {
     navigation.setOptions({ title: 'Settings' });
@@ -56,6 +57,13 @@ export function SettingsScreen({ navigation }: { navigation: any }) {
       read()
         .then(value => setCounts(current => ({ ...current, [key]: value })))
         .catch(() => {});
+    // The server's own version, beside the device's — the same pairing the
+    // web's footer makes, and the fastest way to spot a stale server from a
+    // phone. Best-effort: unreachable is the connection banner's story.
+    void seam
+      .protocol()
+      .then(p => setServerVersion(p?.version ?? null))
+      .catch(() => setServerVersion(null));
     void count('connections', async () => {
       const [models, git] = await Promise.all([seam.connections(), seam.gitConnections().catch(() => [])]);
       return git.length > 0 ? `${models.length} · ${git.length} git` : String(models.length);
@@ -97,6 +105,7 @@ export function SettingsScreen({ navigation }: { navigation: any }) {
         <SectionLabel label="account" />
         <Row label="signed in as" value={credential?.userName ?? '—'} />
         <Row label="server" value={credential?.server ?? '—'} mono />
+        <Row label="server version" value={serverVersion ?? '—'} mono />
         <Row
           label="this device"
           value={Platform.OS === 'ios' ? 'iPhone (slopcoder)' : 'Android (slopcoder)'}
