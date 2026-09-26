@@ -181,6 +181,7 @@ describe('the rest', () => {
         lastValidatedAt: null,
         accountLabel: null,
         enabled: true,
+        hasModelCatalog: false,
       }),
     ).toMatch(/^ChatGPT · Codex · subscription · added 2026-09-01$/);
     expect(tierLabel(ModelTier.Reasoning)).toBe('Reasoning');

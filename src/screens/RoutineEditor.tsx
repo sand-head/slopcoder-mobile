@@ -35,6 +35,7 @@ import {
   type ChannelSummary,
   type FacetOption,
   type ModelCandidate,
+  type RecentRepo,
   type RemoteNodeSummary,
   type RoutineDraftResult,
 } from '../api/contracts';
@@ -104,7 +105,7 @@ export function RoutineEditorScreen({ route, navigation }: { route: any; navigat
   const [models, setModels] = useState<ModelCandidate[]>([]);
   const [channels, setChannels] = useState<ChannelSummary[]>([]);
   const [nodes, setNodes] = useState<RemoteNodeSummary[]>([]);
-  const [recent, setRecent] = useState<string[]>([]);
+  const [recent, setRecent] = useState<RecentRepo[]>([]);
   const owned = useOwnedRepos(seam);
 
   // ---- the form ----
@@ -270,7 +271,7 @@ export function RoutineEditorScreen({ route, navigation }: { route: any; navigat
         settle(seam.models(), [] as ModelCandidate[]),
         settle(seam.channels(), [] as ChannelSummary[]),
         settle(seam.nodes(), [] as RemoteNodeSummary[]),
-        settle(seam.recentRepos(), [] as string[]),
+        settle(seam.recentRepos(), [] as RecentRepo[]),
       ]);
       if (!live) return;
       setFacets(f);
@@ -594,7 +595,11 @@ export function RoutineEditorScreen({ route, navigation }: { route: any; navigat
   const attachments: Attachments = {
     repos: form.repoUrls,
     nodes: form.nodeIds,
-    recentRepos: recent.map(url => ({ key: url, label: shortRepo(url) })),
+    recentRepos: recent.map(row => ({
+      key: row.cloneUrl,
+      label: row.label || shortRepo(row.cloneUrl),
+      kind: row.kind,
+    })),
     ownedRepos: owned.repos,
     ownedLoaded: owned.loaded,
     ownedError: owned.error,

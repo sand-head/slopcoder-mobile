@@ -18,6 +18,7 @@ import {
   UsageRange,
   newTokens,
   totalTokens,
+  type CodexQuotaSummary,
   type UsageBucket,
   type UsageDashboard,
   type UsageTotals,
@@ -59,6 +60,10 @@ export function UsageScreen({ navigation }: { navigation: any }) {
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  // Quotas load on their own line: they are advisory and slow (a refresh asks
+  // the upstream), so a failure here must not blank the figures above.
+  const [quotas, setQuotas] = useState<CodexQuotaSummary[] | null>(null);
+  const [quotaBusy, setQuotaBusy] = useState(false);
 
   useLayoutEffect(() => {
     navigation.setOptions({ title: 'Usage' });
@@ -80,6 +85,34 @@ export function UsageScreen({ navigation }: { navigation: any }) {
       cancelled = true;
     };
   }, [seam, range, attempt]);
+
+  // Quotas once per visit (and per pull-to-refresh), from the server's cache;
+  // the explicit "refresh" under each card is what asks the upstream again.
+  useEffect(() => {
+    if (!seam) return;
+    let cancelled = false;
+    setQuotas(null);
+    seam
+      .codexQuotas(false)
+      .then(q => !cancelled && setQuotas(q))
+      .catch(() => !cancelled && setQuotas([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [seam, attempt]);
+
+  /** Re-ask the upstream for one connection's windows; the card re-reads after. */
+  const refreshQuotas = async (force: boolean) => {
+    if (!seam || quotaBusy) return;
+    setQuotaBusy(true);
+    try {
+      setQuotas(await seam.codexQuotas(force));
+    } catch {
+      // The old rows stay; the numbers above are unaffected either way.
+    } finally {
+      setQuotaBusy(false);
+    }
+  };
 
   const refresh = useCallback(() => {
     setRefreshing(true);
@@ -121,6 +154,13 @@ export function UsageScreen({ navigation }: { navigation: any }) {
         </View>
       ) : null}
       {!data && !error ? <Skeleton rows={3} /> : null}
+
+      {/* Advisory Codex allowances, only when there is one to show: an empty
+          list is "no Codex connection", which is not a section. Null still
+          loading is deliberately silent — the figures above lead. */}
+      {quotas && quotas.length > 0 ? (
+        quotas.map(q => <QuotaCard key={q.connectionId} quota={q} busy={quotaBusy} onRefresh={() => void refreshQuotas(true)} />)
+      ) : null}
 
       {data ? (
         <>
@@ -255,6 +295,96 @@ function Daily({ buckets }: { buckets: UsageBucket[] }) {
         {buckets[0].day} – {buckets[buckets.length - 1].day} · busiest {busiest.day} at{' '}
         {compact(Math.max(...values))}
       </Mono>
+    </View>
+  );
+}
+
+/** `HH:MM` from an ISO stamp — reset times are hours away, so the clock is the part that matters. */
+function clock(iso: string): string {
+  const at = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(at.getHours())}:${pad(at.getMinutes())}`;
+}
+
+/**
+ * One Codex connection's allowance: a bar per window with the percent left and
+ * when it resets. Advisory by contract — slopcoder reads the plan's own usage
+ * page, it does not meter it — so the card says so and links nothing: the
+ * authoritative numbers are a browser away, and a phone cannot open them.
+ */
+function QuotaCard({ quota, busy, onRefresh }: { quota: CodexQuotaSummary; busy: boolean; onRefresh: () => void }) {
+  const { c } = useTheme();
+
+  return (
+    <View
+      style={{
+        backgroundColor: c.card,
+        borderWidth: 1,
+        borderColor: c.border,
+        borderRadius: radius.lg,
+        padding: 14,
+        gap: 10,
+      }}>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+        <SectionLabel label={`codex allowance · ${quota.connectionName}`} />
+        {quota.planType ? <Mono style={{ fontSize: 11 }}>{quota.planType.toLowerCase()}</Mono> : null}
+      </View>
+
+      {quota.error ? (
+        <Body accessibilityLiveRegion="polite" style={{ fontSize: 13, color: c.destructive }}>
+          {quota.error}
+        </Body>
+      ) : quota.windows.length === 0 ? (
+        <Hint>No allowance reported yet.</Hint>
+      ) : (
+        quota.windows.map((w, i) => {
+          const left = w.usedPercent != null ? Math.min(100, Math.max(0, 100 - w.usedPercent)) : null;
+          return (
+            <View key={`${w.label}-${i}`} style={{ gap: 5 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+                <Mono style={{ fontSize: 12.5 }}>
+                  {w.label.toLowerCase()}
+                  {left != null ? ` · ${Math.round(left)}% left` : ' · usage unknown'}
+                </Mono>
+                {w.resetsAt ? <Mono style={{ fontSize: 12.5 }}>resets {clock(w.resetsAt)}</Mono> : null}
+              </View>
+              {left != null ? (
+                <View
+                  style={{
+                    height: 4,
+                    borderRadius: 2,
+                    overflow: 'hidden',
+                    backgroundColor: mix(c.mutedForeground, 20),
+                  }}>
+                  <View
+                    style={{
+                      width: `${left.toFixed(1)}%`,
+                      flex: 1,
+                      borderRadius: 2,
+                      // What is gone, not what is left: a nearly-empty bar in
+                      // the running colour would read as nearly-burned-down.
+                      backgroundColor: left <= 20 ? c.destructive : c.primary,
+                    }}
+                  />
+                </View>
+              ) : null}
+            </View>
+          );
+        })
+      )}
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Mono style={{ fontSize: 12 }}>
+          advisory
+          {quota.observedAt ? ` · observed ${clock(quota.observedAt)}` : ''}
+          {quota.isStale ? ' · stale' : ''}
+        </Mono>
+        <Pressable onPress={onRefresh} disabled={busy} hitSlop={8} accessibilityRole="button" accessibilityLabel="Refresh Codex allowance">
+          <Mono style={{ fontSize: 12, color: busy ? c.mutedForeground : c.primary, textDecorationLine: 'underline' }}>
+            {busy ? 'refreshing…' : 'refresh'}
+          </Mono>
+        </Pressable>
+      </View>
     </View>
   );
 }

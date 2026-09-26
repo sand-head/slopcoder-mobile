@@ -25,6 +25,7 @@ const anthropic: ConnectionSummary = {
   lastValidatedAt: null,
   accountLabel: null,
   enabled: true,
+  hasModelCatalog: false,
 };
 
 const github: GitConnectionSummary = {
@@ -39,10 +40,17 @@ const github: GitConnectionSummary = {
 };
 
 const mockSeam = {
-  connections: jest.fn(() => Promise.resolve([anthropic])),
+  connections: jest.fn((): Promise<ConnectionSummary[]> => Promise.resolve([anthropic])),
   gitConnections: jest.fn(() => Promise.resolve([github])),
   gitApps: jest.fn(() => Promise.resolve([])),
-  createConnection: jest.fn(() => Promise.resolve({ id: 'c-2', error: null })),
+  createConnection: jest.fn((): Promise<{ id: string | null; error: string | null; needsModelCatalog?: boolean }> =>
+    Promise.resolve({ id: 'c-2', error: null }),
+  ),
+  connectionModels: jest.fn((): Promise<{ id: string; displayName: string }[]> => Promise.resolve([])),
+  disabledModels: jest.fn((): Promise<string[]> => Promise.resolve([])),
+  connectionTiers: jest.fn((): Promise<Record<string, never>> => Promise.resolve({})),
+  modelCatalog: jest.fn((): Promise<string | null> => Promise.resolve(null)),
+  setModelCatalog: jest.fn((): Promise<string | null> => Promise.resolve(null)),
   codexStart: jest.fn(() =>
     Promise.resolve({
       deviceAuthId: 'da-1',
@@ -159,6 +167,52 @@ describe('the connections page', () => {
     expect(rendered).toContain('reconnect');
     expect(rendered).toContain("Sign-in expired and couldn't be renewed — reconnect it.");
   });
+
+  /**
+   * A catalog-fed connection says so where its models are listed, and the
+   * catalog itself opens from there: loaded from the server, saved back with
+   * the same PUT the web makes. The remedy lives where the empty list is seen.
+   */
+  it('edits a model catalog from the models sheet', async () => {
+    const local = { ...anthropic, id: 'c-9', kind: ProviderKind.OpenAICompatible, displayName: 'Local vLLM', baseUrl: 'http://localhost:11434/v1', hasModelCatalog: true };
+    mockSeam.connections.mockImplementationOnce(() => Promise.resolve([local]));
+    mockSeam.connectionModels.mockImplementationOnce(() => Promise.resolve([{ id: 'm-1', displayName: 'm' }]));
+    mockSeam.modelCatalog.mockImplementationOnce(() => Promise.resolve('{"models":[{"slug":"m"}]}'));
+
+    const tree = await mount(<ConnectionsScreen navigation={navigator()} />);
+    await act(async () => {
+      // The row's label is its title + subtitle; the models sheet opens from it.
+      const row = tree.root.findAll(
+        n => n.props.accessibilityRole === 'button' && String(n.props.accessibilityLabel ?? '').startsWith('Local vLLM'),
+      )[0];
+      row.props.onPress();
+    });
+    await act(async () => {});
+
+    expect(text(tree)).toContain('from your catalog · ungraded route as medium');
+
+    // Open the editor; the stored draft loads into it.
+    const open = tree.root.findAll(
+      n => n.props.accessibilityRole === 'button' && n.props.accessibilityLabel === 'Edit model catalog',
+    )[0];
+    await act(async () => {
+      open.props.onPress();
+    });
+    await act(async () => {});
+    expect(mockSeam.modelCatalog).toHaveBeenCalledWith('c-9');
+
+    const box = tree.root.findAll(
+      n => typeof n.props.onChangeText === 'function' && n.props.accessibilityLabel === 'Model catalog',
+    )[0];
+    expect(box).toBeDefined();
+
+    // Saving sends the PUT and re-reads the connection list.
+    await act(async () => {
+      tree.root.findAll(n => n.props.accessibilityLabel === 'Save catalog' && typeof n.props.onPress === 'function')[0].props.onPress();
+    });
+    await act(async () => {});
+    expect(mockSeam.setModelCatalog).toHaveBeenCalledWith('c-9', '{"models":[{"slug":"m"}]}');
+  });
 });
 
 describe('the provider editor', () => {
@@ -183,6 +237,69 @@ describe('the provider editor', () => {
     expect(text(tree)).toContain('A name and an API key are both required.');
     expect(mockSeam.createConnection).not.toHaveBeenCalled();
     expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The catalog field is the remedy for an endpoint that won't answer
+   * GET /models — hidden until asked for, and sent only when filled. The
+   * failure it fixes otherwise reads as a bad key, on the phone as on the web.
+   */
+  it('keeps the catalog hidden until asked, sends it when filled, and opens it when the endpoint asks for one', async () => {
+    const navigation = navigator();
+    const tree = await mount(
+      <ProviderEditorScreen route={{ params: { kind: ProviderKind.OpenAICompatible } }} navigation={navigation} />,
+    );
+
+    // Hidden by default: a JSON textarea over the key field is noise until it isn't.
+    expect(text(tree)).not.toContain('model catalog');
+
+    const reveal = tree.root.findAll(
+      n => n.props.accessibilityRole === 'button' && n.props.accessibilityLabel === "this endpoint doesn't list its models",
+    )[0];
+    await act(async () => {
+      reveal.props.onPress();
+    });
+    expect(text(tree)).toContain('model catalog');
+
+    // A form the server will take, so the failure under test is the catalog one.
+    for (const [label, value] of [['Name', 'Local vLLM'], ['API key', 'sk-test']] as const) {
+      const field = tree.root.findAll(n => typeof n.props.onChangeText === 'function' && n.props.accessibilityLabel === label);
+      await act(async () => {
+        field[field.length - 1].props.onChangeText(value);
+      });
+    }
+
+    // The box itself and the TextInput under it both carry the props; the
+    // input is the one whose onChangeText updates the draft.
+    const fields = tree.root.findAll(
+      n => typeof n.type === 'function' && n.props.accessibilityLabel === 'Model catalog' && typeof n.props.onChangeText === 'function',
+    );
+    expect(fields.length).toBeGreaterThanOrEqual(1);
+    await act(async () => {
+      fields[fields.length - 1].props.onChangeText('{"models":[{"slug":"m"}]}');
+    });
+
+    mockSeam.createConnection.mockImplementationOnce(() =>
+      Promise.resolve({ id: null, error: 'Connected, but no models came back.', needsModelCatalog: true }),
+    );
+    await act(async () => {
+      bar(navigation).unstable_headerRightItems()[0].onPress!();
+    });
+    await act(async () => {});
+
+    // The catalog stays open with the server's sentence, not a dead end.
+    expect(text(tree)).toContain('Paste a model catalog below and try again.');
+    expect(navigation.goBack).not.toHaveBeenCalled();
+
+    // And a successful create carries the catalog the user typed.
+    await act(async () => {
+      bar(navigation).unstable_headerRightItems()[0].onPress!();
+    });
+    await act(async () => {});
+    expect(mockSeam.createConnection).toHaveBeenLastCalledWith(
+      expect.objectContaining({ modelCatalogJson: '{"models":[{"slug":"m"}]}' }),
+    );
+    expect(navigation.goBack).toHaveBeenCalled();
   });
 });
 

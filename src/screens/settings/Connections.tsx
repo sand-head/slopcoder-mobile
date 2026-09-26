@@ -20,12 +20,12 @@ import {
   type GitConnectionSummary,
   type ModelOption,
 } from '../../api/contracts';
-import { ADDABLE_PROVIDERS, connectionMeta, day, gitHost, TIERS, tierLabel } from '../../api/settings';
+import { ADDABLE_PROVIDERS, connectionMeta, day, gitHost, MODEL_CATALOG_PLACEHOLDER, TIERS, tierLabel } from '../../api/settings';
 import { useAuth } from '../../state/auth';
-import { Body, Hint, Mono } from '../../ui/kit';
+import { Body, Button, Hint, Mono } from '../../ui/kit';
 import { Sheet, SheetSegments } from '../../ui/Sheet';
 import { OverflowMenu } from '../../ui/menu';
-import { BarText, Empty, ListRow, Problem, Section, SettingsPage, Tag, useFocusLoad } from '../../ui/settings';
+import { BarText, CodeBox, Empty, ListRow, Problem, Section, SettingsPage, Tag, useFocusLoad } from '../../ui/settings';
 import { barMenu } from '../../navigation/headers';
 import { tapConfirm, tapError, tapRefuse, tapSelect } from '../../ui/haptics';
 import { mix, useTheme } from '../../theme';
@@ -44,6 +44,9 @@ interface Models {
   tiers: Record<string, ModelTier>;
   error: string | null;
   loading: boolean;
+  /** The catalog editor folded into the sheet: null until opened, then the loaded draft. */
+  catalog: { draft: string; error: string | null } | null;
+  catalogBusy: boolean;
 }
 
 function gitKindLabel(c: GitConnectionSummary): string {
@@ -193,7 +196,7 @@ export function ConnectionsScreen({ navigation }: { navigation: any }) {
   const openModels = async (connection: ConnectionSummary) => {
     if (!seam) return;
     tapSelect();
-    setModels({ connection, models: [], disabled: new Set(), tiers: {}, error: null, loading: true });
+    setModels({ connection, models: [], disabled: new Set(), tiers: {}, error: null, loading: true, catalog: null, catalogBusy: false });
     try {
       // The resolve-and-catalog dance happens server-side; the decrypted key
       // never crosses the seam.
@@ -201,7 +204,14 @@ export function ConnectionsScreen({ navigation }: { navigation: any }) {
       if (list.length === 0) {
         setModels(current =>
           current && current.connection.id === connection.id
-            ? { ...current, loading: false, error: 'That connection is no longer available.' }
+            ? {
+                ...current,
+                loading: false,
+                error:
+                  connection.kind === ProviderKind.OpenAICompatible
+                    ? 'No models came back from that endpoint. If it doesn\u2019t list its own, add a model catalog for it.'
+                    : 'That connection is no longer available.',
+              }
             : current,
         );
         return;
@@ -247,6 +257,63 @@ export function ConnectionsScreen({ navigation }: { navigation: any }) {
       setModels(current => (current && current.connection.id === id ? { ...current, tiers } : current));
     } catch (e) {
       setModels(current => (current && current.connection.id === id ? { ...current, error: e instanceof Error ? e.message : String(e) } : current));
+    }
+  };
+
+  // ---- the catalog editor, folded into the models sheet ----
+  //
+  // The catalog is the remedy for an endpoint that won't list its models, so
+  // it lives where the empty (or catalog-fed) list is seen — the same place
+  // the web puts it. Opening loads the stored draft so an edit starts from
+  // what is actually in effect; the sheet's connection carries `hasModelCatalog`
+  // so the closed state can say "edit" rather than "add".
+
+  const openCatalog = async () => {
+    if (!seam || !models) return;
+    const id = models.connection.id;
+    setModels(current => (current && current.connection.id === id ? { ...current, catalog: { draft: '', error: null } } : current));
+    try {
+      const stored = await seam.modelCatalog(id);
+      setModels(current => (current && current.connection.id === id && current.catalog ? { ...current, catalog: { ...current.catalog, draft: stored ?? '' } } : current));
+    } catch (e) {
+      setModels(current =>
+        current && current.connection.id === id && current.catalog
+          ? { ...current, catalog: { ...current.catalog, error: `Couldn't read the stored catalog: ${e instanceof Error ? e.message : String(e)}` } }
+          : current,
+      );
+    }
+  };
+
+  const saveCatalog = async () => {
+    if (!seam || !models?.catalog) return;
+    const id = models.connection.id;
+    const draft = models.catalog.draft;
+    setModels(current => (current && current.connection.id === id ? { ...current, catalogBusy: true } : current));
+    try {
+      const saveProblem = await seam.setModelCatalog(id, draft.trim().length > 0 ? draft : null);
+      if (saveProblem) {
+        tapError();
+        setModels(current =>
+          current && current.connection.id === id && current.catalog ? { ...current, catalogBusy: false, catalog: { ...current.catalog, error: saveProblem } } : current,
+        );
+        return;
+      }
+      tapConfirm();
+      // Re-read the connection so the row and the sheet both learn
+      // `hasModelCatalog`, then re-open the models through the sheet's own
+      // path so the rows refresh together — a catalog-fed list is a different
+      // list, not a refresh of this one.
+      const connections = await seam.connections();
+      set(data ? { ...data, connections } : { connections, git: [], apps: [] });
+      const fresh = connections.find(x => x.id === id);
+      if (fresh) await openModels(fresh);
+    } catch (e) {
+      tapError();
+      setModels(current =>
+        current && current.connection.id === id && current.catalog
+          ? { ...current, catalogBusy: false, catalog: { ...current.catalog, error: `Couldn't save the catalog: ${e instanceof Error ? e.message : String(e)}` } }
+          : current,
+      );
     }
   };
 
@@ -320,7 +387,13 @@ export function ConnectionsScreen({ navigation }: { navigation: any }) {
       <Sheet visible={sheetOpen} title={models ? `Models · ${models.connection.displayName}` : 'Models'} onClose={() => setSheetOpen(false)}>
         {models ? (
           <>
-            <Mono>{compatible ? 'ungraded models route as medium' : 'graded by the provider'}</Mono>
+            <Mono>
+              {compatible
+                ? models.connection.hasModelCatalog
+                  ? 'from your catalog · ungraded route as medium'
+                  : 'ungraded models route as medium'
+                : 'graded by the provider'}
+            </Mono>
             {compatible ? (
               <Hint>
                 An OpenAI-compatible endpoint can serve anything under any name, so slopcoder can't judge how capable these models
@@ -362,6 +435,48 @@ export function ConnectionsScreen({ navigation }: { navigation: any }) {
                 </View>
               );
             })}
+
+            {/* The catalog, where the endpoint that won't list its models is
+                seen. Only OpenAI-compatible connections can have one. */}
+            {compatible ? (
+              <View style={{ borderTopWidth: 1, borderTopColor: c.border, paddingTop: 12, gap: 10 }}>
+                {models.catalog ? (
+                  <>
+                    <Hint>
+                      For endpoints that don't answer GET /models. Paste the Codex models.json your provider documents — a
+                      models array of entries with a slug, and optionally display_name, context_window and
+                      supported_reasoning_levels. Empty it to go back to asking the endpoint.
+                    </Hint>
+                    <CodeBox
+                      value={models.catalog.draft}
+                      onChangeText={next =>
+                        setModels(current =>
+                          current && current.catalog
+                            ? { ...current, catalog: { draft: next, error: current.catalog.error } }
+                            : current,
+                        )
+                      }
+                      placeholder={MODEL_CATALOG_PLACEHOLDER}
+                      editable={!models.catalogBusy}
+                      accessibilityLabel="Model catalog"
+                    />
+                    {models.catalog.error ? <Problem>{models.catalog.error}</Problem> : null}
+                    <Button
+                      label={models.catalogBusy ? 'Saving…' : 'Save catalog'}
+                      variant="primary"
+                      disabled={models.catalogBusy}
+                      onPress={() => void saveCatalog()}
+                    />
+                  </>
+                ) : (
+                  <Button
+                    label={models.connection.hasModelCatalog ? 'Edit model catalog' : 'Add a model catalog'}
+                    variant="outline"
+                    onPress={() => void openCatalog()}
+                  />
+                )}
+              </View>
+            ) : null}
           </>
         ) : null}
       </Sheet>

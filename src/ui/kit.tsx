@@ -35,6 +35,7 @@ import Markdown, {
 import { copyText } from './clipboard';
 import { mix, radius, font, tintFor, useTheme, type Palette } from '../theme';
 import { splitMentions, type SubSessionMention } from '../api/mentions';
+import { GitServiceKind } from '../api/contracts';
 
 /**
  * How far the mono grammar may grow under Dynamic Type. Body text scales
@@ -419,11 +420,40 @@ export function Fork({ color, size = 10 }: { color: string; size?: number }) {
   );
 }
 
+/**
+ * The mark of a git hosting service — GitHub's, a Forgejo's, or the generic
+ * Git one when no connection recognizes the host. The web draws these from
+ * simple-icons paths (`GitServiceIcon.razor`); these bitmaps are the same
+ * paths rendered once, tinted at render the way the tab bar's icons are.
+ */
+export function GitMark({
+  kind,
+  color,
+  size = 14,
+}: {
+  kind?: GitServiceKind | null;
+  color: string;
+  size?: number;
+}) {
+  const source =
+    kind === GitServiceKind.GitHub
+      ? require('../../assets/icons/github.png')
+      : kind === GitServiceKind.Forgejo
+        ? require('../../assets/icons/forgejo.png')
+        : require('../../assets/icons/git.png');
+  return (
+    <Image
+      source={source}
+      resizeMode="contain"
+      style={{ width: size, height: size, tintColor: color }}
+    />
+  );
+}
+
 /** 8px; emerald and breathing when running, a bare ring when idle. */
 export function StatusDot({
   running,
-  size = 8,
-}: {
+  size = 8,}: {
   running: boolean;
   size?: number;
 }) {

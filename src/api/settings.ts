@@ -130,6 +130,27 @@ export const TIERS: { tier: ModelTier | null; label: string }[] = [
   { tier: ModelTier.Reasoning, label: 'Reasoning' },
 ];
 
+/**
+ * The model catalog shape, as the web's placeholder shows it: the Codex
+ * `models.json` a provider documents, pasted whole. Shared by the add form
+ * and the models sheet because it is one document, not two.
+ */
+export const MODEL_CATALOG_PLACEHOLDER = `{
+  "models": [
+    {
+      "slug": "glm-5.3",
+      "display_name": "GLM 5.3",
+      "context_window": 1048576,
+      "default_reasoning_level": "max",
+      "supported_reasoning_levels": [
+        { "effort": "low" },
+        { "effort": "high" },
+        { "effort": "max" }
+      ]
+    }
+  ]
+}`;
+
 export function tierLabel(tier: ModelTier | null | undefined): string {
   return TIERS.find(t => t.tier === (tier ?? null))?.label ?? 'Unrated (medium)';
 }

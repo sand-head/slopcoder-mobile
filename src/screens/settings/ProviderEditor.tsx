@@ -12,11 +12,11 @@ import { Alert, Platform, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ProviderKind } from '../../api/contracts';
-import { PROVIDER_PRESETS, providerForm } from '../../api/settings';
+import { MODEL_CATALOG_PLACEHOLDER, PROVIDER_PRESETS, providerForm } from '../../api/settings';
 import { useAuth } from '../../state/auth';
-import { Body, Hint, Mono, Screen } from '../../ui/kit';
+import { Body, Button, Hint, Mono, Screen } from '../../ui/kit';
 import { Sheet, SheetGroup } from '../../ui/Sheet';
-import { BarText, ChoiceRow, FormField, Problem } from '../../ui/settings';
+import { BarText, ChoiceRow, CodeBox, FormField, Problem } from '../../ui/settings';
 import { ConnectionBanner } from '../../ui/ConnectionBanner';
 import { useHeaderInset } from '../../navigation/headers';
 import { tapConfirm, tapError } from '../../ui/haptics';
@@ -39,9 +39,14 @@ export function ProviderEditorScreen({ route, navigation }: { route: any; naviga
   const [presetSheet, setPresetSheet] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The catalog box stays hidden until asked for — most endpoints list their
+  // own models, and a JSON textarea over the key field is noise until it isn't.
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [catalog, setCatalog] = useState('');
   const leaving = useRef(false);
 
-  const dirty = name.length > 0 || key.length > 0 || baseUrl.length > 0;
+  const compatible = kind === ProviderKind.OpenAICompatible;
+  const dirty = name.length > 0 || key.length > 0 || baseUrl.length > 0 || catalog.length > 0;
   const presetHint = PROVIDER_PRESETS.find(p => p.name === preset)?.hint;
 
   const submit = useRef<() => void>(() => {});
@@ -61,10 +66,18 @@ export function ProviderEditorScreen({ route, navigation }: { route: any; naviga
           displayName: name.trim(),
           apiKey: key.trim(),
           baseUrl: baseUrl.trim().length > 0 ? baseUrl.trim() : null,
+          // Only sent when the user filled it; absent is the default path.
+          modelCatalogJson: compatible && catalog.trim().length > 0 ? catalog : null,
         });
         if (result.id === null) {
           tapError();
           setError(result.error ?? 'The server refused that connection.');
+          // The endpoint answered but won't enumerate its models. That is
+          // fixable right here, so open the box rather than leave a dead end.
+          if (result.needsModelCatalog) {
+            setCatalogOpen(true);
+            setError(`${result.error ?? ''}\n\nPaste a model catalog below and try again.`.trim());
+          }
           return;
         }
         tapConfirm();
@@ -178,6 +191,25 @@ export function ProviderEditorScreen({ route, navigation }: { route: any; naviga
             editable={!busy}
             accessibilityLabel="Base URL"
           />
+        ) : null}
+
+        {/* The Codex models.json shape, for an endpoint that won't answer
+            GET /models. Hidden until asked for: most endpoints list their own,
+            and a JSON textarea over the key field is noise until it isn't. */}
+        {compatible ? (
+          catalogOpen ? (
+            <CodeBox
+              label="model catalog"
+              value={catalog}
+              onChangeText={setCatalog}
+              placeholder={MODEL_CATALOG_PLACEHOLDER}
+              editable={!busy}
+              accessibilityLabel="Model catalog"
+              hint="The Codex models.json shape: a models array of entries with a slug, and optionally display_name, context_window and supported_reasoning_levels. slopcoder lists these instead of asking the endpoint."
+            />
+          ) : (
+            <Button label="this endpoint doesn't list its models" variant="ghost" disabled={busy} onPress={() => setCatalogOpen(true)} />
+          )
         ) : null}
 
         {busy ? <Body style={{ fontSize: 13 }}>Validating…</Body> : null}

@@ -33,8 +33,10 @@ import {
   SessionStatus,
   type FacetOption,
   type ModelCandidate,
+  type RecentRepo,
   type RemoteNodeSummary,
   type RoutineStatus,
+  type SessionSearchHit,
   type SessionSummary,
 } from '../api/contracts';
 import { useAuth } from '../state/auth';
@@ -64,7 +66,7 @@ import { useRoutineAlert } from '../state/routines';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 import { useConnection } from '../state/connection';
 import { tapConfirm, tapError, tapRefuse } from '../ui/haptics';
-import { font, radius, useTheme } from '../theme';
+import { font, mix, radius, useTheme } from '../theme';
 
 export function SessionsScreen({ navigation }: { navigation: any }) {
   const { c } = useTheme();
@@ -78,6 +80,12 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
   const [query, setQuery] = useState('');
   const [renaming, setRenaming] = useState<SessionSummary | null>(null);
   const [routines, setRoutines] = useState<RoutineStatus | null>(null);
+  // Recall: the header search filters the list locally, and when nothing in it
+  // matches, the same words go to the server's full-text search over what was
+  // *said* — scrollback, not titles. The web's sidebar does only the second
+  // half; a phone has the one field, so it does both.
+  const [recall, setRecall] = useState<{ query: string; hits: SessionSearchHit[] } | null>(null);
+  const [recallBusy, setRecallBusy] = useState(false);
 
   const [prompt, setPrompt] = useState('');
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
@@ -88,7 +96,7 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
   const [facets, setFacets] = useState<FacetOption[]>([]);
   const [repos, setRepos] = useState<string[]>([]);
   const [nodes, setNodes] = useState<string[]>([]);
-  const [recent, setRecent] = useState<string[]>([]);
+  const [recent, setRecent] = useState<RecentRepo[]>([]);
   const [allNodes, setAllNodes] = useState<RemoteNodeSummary[]>([]);
   const owned = useOwnedRepos(seam);
   const [options, setOptions] = useState<TurnOptions>({
@@ -274,6 +282,32 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
   const running = visible.filter(s => s.status === SessionStatus.Running);
   const idle = visible.filter(s => s.status !== SessionStatus.Running);
 
+  // Debounced recall, mirroring the web's 300ms: a keystroke invalidates
+  // whatever was in flight, so a slow answer to an old query never overwrites
+  // the answer to the current one. Only asked once the local filter has come up
+  // empty — that is the state in which scrollback hits add anything.
+  useEffect(() => {
+    let cancelled = false;
+    const searched = query.trim();
+    setRecall(null);
+    if (!seam || searched.length < 2 || visible.length > 0) {
+      setRecallBusy(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setRecallBusy(true);
+      seam
+        .sessionSearch(searched, 10)
+        .then(hits => !cancelled && setRecall({ query: searched, hits }))
+        .catch(() => !cancelled && setRecall({ query: searched, hits: [] }))
+        .finally(() => !cancelled && setRecallBusy(false));
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [seam, query, visible.length]);
+
   // Leaving with the keyboard up lands on a page with a composer of its own
   // and a keyboard already open for something else, which reads as the tap
   // having gone somewhere it did not.
@@ -361,7 +395,11 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
           attachments={{
             repos,
             nodes,
-            recentRepos: recent.map(url => ({ key: url, label: shortRepo(url) })),
+            recentRepos: recent.map(row => ({
+              key: row.cloneUrl,
+              label: row.label || shortRepo(row.cloneUrl),
+              kind: row.kind,
+            })),
             ownedRepos: owned.repos,
             ownedLoaded: owned.loaded,
             ownedError: owned.error,
@@ -404,8 +442,55 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
           <Skeleton rows={5} />
         ) : sessions !== null && sessions.length === 0 ? (
           <Hint>No sessions yet. Start one above, or ask Siri.</Hint>
-        ) : sessions !== null && visible.length === 0 ? (
-          <Hint>Nothing matches “{query.trim()}”.</Hint>
+        ) : sessions !== null && visible.length === 0 && needle !== '' ? (
+          // Deliberately not an error: the local list came up empty, and the
+          // server is being asked whether anything was ever *said* that
+          // matches. "Nothing matches" would be premature until it answers.
+          recall === null && recallBusy ? null : (
+            <Hint>Nothing in the list matches “{query.trim()}”.</Hint>
+          )
+        ) : null}
+
+        {/* Recall hits: what was said in past sessions, not their titles. Only
+            shown when the local filter found nothing — with matches in the
+            list, scrollback rows would be noise under them. */}
+        {recall !== null && needle !== '' && recall.query === query.trim() && visible.length === 0 ? (
+          <View>
+            <SectionLabel label="said in past sessions" count={recallBusy ? undefined : recall.hits.length} />
+            {recallBusy ? (
+              <Hint>Searching scrollback…</Hint>
+            ) : recall.hits.length === 0 ? (
+              <Hint>Nothing said in a past session matches that.</Hint>
+            ) : (
+              <View style={{ gap: 8 }}>
+                {recall.hits.map(hit => (
+                  <Pressable
+                    key={`${hit.sessionId}:${hit.when}`}
+                    onPress={() => leaveFor('Session', { id: hit.sessionId })}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open session ${hit.sessionTitle}`}
+                    style={({ pressed }) => ({
+                      backgroundColor: pressed ? mix(c.muted, 40) : c.card,
+                      borderWidth: 1,
+                      borderColor: c.border,
+                      borderRadius: radius.md,
+                      padding: 12,
+                      gap: 4,
+                    })}>
+                    <Body numberOfLines={1} style={{ fontSize: 14 }}>
+                      {hit.sessionTitle}
+                    </Body>
+                    <Mono style={{ fontSize: 12 }}>
+                      {stamp(hit.when)} · {hit.kind}
+                    </Mono>
+                    <Mono numberOfLines={3} style={{ fontSize: 12, color: c.mutedForeground }}>
+                      {hit.snippet}
+                    </Mono>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+          </View>
         ) : null}
 
         {running.length > 0 ? (
@@ -567,7 +652,10 @@ function SessionCard({
           <View style={{ flex: 1, gap: 3 }}>
             <Body numberOfLines={1}>{session.title}</Body>
             <Mono numberOfLines={1}>
-              {stamp(session.createdAt)} · {session.autoRoute ? 'auto' : session.model}
+              {/* Last activity, not creation: the list is ordered by it, and a
+                  row stamped with a date two weeks old next to one stamped
+                  today would say the opposite of what the order says. */}
+              {stamp(session.updatedAt)} · {session.autoRoute ? 'auto' : session.model}
             </Mono>
             {offline ? <Meta style={{ color: c.destructive }}>workspace offline</Meta> : null}
           </View>

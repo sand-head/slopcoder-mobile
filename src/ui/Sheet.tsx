@@ -33,7 +33,8 @@
 import React, { useEffect, useRef } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { TrueSheet } from '@lodev09/react-native-true-sheet';
-import { Body, Check, Meta, Mono } from './kit';
+import { Body, Check, GitMark, Meta, Mono } from './kit';
+import type { GitServiceKind } from '../api/contracts';
 import { mix, radius, useTheme } from '../theme';
 
 export interface SheetOption {
@@ -41,6 +42,11 @@ export interface SheetOption {
   label: string;
   /** The line underneath — what the choice means, not a restatement of it. */
   description?: string;
+  /**
+   * A repository row's forge mark, when the option is a repository. Undefined
+   * on anything else (nodes, models) so those rows carry no icon slot at all.
+   */
+  kind?: GitServiceKind | null;
 }
 
 export function Sheet({
@@ -228,6 +234,11 @@ export function SheetMultiGroup({
               borderTopColor: c.border,
               backgroundColor: pressed ? mix(c.mutedForeground, 10) : 'transparent',
             })}>
+            {/* A repository row carries its forge's mark — the node rows in the
+                same sheet carry none, which is why this slot is optional. */}
+            {option.kind !== undefined ? (
+              <GitMark kind={option.kind} color={option.kind == null ? c.mutedForeground : c.foreground} />
+            ) : null}
             <View style={{ flex: 1, gap: 2 }}>
               <Body numberOfLines={1} style={{ fontSize: 14.5 }}>
                 {option.label}

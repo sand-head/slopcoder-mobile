@@ -27,19 +27,20 @@ import React, { useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, TextInput, View } from 'react-native';
 import {
   ApprovalMode,
+  GitServiceKind,
   ThinkingLevel,
   type FacetOption,
   type ModelCandidate,
   type ModelSelection,
   type SlashCommandInfo,
 } from '../api/contracts';
-import { Body, Dot, GlassSurface, Meta, Mono, SendButton, Sliders } from './kit';
+import { Body, Dot, GlassSurface, GitMark, Meta, Mono, SendButton, Sliders } from './kit';
 import { OverflowMenu, type MenuItem } from './menu';
 import { Sheet, SheetGroup, SheetMultiGroup, SheetSegments } from './Sheet';
 import { MAX_IMAGES, type ImageSource, type PendingImage } from './images';
 import { useConnection } from '../state/connection';
 import { Field } from './kit';
-import { offer, shouldSearch } from '../api/repoPicker';
+import { kindFromUrl, offer, shouldSearch } from '../api/repoPicker';
 import { commandPrefix, matchCommands } from '../api/slash';
 import { tapSelect } from './haptics';
 import { font, mix, radius, useTheme } from '../theme';
@@ -49,6 +50,8 @@ export interface AttachOption {
   key: string;
   label: string;
   description?: string;
+  /** Which forge a repository row came from; picks the mark beside the name. */
+  kind?: GitServiceKind | null;
 }
 
 /**
@@ -580,6 +583,7 @@ export function AttachChips({ attachments }: { attachments: Attachments }) {
     ...attachments.repos.map(url => ({
       key: url,
       label: attachments.recentRepos.find(r => r.key === url)?.label ?? shortRepo(url),
+      kind: attachments.recentRepos.find(r => r.key === url)?.kind ?? kindFromUrl(url),
       drop: () =>
         attachments.onChange({
           repos: attachments.repos.filter(r => r !== url),
@@ -589,6 +593,7 @@ export function AttachChips({ attachments }: { attachments: Attachments }) {
     ...attachments.nodes.map(id => ({
       key: id,
       label: attachments.availableNodes.find(n => n.key === id)?.label ?? 'node',
+      kind: undefined,
       drop: () =>
         attachments.onChange({
           repos: attachments.repos,
@@ -616,6 +621,13 @@ export function AttachChips({ attachments }: { attachments: Attachments }) {
             borderColor: c.border,
             backgroundColor: c.card,
           }}>
+          {chip.kind !== undefined ? (
+            <GitMark
+              kind={chip.kind}
+              color={chip.kind == null ? c.mutedForeground : c.foreground}
+              size={12}
+            />
+          ) : null}
           <Mono numberOfLines={1} style={{ fontSize: 11.5, color: c.foreground, maxWidth: 160 }}>
             {chip.label}
           </Mono>

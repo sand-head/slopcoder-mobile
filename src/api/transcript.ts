@@ -99,6 +99,12 @@ export interface ApprovalItem extends BaseItem {
   /** The classifier refused; a human saying yes is an override. */
   refused: boolean;
   approved: boolean | null;
+  /**
+   * For a tool that always asks (posting to a forge), exactly what approving
+   * it would post — rendered text, as text, in full. The evidence the verdict
+   * rests on, not decoration.
+   */
+  preview: string | null;
 }
 
 export interface QuestionItem extends BaseItem {
@@ -430,6 +436,7 @@ export class TranscriptFolder {
           reason: str('reason'),
           refused: Boolean(payload.refused),
           approved: null,
+          preview: str('preview') || null,
         });
         break;
 
