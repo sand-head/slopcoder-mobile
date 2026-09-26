@@ -33,6 +33,7 @@ import {
   CodeReviewPublicationPlacement,
   CodeReviewPublicationState,
   CodeReviewPublishStatus,
+  CodeReviewSeverity,
   CodeReviewSuggestionStatus,
   CodeReviewTargetKind,
   type CodeReviewDetail,
@@ -53,7 +54,6 @@ import type { Seam } from '../api/seam';
 import {
   Body,
   Button,
-  Dot,
   Hint,
   Meta,
   Mono,
@@ -312,7 +312,8 @@ function placementLabel(placement: CodeReviewPublicationPlacement | null): strin
 }
 
 /** A checkbox only for a finding the server says can be published. */
-function publishable(place: CodeReviewPublishableFinding | undefined): boolean {
+/** Whether one of the review's findings could be published, and where it would go. */
+function publishable(place: CodeReviewPublishableFinding | null | undefined): boolean {
   return place != null && place.placement != null && place.refusal == null && place.publishedIn == null;
 }
 
@@ -663,6 +664,15 @@ export function ReviewDetailScreen({ route, navigation }: { route: any; navigati
  * confirmation's own button. Rendered only where the web renders it: a review
  * with consolidated findings whose target a connected forge knows.
  */
+// The state of one confirmation: which finding it is for, and the preview the
+// server rendered for it. `findingId` and `event` survive while the preview
+// loads (and after it fails), so a retry press knows what to ask for again.
+type PendingPublication = {
+  findingId: string;
+  event: CodeReviewPublicationEvent;
+  preview: CodeReviewPublicationPreview | null;
+};
+
 function PublicationPanel({
   reviewId,
   detail,
@@ -679,12 +689,13 @@ function PublicationPanel({
   const { c } = useTheme();
   const [overview, setOverview] = useState<CodeReviewPublicationOverview | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [event, setEvent] = useState(CodeReviewPublicationEvent.Comment);
-  const [preview, setPreview] = useState<CodeReviewPublicationPreview | null>(null);
-  const [previewBusy, setPreviewBusy] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [pending, setPending] = useState<PendingPublication | null>(null);
+  const [previewBusyId, setPreviewBusyId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  // Failure words for the LAST tapped card action, keyed by finding: they
+  // render on that card, where the thumb is — never below the fold.
+  const [cardMessages, setCardMessages] = useState<Record<string, string>>({});
+  const [sheetMessage, setSheetMessage] = useState<string | null>(null);
   const requestId = useRef<string>('');
 
   const load = useCallback(async () => {
@@ -693,16 +704,6 @@ function PublicationPanel({
       const o = await seam.reviewPublications(reviewId);
       setOverview(o);
       setLoadError(o === null ? 'This review is gone, or is not yours.' : null);
-      // Only what is still publishable stays selected.
-      if (o !== null) {
-        setSelected(prev => {
-          const next = new Set<string>();
-          for (const id of prev) {
-            if (publishable(o.findings.find(f => f.findingId === id))) next.add(id);
-          }
-          return next;
-        });
-      }
     } catch {
       setLoadError('Could not check what can be published.');
     }
@@ -733,50 +734,67 @@ function PublicationPanel({
       : CodeReviewElevationTarget.Issues)) === CodeReviewElevationTarget.Issues;
   const repository = overview?.repository ?? where(detail.target);
   const heading = issues ? `Raise as issues in ${repository}` : 'Publish to the pull request';
-  const orderedIds = findings.findings.filter(f => selected.has(f.id)).map(f => f.id);
 
-  const openPreview = () => {
-    if (!seam || orderedIds.length === 0) return;
-    setPreviewBusy(true);
-    setMessage(null);
+  // One action per finding, not a cart: a tap previews exactly that finding.
+  // For a pull request that means one review posted per finding — the server
+  // takes any subset, and the web's review-of-selected stays on the web.
+  const openPreview = (findingId: string, event: CodeReviewPublicationEvent) => {
+    // Never a silent no-op: without a seam the card says so, right there.
+    if (!seam) {
+      setCardMessages(m => ({ ...m, [findingId]: 'Not connected. Reconnect and try again.' }));
+      return;
+    }
+    // Clear only that finding's stale words, leaving the others: delete is
+    // the honest shape for removing one key from a Record.
+    setCardMessages(m => {
+      const rest = { ...m };
+      delete rest[findingId];
+      return rest;
+    });
+    setSheetMessage(null);
+    setPreviewBusyId(findingId);
+    setPending({ findingId, event, preview: null });
     void (async () => {
       try {
-        const p = await seam.previewReviewPublication(reviewId, orderedIds, event);
-        if (p === null) setMessage('This review is gone, or is not yours.');
-        else {
+        const p = await seam.previewReviewPublication(reviewId, [findingId], event);
+        if (p === null) {
+          setCardMessages(m => ({ ...m, [findingId]: 'This review is gone, or is not yours.' }));
+          setPending(null);
+        } else {
           // Made once when the confirmation opens, so a resend is the same publication.
           requestId.current = newRequestId();
-          setPreview(p);
+          setPending({ findingId, event, preview: p });
         }
       } catch {
-        setMessage('Could not prepare the preview. Try again.');
+        setCardMessages(m => ({ ...m, [findingId]: 'Could not prepare the preview. Try again.' }));
+        setPending(null);
       } finally {
-        setPreviewBusy(false);
+        setPreviewBusyId(null);
       }
     })();
   };
 
   const publish = () => {
-    if (!seam || preview == null) return;
-    setBusy(true);
+    if (!seam || pending?.preview == null) return;
+    const p = pending.preview;
+    setBusyId(pending.findingId);
     void (async () => {
       try {
         const result = await seam.publishReview(requestId.current, reviewId, {
-          findingIds: preview.items.map(i => i.findingId),
-          event: preview.event,
+          findingIds: p.items.map(i => i.findingId),
+          event: p.event,
         });
-        setMessage(publishMessage(result));
-        setPreview(null);
-        if (result?.publication != null) setSelected(new Set());
+        // The outcome is said in the sheet, where the finger pressed Confirm —
+        // and stays there until it is closed; the panel behind is refreshed.
+        setSheetMessage(publishMessage(result));
         await load();
         onChanged();
       } catch {
-        setMessage(
+        setSheetMessage(
           'The server could not be reached. Nothing is known to be published; reload to see what happened.',
         );
-        setPreview(null);
       } finally {
-        setBusy(false);
+        setBusyId(null);
       }
     })();
   };
@@ -791,15 +809,17 @@ function PublicationPanel({
           text: 'Retry',
           onPress: () => {
             if (!seam) return;
-            setBusy(true);
+            setBusyId(publicationId);
             void (async () => {
               try {
                 const result = await seam.retryReviewPublication(reviewId, publicationId);
-                setMessage(publishMessage(result));
+                // Said as a dialog because the retry began as one — the sheet
+                // is not open here, so its message would be invisible.
+                Alert.alert('Retry', publishMessage(result));
               } catch {
-                setMessage('The server could not be reached; reload to see what happened.');
+                Alert.alert('Retry', 'The server could not be reached; reload to see what happened.');
               } finally {
-                setBusy(false);
+                setBusyId(null);
                 await load();
               }
             })();
@@ -809,6 +829,10 @@ function PublicationPanel({
     );
   };
 
+  const anyPublishable = overview == null || overview.findings.some(f => publishable(f));
+  // The sheet reads this, not `pending` itself: null while the preview loads.
+  const p = pending?.preview ?? null;
+
   return (
     <View style={{ gap: 10 }}>
       <Meta>{heading}</Meta>
@@ -817,109 +841,53 @@ function PublicationPanel({
 
       {overview != null && !overview.canPublish ? <Hint>{overview.blocker}</Hint> : null}
 
+      {overview != null && overview.canPublish && !anyPublishable ? (
+        // No finding can still be published: said in words where the actions
+        // would be, while the cards below still say what became of each.
+        <Hint>
+          Nothing here can still be published: every finding was already posted, or cannot be raised.
+        </Hint>
+      ) : null}
+
       {overview != null && overview.canPublish ? (
         <View style={{ gap: 10 }}>
           {findings.findings.map(finding => {
             const place = overview.findings.find(f => f.findingId === finding.id);
-            const ok = publishable(place);
-            const on = selected.has(finding.id);
             return (
-              <Pressable
+              <PublishCard
                 key={finding.id}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: ok && on, disabled: !ok || busy }}
-                disabled={!ok || busy}
-                onPress={() =>
-                  setSelected(prev => {
-                    const next = new Set(prev);
-                    if (!next.delete(finding.id)) next.add(finding.id);
-                    return next;
-                  })
-                }
-                style={() => ({
-                  flexDirection: 'row',
-                  gap: 8,
-                  opacity: ok ? 1 : 0.6,
-                  paddingVertical: 4,
-                })}
-              >
-                {/* The checkbox is drawn, not typed: Geist Mono has no ☑ ☐,
-                    and the OS substitute differs per platform — see GLYPHS. */}
-                <View style={{ width: 18, alignItems: 'center' }}>
-                  {ok ? (
-                    <Dot color={on ? c.primary : c.mutedForeground} filled={on} />
-                  ) : (
-                    <Mono style={{ color: c.mutedForeground }}>—</Mono>
-                  )}
-                </View>
-                <View style={{ flex: 1, gap: 2 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <Mono>#{finding.rank}</Mono>
-                    <Mono style={{ color: severityColor(finding.severity, c) }}>
-                      {severityName(finding.severity)}
-                    </Mono>
-                    <Body numberOfLines={1} style={{ flex: 1 }}>
-                      {finding.title}
-                    </Body>
-                  </View>
-                  <Mono>
-                    {place?.publishedIn != null
-                      ? 'already published'
-                      : ok
-                      ? `${
-                          finding.provenance === CodeReviewFindingProvenance.AgentSession
-                            ? 'agent comment'
-                            : 'supported'
-                        } · ${placementLabel(place!.placement)}${
-                          finding.hasSuggestion ? ' · with suggestion' : ''
-                        }`
-                      : place?.refusal ?? 'not publishable'}
-                  </Mono>
-                </View>
-              </Pressable>
+                finding={finding}
+                place={place ?? null}
+                issues={issues}
+                busy={busyId === finding.id || previewBusyId === finding.id}
+                message={cardMessages[finding.id] ?? null}
+                disabled={busyId != null || previewBusyId != null}
+                onPreview={event => openPreview(finding.id, event)}
+              />
             );
           })}
-
-          {!issues ? (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              <Meta>Submit as</Meta>
-              <Button
-                label="a comment"
-                variant={event === CodeReviewPublicationEvent.Comment ? 'primary' : 'outline'}
-                disabled={busy}
-                onPress={() => setEvent(CodeReviewPublicationEvent.Comment)}
-              />
-              <Button
-                label="a change request"
-                variant={event === CodeReviewPublicationEvent.RequestChanges ? 'primary' : 'outline'}
-                disabled={busy}
-                onPress={() => setEvent(CodeReviewPublicationEvent.RequestChanges)}
-              />
-            </View>
-          ) : null}
-
-          <Button
-            label="Review what will be posted…"
-            variant="outline"
-            disabled={previewBusy || busy || orderedIds.length === 0}
-            busy={previewBusy}
-            onPress={openPreview}
-          />
         </View>
       ) : null}
-
-      {message ? <Hint>{message}</Hint> : null}
 
       {overview != null && overview.publications.length > 0 ? (
         <View style={{ gap: 8 }}>
           <Meta>Publications</Meta>
-          {overview.publications.map(p => (
+          {overview.publications.map(pub => (
             <View
-              key={p.id}
+              key={pub.id}
               style={{
                 borderRadius: radius.lg,
                 borderWidth: 1,
                 borderColor: c.border,
+                // The one status colour that reads at a glance.
+                borderLeftWidth: 3,
+                borderLeftColor:
+                  pub.state === CodeReviewPublicationState.Published
+                    ? c.primary
+                    : pub.state === CodeReviewPublicationState.Failed ||
+                      pub.state === CodeReviewPublicationState.PartiallyPublished
+                    ? c.destructive
+                    : c.border,
                 padding: 12,
                 gap: 8,
               }}
@@ -928,31 +896,31 @@ function PublicationPanel({
                 <Mono
                   style={{
                     color:
-                      p.state === CodeReviewPublicationState.Published
+                      pub.state === CodeReviewPublicationState.Published
                         ? c.primary
-                        : p.state === CodeReviewPublicationState.Failed
+                        : pub.state === CodeReviewPublicationState.Failed
                         ? c.destructive
                         : c.foreground,
                   }}
                 >
-                  {publicationStateLabel(p.state)}
+                  {publicationStateLabel(pub.state)}
                 </Mono>
-                {p.target !== CodeReviewElevationTarget.Issues ? <Mono>{eventLabel(p.event)}</Mono> : null}
-                <Mono>{shortSha(p.headSha)}</Mono>
+                {pub.target !== CodeReviewElevationTarget.Issues ? <Mono>{eventLabel(pub.event)}</Mono> : null}
+                <Mono>{shortSha(pub.headSha)}</Mono>
                 <Mono>
-                  {p.attempts} {p.attempts === 1 ? 'attempt' : 'attempts'}
+                  {pub.attempts} {pub.attempts === 1 ? 'attempt' : 'attempts'}
                 </Mono>
-                {retryable(p) ? (
+                {retryable(pub) ? (
                   <Button
                     label="Retry"
                     variant="outline"
-                    disabled={!overview.canPublish || busy}
-                    onPress={() => askRetry(p.id)}
+                    disabled={!overview.canPublish || busyId != null}
+                    onPress={() => askRetry(pub.id)}
                   />
                 ) : null}
               </View>
-              {p.error != null ? <Problem>{p.error}</Problem> : null}
-              {p.items.map(item => {
+              {pub.error != null ? <Problem>{pub.error}</Problem> : null}
+              {pub.items.map(item => {
                 const link = safeHttpUrl(item.remoteUrl);
                 return (
                   <View key={item.findingId} style={{ gap: 2 }}>
@@ -980,17 +948,31 @@ function PublicationPanel({
         </View>
       ) : null}
 
-      <Sheet visible={preview != null} title={heading} onClose={() => setPreview(null)}>
-        {preview != null ? (
+      <Sheet
+        visible={pending != null}
+        title={heading}
+        onClose={() => {
+          setPending(null);
+          setSheetMessage(null);
+        }}
+      >
+        {pending != null ? (
           <View style={{ gap: 12, paddingBottom: 24 }}>
-            {preview.target === CodeReviewElevationTarget.Issues ? (
+            {p == null ? (
+              // The preview is still loading (or failed and this is the busy
+              // fallback): say so in the sheet, not nowhere.
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <ActivityIndicator size="small" color={c.mutedForeground} />
+                <Mono>preparing the preview…</Mono>
+              </View>
+            ) : p.target === CodeReviewElevationTarget.Issues ? (
               <>
                 <Body>
-                  {`One issue per finding in ${preview.repository}, about the reviewed commit ${shortSha(
-                    preview.headSha,
-                  )}. Each carries the review’s coverage note.`}
+                  {`An issue in ${p.repository ?? repository}, about the reviewed commit ${shortSha(
+                    p.headSha,
+                  )}, carrying the review’s coverage note.`}
                 </Body>
-                {preview.items
+                {p.items
                   .filter(i => i.body != null)
                   .map(item => (
                     <View key={item.findingId} style={{ gap: 6 }}>
@@ -1006,13 +988,13 @@ function PublicationPanel({
               <>
                 <Body>
                   {`One review on the pull request, submitted as ${eventLabel(
-                    preview.event,
-                  )}, on commit ${shortSha(preview.headSha)}. The head is checked again before anything is sent.`}
+                    p.event,
+                  )}, on commit ${shortSha(p.headSha)}. The head is checked again before anything is sent.`}
                 </Body>
-                {preview.coverageNotice != null ? <Problem>{preview.coverageNotice} It says so in the review.</Problem> : null}
+                {p.coverageNotice != null ? <Problem>{p.coverageNotice} It says so in the review.</Problem> : null}
                 <Meta>Review body</Meta>
-                <Pre>{preview.reviewBody}</Pre>
-                {preview.items
+                <Pre>{p.reviewBody}</Pre>
+                {p.items
                   .filter(i => i.body != null)
                   .map(item => (
                     <View key={item.findingId} style={{ gap: 6 }}>
@@ -1023,10 +1005,10 @@ function PublicationPanel({
                   ))}
               </>
             )}
-            {preview.items.some(i => i.refusal != null) ? (
+            {p != null && p.items.some(i => i.refusal != null) ? (
               <View style={{ gap: 4 }}>
                 <Meta>Will not be posted</Meta>
-                {preview.items
+                {p != null && p.items
                   .filter(i => i.refusal != null)
                   .map(item => (
                     <Mono key={item.findingId}>
@@ -1036,21 +1018,195 @@ function PublicationPanel({
               </View>
             ) : null}
             <Body>
-              {preview.target === CodeReviewElevationTarget.Issues
+              {p?.target === CodeReviewElevationTarget.Issues
                 ? 'Each issue is visible to everyone who can see the repository’s issues, and cannot be taken back from here.'
                 : 'This is visible to everyone who can see the pull request, and cannot be taken back from here.'}
             </Body>
+            {sheetMessage != null ? (
+              <Body accessibilityLiveRegion="polite" style={{ fontFamily: font.sansMedium }}>
+                {sheetMessage}
+              </Body>
+            ) : null}
             <Button
-              label={preview.target === CodeReviewElevationTarget.Issues ? 'Open issues' : 'Post review'}
+              label={
+                sheetMessage != null
+                  ? 'Close'
+                  : p?.target === CodeReviewElevationTarget.Issues
+                  ? 'Open issues'
+                  : 'Post review'
+              }
               variant="primary"
-              disabled={busy}
-              busy={busy}
-              onPress={publish}
+              disabled={busyId != null}
+              busy={busyId != null}
+              onPress={() => {
+                if (sheetMessage != null) setPending(null);
+                else publish();
+              }}
             />
-            <Button label="Cancel" variant="ghost" disabled={busy} onPress={() => setPreview(null)} />
           </View>
         ) : null}
       </Sheet>
+    </View>
+  );
+}
+
+/**
+ * One finding as a publishable thing: the same card anatomy as the findings
+ * above, with its action row — post to the PR (as comment or change request),
+ * or open an issue — instead of a checkbox. Already-published and refused
+ * findings are cards too, saying their status where their action would be.
+ */
+function PublishCard({
+  finding,
+  place,
+  issues,
+  busy,
+  message,
+  disabled,
+  onPreview,
+}: {
+  finding: CodeReviewFindingSummary;
+  place: CodeReviewPublishableFinding | null;
+  issues: boolean;
+  busy: boolean;
+  message: string | null;
+  disabled: boolean;
+  onPreview: (event: CodeReviewPublicationEvent) => void;
+}) {
+  const { c } = useTheme();
+  const ok = publishable(place);
+
+  return (
+    <View
+      style={{
+        borderRadius: radius.lg,
+        borderWidth: 1,
+        borderColor: c.border,
+        // The severity edge the web's ReviewCard draws with border-left.
+        borderLeftWidth: 3,
+        borderLeftColor: severityColor(finding.severity, c),
+        padding: 12,
+        gap: 8,
+      }}
+    >
+      <CardHeader
+        rank={finding.rank}
+        severity={finding.severity}
+        title={finding.title}
+        tags={cardTags(finding)}
+      />
+      <Mono>
+        {place?.publishedIn != null
+          ? 'already published'
+          : ok
+          ? `${
+              finding.provenance === CodeReviewFindingProvenance.AgentSession
+                ? 'agent comment'
+                : 'supported'
+            } · ${placementLabel(place!.placement)}${finding.hasSuggestion ? ' · with suggestion' : ''}`
+          : place?.refusal ?? 'not publishable'}
+      </Mono>
+
+      {ok ? (
+        issues ? (
+          <Button
+            label="Open as issue"
+            variant="primary"
+            disabled={disabled}
+            busy={busy}
+            onPress={() => onPreview(CodeReviewPublicationEvent.Comment)}
+          />
+        ) : (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            <Button
+              label="Post comment"
+              variant="primary"
+              disabled={disabled}
+              busy={busy}
+              onPress={() => onPreview(CodeReviewPublicationEvent.Comment)}
+            />
+            <Button
+              label="Post as change request"
+              variant="outline"
+              disabled={disabled}
+              onPress={() => onPreview(CodeReviewPublicationEvent.RequestChanges)}
+            />
+          </View>
+        )
+      ) : null}
+
+      {/* The failure words render on this card — at the tap point, not below
+          the list. accessibilityLiveRegion so a screen reader speaks them. */}
+      {message != null ? (
+        <Body accessibilityLiveRegion="polite" style={{ color: c.destructive, fontSize: 13 }}>
+          {message}
+        </Body>
+      ) : null}
+    </View>
+  );
+}
+
+/** The compact pills a finding card carries, as label/tint pairs. */
+function cardTags(finding: CodeReviewFindingSummary): { label: string; tint?: 'primary' }[] {
+  const tags: { label: string; tint?: 'primary' }[] = [];
+  if (finding.provenance === CodeReviewFindingProvenance.AgentSession) tags.push({ label: 'agent' });
+  if (finding.hasSuggestion) tags.push({ label: 'suggestion' });
+  if (finding.disposition === CodeReviewFindingDisposition.Accepted)
+    tags.push({ label: dispositionLabel(finding.disposition), tint: 'primary' });
+  else if (finding.disposition === CodeReviewFindingDisposition.Dismissed)
+    tags.push({ label: dispositionLabel(finding.disposition) });
+  if (finding.provenance === CodeReviewFindingProvenance.Pipeline)
+    tags.push({ label: String(finding.score.total) });
+  return tags;
+}
+
+/** One finding card's header row: rank, severity, title flexing, then pills. */
+function CardHeader({
+  rank,
+  severity,
+  title,
+  tags,
+}: {
+  rank: number;
+  severity: CodeReviewSeverity;
+  title: string;
+  tags: { label: string; tint?: 'primary' }[];
+}) {
+  const { c } = useTheme();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, flexWrap: 'wrap' }}>
+      <Mono style={{ color: c.mutedForeground }}>#{rank}</Mono>
+      <Mono style={{ color: severityColor(severity, c) }}>{severityName(severity)}</Mono>
+      <Body
+        numberOfLines={2}
+        style={{ flex: 1, minWidth: 120, fontFamily: font.sansMedium, fontSize: 14 }}
+      >
+        {title}
+      </Body>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+        {tags.map(t => (
+          <Pill key={t.label} label={t.label} tint={t.tint} />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+/** A compact uppercase mono pill: the tag vocabulary of the findings list. */
+function Pill({ label, tint }: { label: string; tint?: 'primary' }) {
+  const { c } = useTheme();
+  return (
+    <View
+      style={{
+        backgroundColor: mix(c.mutedForeground, 10),
+        borderRadius: 999,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+      }}
+    >
+      <Mono style={{ fontSize: 10.5, textTransform: 'uppercase', color: tint === 'primary' ? c.primary : c.mutedForeground }}>
+        {label}
+      </Mono>
     </View>
   );
 }
@@ -1334,7 +1490,12 @@ function FindingCard({
       style={{
         borderRadius: radius.lg,
         borderWidth: 1,
-        borderColor: c.border,
+        // Open reads as engaged: the border leans toward primary, like the
+        // web's `color-mix(primary 40%, border)` on the expanded card.
+        borderColor: open ? mix(c.primary, 40) : c.border,
+        // The severity edge the web's ReviewCard draws with border-left.
+        borderLeftWidth: 3,
+        borderLeftColor: severityColor(shown.severity, c),
         overflow: 'hidden',
       }}
     >
@@ -1349,38 +1510,12 @@ function FindingCard({
           backgroundColor: pressed ? mix(c.muted, 60) : 'transparent',
         })}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Mono>#{shown.rank}</Mono>
-          <Mono
-            style={{
-              color: severityColor(shown.severity, c),
-              fontFamily: font.mono,
-            }}
-          >
-            {severityName(shown.severity)}
-          </Mono>
-          <View style={{ flex: 1 }} />
-          {shown.provenance === CodeReviewFindingProvenance.AgentSession ? (
-            <Mono>agent</Mono>
-          ) : null}
-          {shown.hasSuggestion ? <Mono>suggestion</Mono> : null}
-          {shown.disposition !== CodeReviewFindingDisposition.Open ? (
-            <Mono
-              style={{
-                color:
-                  shown.disposition === CodeReviewFindingDisposition.Accepted
-                    ? c.primary
-                    : c.mutedForeground,
-              }}
-            >
-              {dispositionLabel(shown.disposition)}
-            </Mono>
-          ) : null}
-          {shown.provenance === CodeReviewFindingProvenance.Pipeline ? (
-            <Mono>{shown.score.total}</Mono>
-          ) : null}
-        </View>
-        <Body numberOfLines={open ? undefined : 2}>{shown.title}</Body>
+        <CardHeader
+          rank={shown.rank}
+          severity={shown.severity}
+          title={shown.title}
+          tags={cardTags(shown)}
+        />
         <Mono numberOfLines={1} ellipsizeMode="head">
           {location(shown.path, shown.side, shown.startLine, shown.endLine)}
           {shown.inline ? '' : ' · summary-level'}
