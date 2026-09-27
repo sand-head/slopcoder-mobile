@@ -36,6 +36,7 @@ import {
   CodeReviewSeverity,
   CodeReviewSuggestionStatus,
   CodeReviewTargetKind,
+  GitServiceKind,
   type CodeReviewDetail,
   type CodeReviewFindingDetail,
   type CodeReviewFindingDiff,
@@ -54,7 +55,6 @@ import type { Seam } from '../api/seam';
 import {
   Body,
   Button,
-  Check,
   Hint,
   Meta,
   Mono,
@@ -641,6 +641,7 @@ export function ReviewDetailScreen({ route, navigation }: { route: any; navigati
               dark={dark}
               onDecided={() => void load()}
               onChanged={() => void load()}
+              onFixed={id => navigation.push('Session', { id })}
             />
           )}
         </View>
@@ -660,10 +661,11 @@ export function ReviewDetailScreen({ route, navigation }: { route: any; navigati
  * own button. Rendered only where the web renders it: a review with
  * consolidated findings whose target a connected forge knows.
  */
-// One confirmation: which event, and the preview the server rendered for the
-// chosen findings. `event` survives while the preview loads (and after it
-// fails), so a retry press knows what to ask for again.
+// One confirmation: which finding it is for, and the preview the server
+// rendered for it. `findingId` and `event` survive while the preview loads
+// (and after it fails), so a retry press knows what to ask for again.
 type PendingPublication = {
+  findingId: string;
   event: CodeReviewPublicationEvent;
   preview: CodeReviewPublicationPreview | null;
 };
@@ -677,6 +679,7 @@ function PublicationPanel({
   agent,
   onDecided,
   onChanged,
+  onFixed,
 }: {
   reviewId: string;
   detail: CodeReviewDetail;
@@ -686,21 +689,17 @@ function PublicationPanel({
   agent: boolean;
   onDecided: () => void;
   onChanged: () => void;
+  onFixed: (sessionId: string) => void;
 }) {
   const { c } = useTheme();
   const [overview, setOverview] = useState<CodeReviewPublicationOverview | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  // Which findings the checkboxes picked, in the server's rank order.
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  // What the checked findings will be submitted as — the web's select box.
-  const [event, setEvent] = useState<CodeReviewPublicationEvent>(
-    CodeReviewPublicationEvent.Comment,
-  );
   const [pending, setPending] = useState<PendingPublication | null>(null);
-  const [busy, setBusy] = useState(false);
-  // Failure words for the LAST press of the publish bar: they render at the
-  // bar, where the thumb is — never below the fold.
-  const [barMessage, setBarMessage] = useState<string | null>(null);
+  const [previewBusyId, setPreviewBusyId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  // Failure words for the LAST pressed card action, keyed by finding: they
+  // render on that card, where the thumb is — never below the fold.
+  const [cardMessages, setCardMessages] = useState<Record<string, string>>({});
   const [sheetMessage, setSheetMessage] = useState<string | null>(null);
   const requestId = useRef<string>('');
 
@@ -710,15 +709,6 @@ function PublicationPanel({
       const o = await seam.reviewPublications(reviewId);
       setOverview(o);
       setLoadError(o === null ? 'This review is gone, or is not yours.' : null);
-      // Only what is still publishable stays selected — the web's rule.
-      if (o != null) {
-        setSelected(prev => {
-          const next = new Set(
-            [...prev].filter(id => publishable(o.findings.find(f => f.findingId === id))),
-          );
-          return next.size === prev.size ? prev : next;
-        });
-      }
     } catch {
       setLoadError('Could not check what can be published.');
     }
@@ -738,40 +728,40 @@ function PublicationPanel({
   const repository = overview?.repository ?? where(detail.target);
   const heading = issues ? `Raise as issues in ${repository}` : 'Publish to the pull request';
 
-  const orderedIds = findings.findings.map(f => f.id);
-
-  // The publish bar: previews exactly what is checked. A tap that does
-  // nothing is the bug this screen is named for — every way it can fail says
-  // its words at the bar, and nothing is left silently dead.
-  const openPreview = (asEvent: CodeReviewPublicationEvent) => {
+  // One action per card, no cart: a tap acts on exactly that finding. For a
+  // pull request the card's Publish button posts one review containing that
+  // finding (as a comment); change-request stays a web choice.
+  const openPreview = (findingId: string, event: CodeReviewPublicationEvent) => {
+    // Never a silent no-op: without a seam the card says so, right there.
     if (!seam) {
-      setBarMessage('Not connected. Reconnect and try again.');
+      setCardMessages(m => ({ ...m, [findingId]: 'Not connected. Reconnect and try again.' }));
       return;
     }
-    const ids = orderedIds.filter(id => selected.has(id));
-    if (ids.length === 0) {
-      setBarMessage('Check the findings to publish first.');
-      return;
-    }
-    setBarMessage(null);
-    setBusy(true);
-    setPending({ event: asEvent, preview: null });
+    // Clear only that finding's stale words, leaving the others.
+    setCardMessages(m => {
+      const rest = { ...m };
+      delete rest[findingId];
+      return rest;
+    });
+    setSheetMessage(null);
+    setPreviewBusyId(findingId);
+    setPending({ findingId, event, preview: null });
     void (async () => {
       try {
-        const p = await seam.previewReviewPublication(reviewId, ids, asEvent);
+        const p = await seam.previewReviewPublication(reviewId, [findingId], event);
         if (p === null) {
-          setBarMessage('This review is gone, or is not yours.');
+          setCardMessages(m => ({ ...m, [findingId]: 'This review is gone, or is not yours.' }));
           setPending(null);
         } else {
           // Made once when the confirmation opens, so a resend is the same publication.
           requestId.current = newRequestId();
-          setPending({ event: asEvent, preview: p });
+          setPending({ findingId, event, preview: p });
         }
       } catch {
-        setBarMessage('Could not prepare the preview. Try again.');
+        setCardMessages(m => ({ ...m, [findingId]: 'Could not prepare the preview. Try again.' }));
         setPending(null);
       } finally {
-        setBusy(false);
+        setPreviewBusyId(null);
       }
     })();
   };
@@ -779,7 +769,7 @@ function PublicationPanel({
   const publish = () => {
     if (!seam || pending?.preview == null) return;
     const p = pending.preview;
-    setBusy(true);
+    setBusyId(pending.findingId);
     void (async () => {
       try {
         const result = await seam.publishReview(requestId.current, reviewId, {
@@ -796,7 +786,7 @@ function PublicationPanel({
           'The server could not be reached. Nothing is known to be published; reload to see what happened.',
         );
       } finally {
-        setBusy(false);
+        setBusyId(null);
       }
     })();
   };
@@ -811,7 +801,7 @@ function PublicationPanel({
           text: 'Retry',
           onPress: () => {
             if (!seam) return;
-            setBusy(true);
+            setBusyId(publicationId);
             void (async () => {
               try {
                 const result = await seam.retryReviewPublication(reviewId, publicationId);
@@ -821,7 +811,7 @@ function PublicationPanel({
               } catch {
                 Alert.alert('Retry', 'The server could not be reached; reload to see what happened.');
               } finally {
-                setBusy(false);
+                setBusyId(null);
                 await load();
               }
             })();
@@ -851,11 +841,12 @@ function PublicationPanel({
         </Hint>
       ) : null}
 
-      {/* The findings themselves — one always-open card each, the publish
-          checkbox for this finding riding on it. The web splits this into
-          FindingList/FindingPanel and PublicationSelect; a phone does not.
-          While the overview loads — or says publishing is blocked — the cards
-          stand without their publish row, like the web's undrawn select. */}
+      {/* The findings themselves — one always-open card each, its own
+          actions at its bottom. The web splits findings and publication into
+          two sections; a phone fuses them into one card per comment: read the
+          issue, then Publish it, Fix it, or Dismiss it — one comment per card,
+          no shared cart. While the overview loads — or says publishing is
+          blocked — the cards stand without their Publish button. */}
       {findings.findings.map(finding => {
         const place =
           overview != null && overview.canPublish
@@ -873,70 +864,17 @@ function PublicationPanel({
             dark={dark}
             onDecided={onDecided}
             place={place}
-            checked={selected.has(finding.id)}
-            onToggle={() =>
-              setSelected(prev => {
-                const next = new Set(prev);
-                if (!next.delete(finding.id)) next.add(finding.id);
-                return next;
-              })
-            }
+            issues={issues}
+            busyId={busyId}
+            previewBusyId={previewBusyId}
+            publishMessageText={cardMessages[finding.id] ?? null}
+            detailTarget={detail.target}
+            onFixed={onFixed}
+            disabled={busyId != null || previewBusyId != null}
+            onPreview={openPreview}
           />
         );
       })}
-
-      {/* The publish bar — the web's pub-actions row at the bottom of the
-          list, where the thumb rests after the last checkbox. Its failure
-          words render on it, never below the fold. */}
-      {overview != null && overview.canPublish && anyPublishable ? (
-        <View style={{ gap: 8 }}>
-          {!issues ? (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
-              <Mono>Submit as</Mono>
-              {(
-                [
-                  CodeReviewPublicationEvent.Comment,
-                  CodeReviewPublicationEvent.RequestChanges,
-                ] as const
-              ).map(choice => (
-                <Pressable
-                  key={choice}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Submit as ${eventLabel(choice)}`}
-                  accessibilityState={{ selected: event === choice, disabled: busy }}
-                  disabled={busy}
-                  onPress={() => setEvent(choice)}
-                  style={({ pressed }) => ({
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
-                    borderRadius: 999,
-                    borderWidth: 1,
-                    borderColor: event === choice ? c.primary : c.border,
-                    backgroundColor: event === choice ? mix(c.primary, 14) : 'transparent',
-                    opacity: pressed ? 0.8 : 1,
-                  })}
-                >
-                  <Mono style={{ fontSize: 12, color: event === choice ? c.primary : c.mutedForeground }}>
-                    {eventLabel(choice)}
-                  </Mono>
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-          <Button
-            label={`Review what will be posted${selected.size > 0 ? ` (${selected.size})` : ''}…`}
-            variant="primary"
-            disabled={busy || selected.size === 0}
-            busy={busy}
-            onPress={() => openPreview(event)}
-          />
-          {barMessage != null ? (
-            <Body accessibilityLiveRegion="polite" style={{ color: c.destructive, fontSize: 13 }}>
-              {barMessage}
-            </Body>
-          ) : null}
-        </View>
-      ) : null}
 
       {overview != null && overview.publications.length > 0 ? (
         <View style={{ gap: 8 }}>
@@ -983,7 +921,7 @@ function PublicationPanel({
                   <Button
                     label="Retry"
                     variant="outline"
-                    disabled={!overview.canPublish || busy}
+                    disabled={!overview.canPublish || busyId != null}
                     onPress={() => askRetry(pub.id)}
                   />
                 ) : null}
@@ -1105,8 +1043,8 @@ function PublicationPanel({
                   : 'Post review'
               }
               variant="primary"
-              disabled={busy}
-              busy={busy}
+              disabled={busyId != null}
+              busy={busyId != null}
               onPress={() => {
                 if (sheetMessage != null) setPending(null);
                 else publish();
@@ -1330,6 +1268,7 @@ function FindingsBlock({
   dark,
   onDecided,
   onChanged,
+  onFixed,
 }: {
   findings: CodeReviewFindingList | null;
   detail: CodeReviewDetail;
@@ -1337,6 +1276,7 @@ function FindingsBlock({
   dark: boolean;
   onDecided: () => void;
   onChanged: () => void;
+  onFixed: (sessionId: string) => void;
 }) {
   const agent = detail.mode === CodeReviewMode.Agent;
 
@@ -1376,8 +1316,14 @@ function FindingsBlock({
               dark={dark}
               onDecided={onDecided}
               place={null}
-              checked={false}
-              onToggle={() => {}}
+              issues={false}
+              busyId={null}
+              previewBusyId={null}
+              publishMessageText={null}
+              detailTarget={detail.target}
+              onFixed={onFixed}
+              disabled={false}
+              onPreview={() => {}}
             />
           ))}
           <View style={{ gap: 6 }}>
@@ -1398,6 +1344,7 @@ function FindingsBlock({
           agent={agent}
           onDecided={onDecided}
           onChanged={onChanged}
+          onFixed={onFixed}
         />
       )}
     </View>
@@ -1414,8 +1361,14 @@ function FindingCard({
   dark,
   onDecided,
   place,
-  checked,
-  onToggle,
+  issues,
+  busyId,
+  previewBusyId,
+  publishMessageText,
+  detailTarget,
+  onFixed,
+  disabled,
+  onPreview,
 }: {
   reviewId: string;
   digest: string;
@@ -1427,9 +1380,20 @@ function FindingCard({
   onDecided: () => void;
   /** Where this finding would go if published; null while unknown or when the review cannot publish. */
   place: CodeReviewPublishableFinding | null;
-  /** The publish checkbox rides on the card; the bar below collects them. */
-  checked: boolean;
-  onToggle: () => void;
+  /** This review's findings go to issues, not to a pull request. */
+  issues: boolean;
+  /** This card's action is the one in flight. */
+  busyId: string | null;
+  previewBusyId: string | null;
+  /** Failure words from this card's own Publish press, rendered on it. */
+  publishMessageText: string | null;
+  /** The review's target, for Fix it's prompt and repo. */
+  detailTarget: CodeReviewDetail['target'];
+  /** A fix session was started: the app should land the user in it. */
+  onFixed: (sessionId: string) => void;
+  /** Any card's action is in flight: the rest stand down. */
+  disabled: boolean;
+  onPreview: (findingId: string, event: CodeReviewPublicationEvent) => void;
 }) {
   const { c } = useTheme();
   const [busy, setBusy] = useState(false);
@@ -1464,6 +1428,52 @@ function FindingCard({
       done = true;
     };
   }, [seam, reviewId, finding.id]);
+
+  // Fix it: a fresh session against the reviewed repository, told to fix this
+  // one finding, with enough of the claim for the agent to act without
+  // re-reading the review. The user lands in the session; the model and
+  // approval choices are theirs to make there.
+  const [fixing, setFixing] = useState(false);
+  const fixIt = useCallback(async () => {
+    if (!seam || detail == null || fixing) return;
+    setFixing(true);
+    try {
+      const f = detail.finding;
+      const claim = [
+        detail.trigger,
+        detail.badBehavior,
+        detail.causalChange,
+        detail.suggestedRemediation.trim().length > 0
+          ? `Suggested fix: ${detail.suggestedRemediation}`
+          : null,
+      ]
+        .filter(part => part != null && part.length > 0)
+        .join('\n');
+      const repoUrl =
+        detailTarget.forgeKind === GitServiceKind.Forgejo
+          ? `https://${detailTarget.canonicalAuthority}/${detailTarget.repositoryOwner}/${detailTarget.repositoryName}`
+          : `https://${detailTarget.canonicalAuthority}/${detailTarget.repositoryOwner}/${detailTarget.repositoryName}.git`;
+      const prompt = `Fix this code review finding and open a PR with the fix.\n\n${targetLabel(
+        detailTarget,
+      )} — #${f.rank} ${f.title}\n${location(f.path, f.side, f.startLine, f.endLine)}\n\n${claim}`;
+      const selection = { auto: true, connectionId: null, modelId: null };
+      const id = await seam.createSession({
+        selection,
+        initialPrompt: prompt,
+        repoUrls: [repoUrl],
+      });
+      if (id == null) {
+        setMessage('Could not start a fix session. Try again.');
+        return;
+      }
+      await seam.start(id, { prompt, selection });
+      onFixed(id);
+    } catch {
+      setMessage('Could not start a fix session. Try again.');
+    } finally {
+      setFixing(false);
+    }
+  }, [seam, detail, fixing, detailTarget, onFixed]);
 
   const decide = useCallback(
     (disposition: CodeReviewFindingDisposition) => {
@@ -1502,8 +1512,8 @@ function FindingCard({
   );
 
   const shown = detail?.finding ?? current;
-  // The publish half of the fused card, as the web's PublicationSelect row
-  // says it: where this finding would go, or why it cannot be raised.
+  // Where this finding would go if published, as the web's select row says
+  // it; the refusal or an earlier publication stands in for the button.
   const ok = publishable(place);
   const publishNote =
     place?.publishedIn != null
@@ -1541,105 +1551,9 @@ function FindingCard({
         {shown.priorDisposition && shown.disposition === CodeReviewFindingDisposition.Open ? (
           <Mono>previously {dispositionLabel(shown.priorDisposition.disposition)}</Mono>
         ) : null}
-        {/* Publishing rides here instead of a second card: the note the web's
-            select row carries, and the checkbox itself. Refused findings say
-            their refusal where the box would be. */}
-        {place != null ? (
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 8,
-              borderTopWidth: 1,
-              borderTopColor: c.border,
-              paddingTop: 6,
-            }}
-          >
-            {ok ? (
-              <Pressable
-                accessibilityRole="checkbox"
-                accessibilityLabel={`Publish ${shown.title}`}
-                accessibilityState={{ checked, disabled: busy }}
-                disabled={busy}
-                onPress={onToggle}
-                hitSlop={8}
-                style={({ pressed }) => ({
-                  width: 22,
-                  height: 22,
-                  borderRadius: radius.md,
-                  borderWidth: 1.5,
-                  borderColor: checked ? c.primary : c.mutedForeground,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: checked ? mix(c.primary, 14) : 'transparent',
-                  opacity: pressed ? 0.8 : 1,
-                })}
-              >
-                {checked ? <Check color={c.primary} size={14} /> : null}
-              </Pressable>
-            ) : (
-              <View
-                style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: radius.md,
-                  borderWidth: 1.5,
-                  borderColor: c.border,
-                }}
-              />
-            )}
-            <Mono style={{ flex: 1, fontSize: 12 }} numberOfLines={2}>
-              {publishNote ?? place.refusal ?? 'not publishable'}
-            </Mono>
-          </View>
-        ) : null}
       </View>
 
       <View style={{ padding: 12, gap: 10, borderTopWidth: 1, borderTopColor: c.border }}>
-          {/* The decision row: what it is now, and the moves from here. */}
-          <View style={{ gap: 6 }}>
-            <Mono>
-              You: <Mono style={{ color: c.foreground }}>{dispositionLabel(shown.disposition)}</Mono>
-            </Mono>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {shown.disposition !== CodeReviewFindingDisposition.Accepted ? (
-                <Button
-                  label="Accept"
-                  variant="primary"
-                  disabled={busy || !canDecide}
-                  busy={busy}
-                  onPress={() => decide(CodeReviewFindingDisposition.Accepted)}
-                />
-              ) : null}
-              {shown.disposition !== CodeReviewFindingDisposition.Dismissed ? (
-                <Button
-                  label="Dismiss"
-                  variant="outline"
-                  disabled={busy || !canDecide}
-                  busy={busy}
-                  onPress={() => decide(CodeReviewFindingDisposition.Dismissed)}
-                />
-              ) : null}
-              {shown.disposition !== CodeReviewFindingDisposition.Open ? (
-                <Button
-                  label="Reopen"
-                  variant="ghost"
-                  disabled={busy || !canDecide}
-                  busy={busy}
-                  onPress={() => decide(CodeReviewFindingDisposition.Open)}
-                />
-              ) : null}
-            </View>
-            {!canDecide ? (
-              <Hint>This review no longer takes decisions: a newer head was captured, or the review did not finish.</Hint>
-            ) : null}
-            {message ? (
-              <Problem>
-                {message}
-              </Problem>
-            ) : null}
-          </View>
-
           {detail === null ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <ActivityIndicator size="small" color={c.mutedForeground} />
@@ -1700,6 +1614,64 @@ function FindingCard({
               <Body>{detail.verifierRationale}</Body>
             </View>
           )}
+
+        {/* The actions sit at the BOTTOM of the card, after the claim: the
+            reader has seen the issue before a button offers to act on it.
+            Publish and Fix it act on this finding alone — one comment per
+            card — and Dismiss/Reopen is the finding's own decision. */}
+        <View style={{ gap: 8, borderTopWidth: 1, borderTopColor: c.border, paddingTop: 10 }}>
+          {/* The status line the web's select row carries: where this comment
+              would go, or why it cannot be raised. */}
+          {place != null ? (
+            <Mono style={{ fontSize: 12 }} numberOfLines={2}>
+              {publishNote ?? place.refusal ?? 'not publishable'}
+            </Mono>
+          ) : null}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {ok ? (
+              <Button
+                label={issues ? 'Open as issue' : 'Publish'}
+                variant="primary"
+                disabled={disabled || busy || !canDecide}
+                busy={busyId === finding.id || previewBusyId === finding.id}
+                onPress={() => onPreview(finding.id, CodeReviewPublicationEvent.Comment)}
+              />
+            ) : null}
+            <Button
+              label="Fix it"
+              variant="outline"
+              disabled={disabled || busy || detail === null}
+              busy={fixing}
+              onPress={() => void fixIt()}
+            />
+            {shown.disposition === CodeReviewFindingDisposition.Dismissed ? (
+              <Button
+                label="Reopen"
+                variant="ghost"
+                disabled={disabled || busy || !canDecide}
+                busy={busy}
+                onPress={() => decide(CodeReviewFindingDisposition.Open)}
+              />
+            ) : (
+              <Button
+                label="Dismiss"
+                variant="ghost"
+                disabled={disabled || busy || !canDecide}
+                busy={busy}
+                onPress={() => decide(CodeReviewFindingDisposition.Dismissed)}
+              />
+            )}
+          </View>
+          {!canDecide ? (
+            <Hint>This review no longer takes decisions: a newer head was captured, or the review did not finish.</Hint>
+          ) : null}
+          {publishMessageText != null ? (
+            <Body accessibilityLiveRegion="polite" style={{ color: c.destructive, fontSize: 13 }}>
+              {publishMessageText}
+            </Body>
+          ) : null}
+          {message ? <Problem>{message}</Problem> : null}
+        </View>
       </View>
     </View>
   );
