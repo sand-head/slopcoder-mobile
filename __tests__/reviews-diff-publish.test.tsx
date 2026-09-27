@@ -294,16 +294,15 @@ test('newRequestId mints a fresh id per confirmation', () => {
   );
 });
 
-// -- publishing, fused into the findings list: one card per finding and a
-// publish bar at the bottom -----------------------------------------------
+// -- the card actions: one card per comment, its own buttons ---------------
 //
 // The user's report that started this: "hitting submit on review comments
 // does nothing on mobile." No handler was unwired — the failures were silent
 // (a message below the fold, a shared busy flag, a dead checkbox list). These
-// mount the detail screen with a mocked seam and press the real controls: the
-// words must be in the tree where the thumb tapped, not nowhere. The cards
-// are one per finding and never collapsible: a second card per finding is
-// what this layout replaced.
+// mount the detail screen with a mocked seam and press the real buttons: the
+// words must be in the tree where the thumb tapped, not nowhere. One card per
+// finding, no checkbox cart: Publish, Fix it, and Dismiss live on the card,
+// below the claim, and one publish is one comment.
 
 import {
   CodeReviewAnalysisState as AnalysisState,
@@ -486,6 +485,48 @@ const mockSeam = {
     (): Promise<{ status: number; reason: string | null; publication: unknown }> =>
       Promise.resolve({ status: 0, reason: null, publication: null }),
   ),
+  // The card reads its own finding and diff on mount.
+  reviewFinding: jest.fn(() =>
+    Promise.resolve({
+      reviewId: 'r-1',
+      consolidationDigest: 'digest-1',
+      superseded: false,
+      finding: summary('f-1', 1),
+      commitSha: 'cccc2222dddd',
+      anchorSource: 0,
+      severitySource: 0,
+      trigger: 'When the relay is asked to drain',
+      badBehavior: 'The loop exits before the flush.',
+      causalChange: 'The early return added in this change.',
+      suggestedRemediation: 'Await the flush before returning.',
+      verifierRationale: 'The order is as claimed.',
+      lineage: [],
+      evidence: [],
+      evidenceOmitted: 0,
+      decidedAt: null,
+    }),
+  ),
+  reviewFindingDiff: jest.fn(() =>
+    Promise.resolve({
+      findingId: 'f-1',
+      status: CodeReviewFindingDiffStatus.ContentUnavailable,
+      path: 'src/relay.ts',
+      side: CodeReviewAnchorSide.Head,
+      startLine: 10,
+      endLine: 12,
+      fromSha: 'aaaa1111bbbb',
+      headSha: 'cccc2222dddd',
+      lines: [],
+      truncated: false,
+      suggestion: null,
+    }),
+  ),
+  setFindingDisposition: jest.fn(() =>
+    Promise.resolve({ status: 0, reason: null, finding: summary('f-1', 1) }),
+  ),
+  // Fix it starts a session against the reviewed repository.
+  createSession: jest.fn((): Promise<string | null> => Promise.resolve('sess-7')),
+  start: jest.fn((): Promise<boolean> => Promise.resolve(true)),
 };
 // One stable object identity for every render: zustand selects through
 // useSyncExternalStore, and a fresh object per call re-renders forever.
@@ -541,29 +582,26 @@ function press(tree: ReturnType<typeof create>, label: string) {
 const strings = (tree: ReturnType<typeof create>): string =>
   tree.root.findAllByType(Text).map(t => textOf(t.props.children)).join('\n');
 
-test('one card per finding, never collapsible: the publish checkbox rides on it', async () => {
+test('one card per comment, its own actions below the claim', async () => {
   const tree = await mountDetail();
   const text = strings(tree);
   // The card says the two things the web's select row says.
   expect(text).toContain('supported · inline');
-  // The refused finding says its refusal where its checkbox would be.
+  // The refused finding says its refusal where its Publish button would be.
   expect(text).toContain('its anchor is not on a changed line');
-  // Exactly one publish bar, carrying the web's button words.
-  expect(text).toContain('Review what will be posted');
-  // The finding bodies are on their cards — no second card, no collapse: the
-  // claims are already in the tree without tapping anything.
-  expect(text).toContain('Relay drops message 1');
-  expect(text).toContain('Relay drops message 2');
+  // The action row: one Publish (PR review → comment), Fix it, Dismiss —
+  // no checkboxes, no shared bar anywhere in the tree.
+  expect(text).toContain('Publish');
+  expect(text).toContain('Fix it');
+  expect(text).toContain('Dismiss');
+  expect(text).not.toContain('Review what will be posted');
+  expect(text).not.toContain('Submit as');
 });
 
-test('checking a finding and pressing the bar previews it, and publish posts it', async () => {
+test('Publish previews exactly that finding, and Confirm posts one comment', async () => {
   const tree = await mountDetail();
   await act(async () => {
-    press(tree, 'Publish Relay drops message 1');
-    await Promise.resolve();
-  });
-  await act(async () => {
-    press(tree, 'Review what will be posted (1)…');
+    press(tree, 'Publish');
     await Promise.resolve();
   });
   expect(mockSeam.previewReviewPublication).toHaveBeenCalledWith(
@@ -575,7 +613,8 @@ test('checking a finding and pressing the bar previews it, and publish posts it'
     press(tree, 'Post review');
     await Promise.resolve();
   });
-  // The publish posts the checked finding only, with a fresh requestId.
+  // One publish is one comment: the previewed finding only, as a comment,
+  // with a fresh requestId.
   const call = mockSeam.publishReview.mock.calls[0] as unknown as [
     string,
     string,
@@ -588,31 +627,47 @@ test('checking a finding and pressing the bar previews it, and publish posts it'
   expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
 });
 
-test('a failed preview says so at the publish bar — the dead-tap regression', async () => {
+test('a failed preview says so on the card that was tapped — the dead-tap regression', async () => {
   const tree = await mountDetail();
-  await act(async () => {
-    press(tree, 'Publish Relay drops message 1');
-  });
   mockSeam.previewReviewPublication.mockRejectedValueOnce(new Error('offline'));
   await act(async () => {
-    press(tree, 'Review what will be posted (1)…');
+    press(tree, 'Publish');
     await Promise.resolve();
   });
-  // Not below the list, not nowhere: the failure words are in the tree at the
-  // bar. This is the string that was silently missing.
+  // Not below the list, not nowhere: the failure words are in the tree on the
+  // card whose button was pressed. This is the string that was silently missing.
   expect(strings(tree)).toContain('Could not prepare the preview. Try again.');
 });
 
-test('pressing the bar with nothing checked says so instead of doing nothing', async () => {
-  mockSeam.previewReviewPublication.mockClear();
+test('Fix it starts a session against the reviewed repository with the claim as its prompt', async () => {
   const tree = await mountDetail();
   await act(async () => {
-    // The refused finding cannot be checked; nothing is.
-    press(tree, 'Review what will be posted…');
+    press(tree, 'Fix it');
     await Promise.resolve();
   });
-  expect(strings(tree)).toContain('Check the findings to publish first.');
-  expect(mockSeam.previewReviewPublication).not.toHaveBeenCalled();
+  expect(mockSeam.createSession).toHaveBeenCalledTimes(1);
+  const request = (mockSeam.createSession.mock.calls[0] as unknown as [
+    { initialPrompt: string; repoUrls: string[] | null },
+  ])[0];
+  // The session carries the repository and enough of the finding to act on.
+  expect(request.repoUrls).toEqual(['https://github.com/acme/app.git']);
+  expect(request.initialPrompt).toContain('Relay drops message 1');
+  expect(request.initialPrompt).toContain('src/relay.ts');
+  expect(request.initialPrompt).toContain('The loop exits before the flush.');
+  expect(mockSeam.start).toHaveBeenCalledWith('sess-7', expect.objectContaining({}));
+});
+
+test('Dismiss records the decision and the card turns it into Reopen', async () => {
+  const tree = await mountDetail();
+  await act(async () => {
+    press(tree, 'Dismiss');
+    await Promise.resolve();
+  });
+  expect(mockSeam.setFindingDisposition).toHaveBeenCalledWith(
+    'r-1',
+    'f-1',
+    expect.objectContaining({ disposition: FindingDisposition.Dismissed }),
+  );
 });
 
 test('when every finding is already published or refused, the panel says so instead of a dead list', async () => {
@@ -631,6 +686,12 @@ test('when every finding is already published or refused, the panel says so inst
     'Nothing here can still be published: every finding was already posted, or cannot be raised.',
   );
   expect(text).toContain('already published');
-  // No publish bar survives anywhere.
-  expect(text).not.toContain('Review what will be posted');
+  // No Publish button survives anywhere — Fix it and Dismiss remain. (The
+  // heading still says "Publish to the pull request"; the button is what
+  // must be gone, so look for the pressable, not the word.)
+  const publishButtons = tree.root.findAll(
+    n => n.props.accessibilityLabel === 'Publish' && typeof n.props.onPress === 'function',
+  );
+  expect(publishButtons).toHaveLength(0);
+  expect(text).toContain('Fix it');
 });
