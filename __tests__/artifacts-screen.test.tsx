@@ -345,6 +345,49 @@ describe('one artifact', () => {
     expect(openURL).not.toHaveBeenCalledWith('file:///private/passwd');
   });
 
+  it('plays a private audio artifact through an authenticated bounded fetch', async () => {
+    const originalFileReader = (global as any).FileReader;
+    (global as any).FileReader = class {
+      result = 'data:audio/mpeg;base64,AAAA';
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      onabort: (() => void) | null = null;
+      readAsDataURL() { this.onload?.(); }
+    };
+    const fetchAudio = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      headers: { get: () => '4' },
+      blob: async () => new Blob(['audio']),
+    } as unknown as Response);
+    mockSeam.artifact.mockResolvedValueOnce({
+      artifact: {
+        ...report,
+        title: 'Field recording',
+        format: 'binary',
+        contentType: 'audio/mpeg; charset=binary',
+        preview: '',
+      },
+      text: null,
+    });
+    const { tree } = await mount(nav => (
+      <ArtifactScreen navigation={nav} route={{ params: { id: 'a-1' } }} />
+    ));
+
+    const audio = tree.root.findByProps({ testID: 'artifact-audio' });
+    expect(fetchAudio).toHaveBeenCalledWith(
+      'https://slop.example.com/artifacts/a-1/raw',
+      expect.objectContaining({ headers: { Authorization: 'Bearer slop_k' }, signal: expect.any(AbortSignal) }),
+    );
+    expect(audio.props.source.html).toContain('data:audio/mpeg;base64,');
+    expect(audio.props.source.html).not.toContain('slop_k');
+    expect(audio.props.javaScriptEnabled).toBe(false);
+    expect(audio.props.mediaPlaybackRequiresUserAction).toBe(true);
+    expect(audio.props.onShouldStartLoadWithRequest({ url: 'data:text/html,escape' })).toBe(false);
+    expect(audio.props.onShouldStartLoadWithRequest({ url: 'about:blank' })).toBe(true);
+    fetchAudio.mockRestore();
+    (global as any).FileReader = originalFileReader;
+  });
+
   it('opens a private photo full-screen with zoom and pan gestures', async () => {
     mockSeam.artifact.mockResolvedValueOnce({
       artifact: { ...report, title: 'Factory floor', format: 'binary', contentType: 'image/png', preview: '' },
