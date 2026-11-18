@@ -19,7 +19,8 @@ import {
   View,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
-import type { ArtifactDetail, ArtifactSummary } from '../api/contracts';
+import type { Seam } from '../api/seam';
+import type { ArtifactAppStatus, ArtifactDetail, ArtifactSummary } from '../api/contracts';
 import { useAuth } from '../state/auth';
 import { Button, Mono, Prose } from '../ui/kit';
 import { Empty, Problem, RowMenuButton, SettingsPage, useFocusLoad } from '../ui/settings';
@@ -175,6 +176,7 @@ export function ArtifactScreen({ route, navigation }: { route: any; navigation: 
         rawUrl={seam ? seam.artifactRawUrl(artifact.id) : null}
         viewUrl={seam ? seam.artifactViewUrl(artifact.id) : null}
         apiKey={seam?.apiKey ?? null}
+        seam={seam}
         refreshing={detail.refreshing}
         onRefresh={detail.refresh}
       />
@@ -204,6 +206,7 @@ function ArtifactBody({
   rawUrl,
   viewUrl,
   apiKey,
+  seam,
   refreshing,
   onRefresh,
 }: {
@@ -211,6 +214,7 @@ function ArtifactBody({
   rawUrl: string | null;
   viewUrl: string | null;
   apiKey: string | null;
+  seam: Seam | null;
   refreshing: boolean;
   onRefresh: () => void;
 }) {
@@ -219,7 +223,7 @@ function ArtifactBody({
   const artifact: ArtifactSummary = detail.artifact;
 
   if (artifact.format === 'html' && viewUrl) {
-    return <HtmlArtifact artifact={artifact} url={viewUrl} apiKey={apiKey} />;
+    return <HostedHtmlArtifact artifact={artifact} url={viewUrl} apiKey={apiKey} seam={seam} />;
   }
 
   if (rawUrl && artifact.contentType.startsWith('image/')) {
@@ -266,6 +270,61 @@ function ArtifactBody({
   return (
     <View style={{ flex: 1, justifyContent: 'center', padding: 24, paddingTop: headerInset + 24 }}>
       <Empty>{`This one is a ${artifact.contentType} file of ${bytes(artifact.size)}. Share it to open it elsewhere.`}</Empty>
+    </View>
+  );
+}
+
+function HostedHtmlArtifact({ artifact, url, apiKey, seam }: {
+  artifact: ArtifactSummary; url: string; apiKey: string | null; seam: Seam | null;
+}) {
+  const { c } = useTheme();
+  const [app, setApp] = useState<ArtifactAppStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  React.useEffect(() => {
+    if (!artifact.hasApp || !seam) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const start = async () => {
+      try {
+        const status = await seam.artifactApp(artifact.id, true);
+        if (!active) return;
+        setApp(status);
+        if (status?.state === 'starting') {
+          timer = setTimeout(async () => {
+            const next = await seam.artifactApp(artifact.id).catch(() => null);
+            if (active) setApp(next);
+          }, 2500);
+        }
+      } catch { if (active) tapError(); }
+    };
+    void start();
+    return () => { active = false; if (timer) clearTimeout(timer); };
+  }, [artifact.id, artifact.hasApp, seam]);
+
+  const toggle = async () => {
+    if (!seam || busy) return;
+    setBusy(true);
+    try {
+      const next = await seam.artifactApp(artifact.id, app?.state !== 'running' && app?.state !== 'starting');
+      setApp(next);
+      tapConfirm();
+    } catch { tapError(); } finally { setBusy(false); }
+  };
+
+  if (!artifact.hasApp) return <HtmlArtifact artifact={artifact} url={url} apiKey={apiKey} />;
+  return (
+    <View style={{ flex: 1, backgroundColor: c.background }}>
+      <View style={{ padding: 8, alignItems: 'flex-end', backgroundColor: c.background }}>
+        <Button label={busy ? 'Working…' : app?.state === 'running' || app?.state === 'starting' ? 'Stop' : 'Play'}
+          disabled={busy} onPress={() => void toggle()} />
+      </View>
+      {app?.state === 'running' || app?.state === 'starting' ? (
+        <HtmlArtifact artifact={artifact} url={`${seam?.baseUrl}${app.previewUrl}${app.landingPath}`} apiKey={apiKey} />
+      ) : (
+        <View style={{ flex: 1, justifyContent: 'center', padding: 24 }}>
+          <Empty>{app?.error ?? 'Opening this artifact starts its app container. Idle apps stop automatically.'}</Empty>
+        </View>
+      )}
     </View>
   );
 }

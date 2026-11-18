@@ -39,6 +39,7 @@ import type {
   McpServerSummary,
   ArtifactDetail,
   ArtifactSummary,
+  ArtifactAppStatus,
   ChatRoomListing,
   ChatRoomView,
   GitIdentityPrefs,
@@ -1073,6 +1074,12 @@ export class Seam {
   /** Mints or revokes the unlisted link; the summary comes back with the new token. */
   shareArtifact(id: string, shared: boolean): Promise<ArtifactSummary | null> {
     return this.send<ArtifactSummary>('POST', `api/seam/artifacts/${id}/share`, { shared });
+  }
+
+  artifactApp(id: string, running?: boolean): Promise<ArtifactAppStatus | null> {
+    return running === undefined
+      ? this.get<ArtifactAppStatus>(`api/seam/artifacts/${id}/app`)
+      : this.send<ArtifactAppStatus>('POST', `api/seam/artifacts/${id}/app`, { running });
   }
 
   deleteArtifact(id: string) {
