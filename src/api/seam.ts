@@ -39,6 +39,9 @@ import type {
   McpServerSummary,
   ArtifactDetail,
   ArtifactSummary,
+  ChatRoomListing,
+  ChatRoomView,
+  GitIdentityPrefs,
   MemorySummary,
   MintedApiKey,
   ModelCandidate,
@@ -78,6 +81,7 @@ import type {
   TextResult,
   UsageDashboard,
   CodexQuotaSummary,
+  PlanQuotaSummary,
   SessionSearchHit,
   UserFacetSummary,
   UserSkillSummary,
@@ -97,7 +101,7 @@ import type {
   CodeReviewPublishResult,
   CodeReviewPublicationEvent,
 } from './contracts';
-import { CodexPollStatus, UsageRange } from './contracts';
+import { CodexPollStatus, ProviderKind, UsageRange } from './contracts';
 
 /** `?tz=Europe/Berlin`, or nothing at all when the phone could not name its zone. */
 function zone(timeZoneId?: string): string {
@@ -654,6 +658,27 @@ export class Seam {
     return (await this.get<CodexQuotaSummary[]>(`api/seam/usage/codex-quotas?refresh=${refresh}`, signal)) ?? [];
   }
 
+  /**
+   * Every subscription connection's allowance, Codex and Claude Code alike.
+   * A server from before Claude plans were listed answers 404 here; it still
+   * has the Codex-only route, so that is asked instead and read as Codex rows —
+   * a phone is routinely newer than the server it talks to.
+   */
+  async planQuotas(refresh = false, signal?: AbortSignal): Promise<PlanQuotaSummary[]> {
+    const { status, value } = await this.request<PlanQuotaSummary[]>(
+      'GET',
+      `api/seam/usage/plan-quotas?refresh=${refresh}`,
+      undefined,
+      signal,
+    );
+    if (status !== 404) return value ?? [];
+    return (await this.codexQuotas(refresh, signal)).map(row => ({
+      ...row,
+      kind: ProviderKind.OpenAICodex,
+      canRefresh: true,
+    }));
+  }
+
   /** Full-text search over the caller's own past sessions — what was said, not titles. */
   async sessionSearch(query: string, limit = 10, signal?: AbortSignal): Promise<SessionSearchHit[]> {
     return (await this.get<SessionSearchHit[]>(
@@ -970,6 +995,17 @@ export class Seam {
     return this.send<void>('PUT', 'api/seam/terminal-settings/', { packages, shell });
   }
 
+  // -- git identity --
+
+  async gitIdentity(signal?: AbortSignal): Promise<GitIdentityPrefs> {
+    return (await this.get<GitIdentityPrefs>('api/seam/git-identity/', signal)) ?? { name: null, email: null };
+  }
+
+  /** Blank fields clear. The server answers a bad value with a 400; check with `gitIdentityProblem` first. */
+  saveGitIdentity(name: string | null, email: string | null) {
+    return this.send<void>('PUT', 'api/seam/git-identity/', { name, email });
+  }
+
   // -- facets, hooks, permission rules --
 
   async userFacets(signal?: AbortSignal): Promise<UserFacetSummary[]> {
@@ -1055,6 +1091,27 @@ export class Seam {
 
   shareUrl(sharePath: string): string {
     return `${this.baseUrl}/${sharePath}`;
+  }
+
+  // -- chat rooms --
+
+  /** The rooms the user's agent sessions talk in. Read and delete only: agents post, people watch. */
+  async chatRooms(signal?: AbortSignal): Promise<ChatRoomListing[]> {
+    return (await this.get<ChatRoomListing[]>('api/seam/rooms/', signal)) ?? [];
+  }
+
+  /**
+   * The room and its newest `limit` messages, or those before `beforeSeq`.
+   * Null when it is gone, or was never this account's.
+   */
+  chatRoom(name: string, beforeSeq?: number | null, limit = 100, signal?: AbortSignal): Promise<ChatRoomView | null> {
+    const before = beforeSeq == null ? '' : `&beforeSeq=${beforeSeq}`;
+    return this.get<ChatRoomView>(`api/seam/rooms/${encodeURIComponent(name)}?limit=${limit}${before}`, signal);
+  }
+
+  /** False when the room was already gone. */
+  deleteChatRoom(name: string) {
+    return this.landed('DELETE', `api/seam/rooms/${encodeURIComponent(name)}`);
   }
 
   // -- memory --

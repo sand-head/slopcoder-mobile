@@ -157,6 +157,9 @@ export function SheetSegments({
             <Pressable
               key={option.key}
               onPress={() => onSelect(option.key)}
+              accessibilityRole="button"
+              accessibilityLabel={label ? `${label}: ${option.label}` : option.label}
+              accessibilityState={{ selected: on }}
               style={({ pressed }) => ({
                 flex: 1,
                 minHeight: 34,

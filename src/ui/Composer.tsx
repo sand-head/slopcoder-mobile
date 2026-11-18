@@ -23,12 +23,12 @@
  * puts the same list in a popover under the input; the phone has the keyboard
  * where that popover would go, so it grows upward instead — see `SlashMenu`.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, TextInput, View } from 'react-native';
 import {
   ApprovalMode,
   GitServiceKind,
-  ThinkingLevel,
+  type ThinkingLevel,
   type FacetOption,
   type ModelCandidate,
   type ModelSelection,
@@ -42,6 +42,7 @@ import { useConnection } from '../state/connection';
 import { Field } from './kit';
 import { kindFromUrl, offer, shouldSearch } from '../api/repoPicker';
 import { commandPrefix, matchCommands } from '../api/slash';
+import { findCandidate, levelKey, levelLabel, offeredLevels, orderModels, runsAs } from '../api/models';
 import { tapSelect } from './haptics';
 import { font, mix, radius, useTheme } from '../theme';
 
@@ -114,15 +115,6 @@ export interface TurnOptions {
   facet: string | null;
 }
 
-const THINKING: { key: string; label: string; value: ThinkingLevel | null }[] = [
-  { key: 'auto', label: 'Auto', value: null },
-  { key: 'off', label: 'Off', value: ThinkingLevel.Off },
-  { key: 'low', label: 'Low', value: ThinkingLevel.Low },
-  { key: 'medium', label: 'Medium', value: ThinkingLevel.Medium },
-  { key: 'high', label: 'High', value: ThinkingLevel.High },
-  { key: 'max', label: 'Max', value: ThinkingLevel.Max },
-];
-
 const APPROVALS: { key: string; label: string; description: string; value: ApprovalMode }[] = [
   {
     key: 'dangerous',
@@ -148,6 +140,7 @@ export function Composer({
   options,
   onChangeOptions,
   models,
+  routed,
   facets,
   attachments,
   images,
@@ -169,6 +162,12 @@ export function Composer({
   options: TurnOptions;
   onChangeOptions: (next: TurnOptions) => void;
   models: ModelCandidate[];
+  /**
+   * The model an Auto session last routed to. The picker still says Auto, but
+   * the thinking dial is about a real model, and this is it. Omitted by the
+   * launcher, where Auto has not routed anything yet.
+   */
+  routed?: { connectionId?: string | null; modelId?: string | null } | null;
   facets: FacetOption[];
   /** Omitted by the cockpit: a running session's workspace is already set. */
   attachments?: Attachments;
@@ -181,12 +180,23 @@ export function Composer({
   const reachable = useConnection(s => s.reachable);
   const [sheet, setSheet] = useState<'model' | 'turn' | 'attach' | null>(null);
 
-  const current = models.find(
-    m => !options.selection.auto && m.modelId === options.selection.modelId,
-  );
+  const current = options.selection.auto
+    ? null
+    : findCandidate(models, options.selection.connectionId, options.selection.modelId);
   const modelLabel = options.selection.auto ? 'Auto' : current?.modelDisplayName ?? 'Model';
+  // Provider, then tier, then newest first — the web picker's order.
+  const ordered = useMemo(() => orderModels(models), [models]);
 
-  const thinkingLabel = THINKING.find(t => t.value === options.thinking)?.label ?? 'Auto';
+  // The dial offers what the model offers. A pick the model doesn't take is
+  // shown as what it runs as (Off on a model that always thinks is Low), the
+  // way the providers will send it. Unknown — Auto before it has routed —
+  // offers everything.
+  const caps = options.selection.auto
+    ? findCandidate(models, routed?.connectionId, routed?.modelId)
+    : current;
+  const offered = offeredLevels(caps);
+  const shownThinking = options.thinking === null ? null : runsAs(options.thinking, caps);
+  const thinkingLabel = shownThinking === null ? 'Auto' : levelLabel(shownThinking, caps);
   const approvalLabel = APPROVALS.find(a => a.value === options.approval)?.label ?? '';
 
   // The `+` is one button whatever it offers: the platform's menu when images
@@ -331,15 +341,23 @@ export function Composer({
         <SheetGroup
           options={[
             { key: 'auto', label: 'Auto', description: 'Let the router pick per turn' },
-            ...models.map(m => ({
-              key: m.modelId,
+            // Keyed by connection as well as id: the same model listed by two
+            // connections is two rows, and picking one must not pick the other.
+            ...ordered.map(m => ({
+              key: modelKey(m.connectionId, m.modelId),
               label: m.modelDisplayName || m.modelId,
               description: m.connectionName,
             })),
           ]}
-          selected={options.selection.auto ? 'auto' : options.selection.modelId ?? 'auto'}
+          selected={
+            options.selection.auto
+              ? 'auto'
+              : current
+                ? modelKey(current.connectionId, current.modelId)
+                : 'auto'
+          }
           onSelect={key => {
-            const picked = models.find(m => m.modelId === key);
+            const picked = models.find(m => modelKey(m.connectionId, m.modelId) === key);
             onChangeOptions({
               ...options,
               selection: picked
@@ -355,12 +373,15 @@ export function Composer({
       <Sheet visible={sheet === 'turn'} title="Turn settings" onClose={() => setSheet(null)}>
         <SheetSegments
           label="thinking"
-          options={THINKING.map(t => ({ key: t.key, label: t.label }))}
-          selected={THINKING.find(t => t.value === options.thinking)?.key ?? 'auto'}
+          options={[
+            { key: 'auto', label: 'Auto' },
+            ...offered.map(level => ({ key: levelKey(level), label: levelLabel(level, caps) })),
+          ]}
+          selected={shownThinking === null ? 'auto' : levelKey(shownThinking)}
           onSelect={key =>
             onChangeOptions({
               ...options,
-              thinking: THINKING.find(t => t.key === key)?.value ?? null,
+              thinking: offered.find(level => levelKey(level) === key) ?? null,
             })
           }
         />
@@ -758,4 +779,9 @@ function IconButton({
 /** A label for the section above a composer, matching the web's "What's next?". */
 export function ComposerLabel({ children }: { children: React.ReactNode }) {
   return <Meta>{children}</Meta>;
+}
+
+/** A model row's key in the picker: the connection and the id, never the id alone. */
+function modelKey(connectionId: string, modelId: string): string {
+  return `${connectionId}/${modelId}`;
 }

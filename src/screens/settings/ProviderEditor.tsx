@@ -11,7 +11,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Alert, Platform, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ProviderKind } from '../../api/contracts';
+import { KIMI_CODE_ENDPOINTS, ProviderKind } from '../../api/contracts';
 import { MODEL_CATALOG_PLACEHOLDER, PROVIDER_PRESETS, providerForm } from '../../api/settings';
 import { useAuth } from '../../state/auth';
 import { Body, Button, Hint, Mono, Screen } from '../../ui/kit';
@@ -163,6 +163,22 @@ export function ProviderEditorScreen({ route, navigation }: { route: any; naviga
             <Hint>
               This is for your own plan in your own slopcoder. Anthropic does not allow offering claude.ai login or subscription
               rate limits to other people through a third-party app, so don't share a Claude Code connection across users.
+            </Hint>
+          </View>
+        ) : null}
+
+        {kind === ProviderKind.KimiCode ? (
+          <View style={{ gap: 6 }}>
+            <Mono style={{ color: c.foreground }}>1. Open the Kimi Code console (kimi.com/code/console) on the account with your membership.</Mono>
+            <Mono style={{ color: c.foreground }}>
+              2. Create an API key and paste it below. Moonshot Open Platform keys are billed separately and won't work here.
+            </Mono>
+            <Mono style={{ color: c.foreground }}>
+              3. Membership on the overseas site, kimi.ai? Set the base URL to {KIMI_CODE_ENDPOINTS.overseas}.
+            </Mono>
+            <Hint>
+              Kimi Code only serves coding agents it has whitelisted, which it checks by User-Agent. slopcoder identifies as one by
+              default, which Moonshot hasn't sanctioned and may stop accepting.
             </Hint>
           </View>
         ) : null}

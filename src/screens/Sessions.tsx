@@ -440,8 +440,10 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
 
         {sessions === null && !error ? (
           <Skeleton rows={5} />
-        ) : sessions !== null && sessions.length === 0 ? (
-          <Hint>No sessions yet. Start one above, or ask Siri.</Hint>
+        ) : sessions !== null && sessions.length === 0 && needle === '' ? (
+          // Archived sessions are off the list but not gone, so an empty list
+          // is not proof there is no history — search still reaches them.
+          <Hint>No sessions yet. Start one above, or ask Siri. Archived sessions are off this list; search still finds them.</Hint>
         ) : sessions !== null && visible.length === 0 && needle !== '' ? (
           // Deliberately not an error: the local list came up empty, and the
           // server is being asked whether anything was ever *said* that
@@ -468,7 +470,7 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
                     key={`${hit.sessionId}:${hit.when}`}
                     onPress={() => leaveFor('Session', { id: hit.sessionId })}
                     accessibilityRole="button"
-                    accessibilityLabel={`Open session ${hit.sessionTitle}`}
+                    accessibilityLabel={`Open ${hit.archived ? 'archived ' : ''}session ${hit.sessionTitle}`}
                     style={({ pressed }) => ({
                       backgroundColor: pressed ? mix(c.muted, 40) : c.card,
                       borderWidth: 1,
@@ -482,6 +484,7 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
                     </Body>
                     <Mono style={{ fontSize: 12 }}>
                       {stamp(hit.when)} · {hit.kind}
+                      {hit.archived ? ' · archived' : ''}
                     </Mono>
                     <Mono numberOfLines={3} style={{ fontSize: 12, color: c.mutedForeground }}>
                       {hit.snippet}

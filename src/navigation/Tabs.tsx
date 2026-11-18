@@ -47,6 +47,7 @@ import { ConnectionsScreen } from '../screens/settings/Connections';
 import { McpServersScreen } from '../screens/settings/McpServers';
 import { RemoteNodesScreen } from '../screens/settings/RemoteNodes';
 import { TerminalScreen } from '../screens/settings/Terminal';
+import { GitIdentityScreen } from '../screens/settings/GitIdentity';
 import { FacetsScreen } from '../screens/settings/Facets';
 import { HooksScreen } from '../screens/settings/Hooks';
 import { MemoryScreen } from '../screens/settings/Memory';
@@ -133,6 +134,7 @@ function SettingsTab() {
       <SettingsStack.Screen name="McpServers" component={McpServersScreen} options={{ title: 'MCP servers' }} />
       <SettingsStack.Screen name="RemoteNodes" component={RemoteNodesScreen} options={{ title: 'Remote nodes' }} />
       <SettingsStack.Screen name="Terminal" component={TerminalScreen} options={{ title: 'Terminal' }} />
+      <SettingsStack.Screen name="GitIdentity" component={GitIdentityScreen} options={{ title: 'Git identity' }} />
       <SettingsStack.Screen name="Facets" component={FacetsScreen} options={{ title: 'Facets' }} />
       <SettingsStack.Screen name="Hooks" component={HooksScreen} options={{ title: 'Hooks' }} />
       <SettingsStack.Screen name="Memory" component={MemoryScreen} options={{ title: 'Memory' }} />

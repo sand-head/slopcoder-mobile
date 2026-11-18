@@ -22,6 +22,7 @@ const PAGES: { route: string; label: string; count?: keyof Counts }[] = [
   { route: 'McpServers', label: 'MCP servers' },
   { route: 'RemoteNodes', label: 'Remote nodes', count: 'nodes' },
   { route: 'Terminal', label: 'Terminal' },
+  { route: 'GitIdentity', label: 'Git identity' },
   { route: 'Facets', label: 'Facets', count: 'facets' },
   { route: 'Hooks', label: 'Hooks' },
   { route: 'Memory', label: 'Memory' },
@@ -36,6 +37,7 @@ interface Counts {
   facets?: string;
   skills?: string;
   channels?: string;
+  rooms?: string;
 }
 
 export function SettingsScreen({ navigation }: { navigation: any }) {
@@ -72,6 +74,7 @@ export function SettingsScreen({ navigation }: { navigation: any }) {
     void count('facets', async () => String((await seam.facets()).length));
     void count('skills', async () => String((await seam.skills()).length));
     void count('channels', async () => String((await seam.channels()).length));
+    void count('rooms', async () => String((await seam.chatRooms()).length));
   }, [seam]);
 
   useEffect(() => {
@@ -122,6 +125,13 @@ export function SettingsScreen({ navigation }: { navigation: any }) {
             onPress={() => navigation.navigate(page.route)}
           />
         ))}
+      </View>
+
+      <View>
+        {/* The web hub's "more": the pages a phone-width browser has no rail
+            for. Routines, Artifacts and Usage are tabs here; rooms are not. */}
+        <SectionLabel label="more" />
+        <HubRow label="Chat rooms" count={counts.rooms ?? null} onPress={() => navigation.navigate('Rooms')} />
       </View>
 
       <View>

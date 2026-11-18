@@ -14,11 +14,12 @@
 import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import {
+  ProviderKind,
   UsageAttributionQuality,
   UsageRange,
   newTokens,
   totalTokens,
-  type CodexQuotaSummary,
+  type PlanQuotaSummary,
   type UsageBucket,
   type UsageDashboard,
   type UsageTotals,
@@ -44,6 +45,10 @@ function compact(n: number): string {
   return String(n);
 }
 
+function planBilled(kind: number | null | undefined): boolean {
+  return kind === ProviderKind.OpenAICodex || kind === ProviderKind.ClaudeCode;
+}
+
 function money(value: number | null | undefined): string {
   if (value == null) return '—';
   // Three places only when two would round to nothing; otherwise $0.620 sits
@@ -62,7 +67,7 @@ export function UsageScreen({ navigation }: { navigation: any }) {
   const [refreshing, setRefreshing] = useState(false);
   // Quotas load on their own line: they are advisory and slow (a refresh asks
   // the upstream), so a failure here must not blank the figures above.
-  const [quotas, setQuotas] = useState<CodexQuotaSummary[] | null>(null);
+  const [quotas, setQuotas] = useState<PlanQuotaSummary[] | null>(null);
   const [quotaBusy, setQuotaBusy] = useState(false);
 
   useLayoutEffect(() => {
@@ -93,7 +98,7 @@ export function UsageScreen({ navigation }: { navigation: any }) {
     let cancelled = false;
     setQuotas(null);
     seam
-      .codexQuotas(false)
+      .planQuotas(false)
       .then(q => !cancelled && setQuotas(q))
       .catch(() => !cancelled && setQuotas([]));
     return () => {
@@ -106,7 +111,7 @@ export function UsageScreen({ navigation }: { navigation: any }) {
     if (!seam || quotaBusy) return;
     setQuotaBusy(true);
     try {
-      setQuotas(await seam.codexQuotas(force));
+      setQuotas(await seam.planQuotas(force));
     } catch {
       // The old rows stay; the numbers above are unaffected either way.
     } finally {
@@ -155,9 +160,10 @@ export function UsageScreen({ navigation }: { navigation: any }) {
       ) : null}
       {!data && !error ? <Skeleton rows={3} /> : null}
 
-      {/* Advisory Codex allowances, only when there is one to show: an empty
-          list is "no Codex connection", which is not a section. Null still
-          loading is deliberately silent — the figures above lead. */}
+      {/* Advisory plan allowances, Codex and Claude, only when there is one
+          to show: an empty list is "no subscription connection", which is not
+          a section. Null still loading is deliberately silent — the figures
+          above lead. */}
       {quotas && quotas.length > 0 ? (
         quotas.map(q => <QuotaCard key={q.connectionId} quota={q} busy={quotaBusy} onRefresh={() => void refreshQuotas(true)} />)
       ) : null}
@@ -201,7 +207,9 @@ export function UsageScreen({ navigation }: { navigation: any }) {
                     <Mono style={{ fontSize: 12.5, color: c.foreground }}>
                       {compact(newTokens(row.totals))}
                     </Mono>
-                    <Mono>{money(row.totals.estimatedCost)}</Mono>
+                    {/* A subscription's turns are the plan's, not a bill —
+                        as the web's breakdown says it. */}
+                    <Mono>{planBilled(row.providerKind) ? 'plan' : money(row.totals.estimatedCost)}</Mono>
                   </View>
                 </View>
               ))
@@ -307,13 +315,19 @@ function clock(iso: string): string {
 }
 
 /**
- * One Codex connection's allowance: a bar per window with the percent left and
- * when it resets. Advisory by contract — slopcoder reads the plan's own usage
- * page, it does not meter it — so the card says so and links nothing: the
+ * One subscription's allowance: a bar per window with the percent left and
+ * when it resets. Advisory by contract — slopcoder reads what the plan itself
+ * reported, it does not meter it — so the card says so and links nothing: the
  * authoritative numbers are a browser away, and a phone cannot open them.
+ *
+ * A Codex plan is polled, so it has a refresh. A Claude plan is only ever
+ * observed — Claude Code reports its windows during a turn — so its card says
+ * "as of the last turn" and offers no refresh that could not learn anything.
  */
-function QuotaCard({ quota, busy, onRefresh }: { quota: CodexQuotaSummary; busy: boolean; onRefresh: () => void }) {
+function QuotaCard({ quota, busy, onRefresh }: { quota: PlanQuotaSummary; busy: boolean; onRefresh: () => void }) {
   const { c } = useTheme();
+  const claude = quota.kind === ProviderKind.ClaudeCode;
+  const plan = claude ? 'Claude' : 'Codex';
 
   return (
     <View
@@ -326,7 +340,7 @@ function QuotaCard({ quota, busy, onRefresh }: { quota: CodexQuotaSummary; busy:
         gap: 10,
       }}>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-        <SectionLabel label={`codex allowance · ${quota.connectionName}`} />
+        <SectionLabel label={`${plan.toLowerCase()} allowance · ${quota.connectionName}`} />
         {quota.planType ? <Mono style={{ fontSize: 11 }}>{quota.planType.toLowerCase()}</Mono> : null}
       </View>
 
@@ -335,7 +349,11 @@ function QuotaCard({ quota, busy, onRefresh }: { quota: CodexQuotaSummary; busy:
           {quota.error}
         </Body>
       ) : quota.windows.length === 0 ? (
-        <Hint>No allowance reported yet.</Hint>
+        <Hint>
+          {claude
+            ? 'No allowance reported yet. Claude Code reports it during a turn on this connection.'
+            : 'No allowance reported yet.'}
+        </Hint>
       ) : (
         quota.windows.map((w, i) => {
           const left = w.usedPercent != null ? Math.min(100, Math.max(0, 100 - w.usedPercent)) : null;
@@ -376,14 +394,21 @@ function QuotaCard({ quota, busy, onRefresh }: { quota: CodexQuotaSummary; busy:
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <Mono style={{ fontSize: 12 }}>
           advisory
-          {quota.observedAt ? ` · observed ${clock(quota.observedAt)}` : ''}
+          {quota.observedAt ? ` · ${claude ? 'as of the last turn,' : 'observed'} ${clock(quota.observedAt)}` : ''}
           {quota.isStale ? ' · stale' : ''}
         </Mono>
-        <Pressable onPress={onRefresh} disabled={busy} hitSlop={8} accessibilityRole="button" accessibilityLabel="Refresh Codex allowance">
-          <Mono style={{ fontSize: 12, color: busy ? c.mutedForeground : c.primary, textDecorationLine: 'underline' }}>
-            {busy ? 'refreshing…' : 'refresh'}
-          </Mono>
-        </Pressable>
+        {quota.canRefresh ? (
+          <Pressable
+            onPress={onRefresh}
+            disabled={busy}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={`Refresh ${plan} allowance`}>
+            <Mono style={{ fontSize: 12, color: busy ? c.mutedForeground : c.primary, textDecorationLine: 'underline' }}>
+              {busy ? 'refreshing…' : 'refresh'}
+            </Mono>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );

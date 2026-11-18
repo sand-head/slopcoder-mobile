@@ -5,12 +5,13 @@
  * reported, and the page must not invent numbers it was not given. So the
  * checks are about restraint as much as presence: a connection with windows
  * gets a bar, a connection without gets a sentence, a connection that failed
- * gets its error and nothing else, and a server with no Codex connection gets
- * no section at all.
+ * gets its error and nothing else, and a server with no subscription
+ * connection gets no section at all. A Claude plan is observed, never polled,
+ * so its card says when it was seen and offers no refresh.
  */
 import React from 'react';
 import { act, create } from 'react-test-renderer';
-import type { CodexQuotaSummary, UsageDashboard } from '../src/api/contracts';
+import { ProviderKind, type PlanQuotaSummary, type UsageDashboard } from '../src/api/contracts';
 
 const dashboard: UsageDashboard = {
   range: 1,
@@ -32,11 +33,11 @@ const windows = [
   { label: 'Weekly', usedPercent: null, resetsAt: null },
 ];
 
-let quotas: CodexQuotaSummary[] = [];
+let quotas: PlanQuotaSummary[] = [];
 
 const mockSeam = {
   usage: jest.fn((): Promise<UsageDashboard> => Promise.resolve(dashboard)),
-  codexQuotas: jest.fn((): Promise<CodexQuotaSummary[]> => Promise.resolve(quotas)),
+  planQuotas: jest.fn((): Promise<PlanQuotaSummary[]> => Promise.resolve(quotas)),
 };
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -77,7 +78,7 @@ function text(tree: ReturnType<typeof create>): string {
 
 beforeEach(() => {
   mockSeam.usage.mockClear();
-  mockSeam.codexQuotas.mockClear();
+  mockSeam.planQuotas.mockClear();
   quotas = [];
 });
 
@@ -92,6 +93,8 @@ describe('Usage quota strip', () => {
         observedAt: '2026-09-25T12:00:00Z',
         isStale: false,
         error: null,
+        kind: ProviderKind.OpenAICodex,
+        canRefresh: true,
       },
     ];
     const tree = await mount();
@@ -118,6 +121,8 @@ describe('Usage quota strip', () => {
         observedAt: null,
         isStale: true,
         error: null,
+        kind: ProviderKind.OpenAICodex,
+        canRefresh: true,
       },
     ];
     const tree = await mount();
@@ -137,6 +142,8 @@ describe('Usage quota strip', () => {
         observedAt: null,
         isStale: false,
         error: 'Codex did not answer.',
+        kind: ProviderKind.OpenAICodex,
+        canRefresh: true,
       },
     ];
     const tree = await mount();
@@ -160,10 +167,12 @@ describe('Usage quota strip', () => {
         observedAt: null,
         isStale: false,
         error: null,
+        kind: ProviderKind.OpenAICodex,
+        canRefresh: true,
       },
     ];
     const tree = await mount();
-    expect(mockSeam.codexQuotas).toHaveBeenCalledWith(false);
+    expect(mockSeam.planQuotas).toHaveBeenCalledWith(false);
 
     const button = tree.root
       .findAll(n => n.props.accessibilityLabel === 'Refresh Codex allowance' && typeof n.props.onPress === 'function')
@@ -172,6 +181,76 @@ describe('Usage quota strip', () => {
     await act(async () => {
       button!.props.onPress();
     });
-    expect(mockSeam.codexQuotas).toHaveBeenCalledWith(true);
+    expect(mockSeam.planQuotas).toHaveBeenCalledWith(true);
+  });
+
+  it('shows a Claude plan as of its last turn, with no refresh to offer', async () => {
+    quotas = [
+      {
+        connectionId: 'cc-1',
+        connectionName: 'My Claude plan',
+        planType: null,
+        windows: [{ label: '5-hour', usedPercent: 85, resetsAt: '2026-09-25T18:30:00Z' }],
+        observedAt: '2026-09-25T12:00:00Z',
+        isStale: false,
+        error: null,
+        kind: ProviderKind.ClaudeCode,
+        canRefresh: false,
+      },
+    ];
+    const tree = await mount();
+    const all = text(tree).replace(/\s+/g, ' ');
+    expect(all).toContain('claude allowance · My Claude plan');
+    expect(all).toContain('5-hour · 15% left');
+    expect(all).toContain('as of the last turn, 12:00');
+    expect(all).not.toContain('codex');
+    expect(tree.root.findAll(n => /^Refresh/.test(n.props.accessibilityLabel ?? ''))).toHaveLength(0);
+  });
+
+  it('says where a Claude plan’s allowance will come from before any turn', async () => {
+    quotas = [
+      {
+        connectionId: 'cc-2',
+        connectionName: 'Unused plan',
+        planType: null,
+        windows: [],
+        observedAt: null,
+        isStale: true,
+        error: null,
+        kind: ProviderKind.ClaudeCode,
+        canRefresh: false,
+      },
+    ];
+    const tree = await mount();
+    expect(text(tree)).toContain('Claude Code reports it during a turn on this connection.');
+  });
+
+  it('marks subscription turns in the breakdown as the plan’s, not a bill', async () => {
+    mockSeam.usage.mockImplementationOnce(() =>
+      Promise.resolve({
+        ...dashboard,
+        breakdown: [
+          {
+            providerKind: ProviderKind.ClaudeCode,
+            connectionName: 'My Claude plan',
+            model: 'claude-opus-5-5',
+            totals: { ...dashboard.totals, estimatedCost: null },
+            attributionQuality: 0,
+          },
+          {
+            providerKind: ProviderKind.Anthropic,
+            connectionName: 'API',
+            model: 'claude-haiku-4-5',
+            totals: { ...dashboard.totals, estimatedCost: 1.5 },
+            attributionQuality: 0,
+          },
+        ],
+      }),
+    );
+    const tree = await mount();
+    await act(async () => {});
+    const all = text(tree);
+    expect(all).toContain('plan');
+    expect(all).toContain('$1.50');
   });
 });

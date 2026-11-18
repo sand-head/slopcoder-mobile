@@ -87,6 +87,7 @@ export class SessionHub {
   /** Per-session handlers. A session with none left is unsubscribed. */
   private readonly listeners = new Map<string, Set<DeltaHandler>>();
   private readonly registryListeners = new Set<() => void>();
+  private readonly roomListeners = new Set<(room: string) => void>();
   private readonly options: SessionHubOptions;
 
   constructor(options: SessionHubOptions) {
@@ -147,11 +148,21 @@ export class SessionHub {
       for (const listener of this.registryListeners) listener();
     });
 
+    // Exactly one string: the room's name, as `SessionHubBridge.OnRoomChanged`
+    // sends it. A handler of the wrong arity is never bound — see the top of
+    // this file.
+    connection.on('RoomChanged', (room: string) => {
+      this.notifyRooms(typeof room === 'string' ? room : '');
+    });
+
     connection.onreconnected(() => {
       this.attempts = 0;
       this.note(null);
       this.options.onStateChange?.(true);
       void this.resubscribeAll();
+      // Room signals sent while the socket was down are gone: "" means
+      // anything may have changed, so re-read everything.
+      this.notifyRooms('');
     });
     connection.onreconnecting(error => {
       this.note(error);
@@ -231,6 +242,20 @@ export class SessionHub {
     return () => this.registryListeners.delete(listener);
   }
 
+  /**
+   * A chat room changed — a post, a member joining, leaving, reading or
+   * starting a turn — named by the room; the empty string means anything may
+   * have, after a reconnect. A signal, not a payload: re-read over REST.
+   */
+  addRoomListener(listener: (room: string) => void): () => void {
+    this.roomListeners.add(listener);
+    return () => this.roomListeners.delete(listener);
+  }
+
+  private notifyRooms(room: string): void {
+    for (const listener of this.roomListeners) listener(room);
+  }
+
   addListener(sessionId: string, handler: DeltaHandler): void {
     const existing = this.listeners.get(sessionId);
     if (existing) existing.add(handler);
@@ -295,6 +320,7 @@ export class SessionHub {
     this.connection = null;
     this.listeners.clear();
     this.registryListeners.clear();
+    this.roomListeners.clear();
     await connection?.stop();
   }
 }

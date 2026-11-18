@@ -174,4 +174,20 @@ describe('launcher recall', () => {
     await type(tree, 'q');
     expect(mockSeam.sessionSearch).not.toHaveBeenCalled();
   });
+
+  /**
+   * An archived session is off the list but not gone: search is how it is
+   * found again, so an empty list must still search — and a hit has to say it
+   * can only be read now, not continued.
+   */
+  it('searches an empty list, and marks a hit from an archived session', async () => {
+    mockSeam.sessions.mockImplementationOnce(() => Promise.resolve([]));
+    mockSeam.sessionSearch.mockImplementation(() => Promise.resolve([{ ...hits[0], archived: true }]));
+    const tree = await mount();
+    const all = await type(tree, 'quota');
+    expect(mockSeam.sessionSearch).toHaveBeenCalledWith('quota', 10);
+    expect(all).toContain('Codex quota polling');
+    expect(all).toContain('· archived');
+    expect(all).not.toContain('No sessions yet');
+  });
 });

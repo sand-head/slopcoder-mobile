@@ -9,6 +9,7 @@
  * can be tested without mounting anything.
  */
 import {
+  KIMI_CODE_ENDPOINTS,
   ChannelKind,
   GitServiceKind,
   McpTransportKind,
@@ -34,6 +35,8 @@ export function providerLabel(kind: ProviderKind): string {
       return 'ChatGPT · Codex';
     case ProviderKind.ClaudeCode:
       return 'Claude Code';
+    case ProviderKind.KimiCode:
+      return 'Kimi Code';
     default:
       return 'Provider';
   }
@@ -53,6 +56,7 @@ export const ADDABLE_PROVIDERS: { kind: ProviderKind; label: string; note: strin
   { kind: ProviderKind.Anthropic, label: 'Anthropic API', note: 'api key' },
   { kind: ProviderKind.OpenAICompatible, label: 'OpenAI-compatible', note: 'endpoint' },
   { kind: ProviderKind.ClaudeCode, label: 'Claude Code', note: 'subscription' },
+  { kind: ProviderKind.KimiCode, label: 'Kimi Code', note: 'subscription' },
 ];
 
 export interface ProviderPreset {
@@ -108,6 +112,16 @@ export function providerForm(kind: ProviderKind): {
         keyPlaceholder: 'sk-ant-oat01-…',
         baseUrlLabel: null,
         baseUrlPlaceholder: '',
+      };
+    case ProviderKind.KimiCode:
+      return {
+        title: 'Connect Kimi Code',
+        description: 'The key is validated against your Kimi Code plan before it is stored encrypted.',
+        namePlaceholder: 'My Kimi plan',
+        keyLabel: 'API key',
+        keyPlaceholder: 'sk-…',
+        baseUrlLabel: 'Base URL (optional)',
+        baseUrlPlaceholder: KIMI_CODE_ENDPOINTS.default,
       };
     default:
       return {
@@ -496,6 +510,33 @@ export function channelSettingsJson(form: ChannelForm): string {
     default:
       return '{}';
   }
+}
+
+// ---- git identity ----
+
+/** `GitIdentityPrefs.MaxLength`. */
+export const GIT_IDENTITY_MAX = 256;
+
+/**
+ * Why a value can't be a git identity, or null when it can — a port of
+ * `GitIdentityPrefs.Problem`, so a bad value is explained before the server
+ * refuses it with a bare 400. Blank is fine: it means leave it unset. Control
+ * characters would break the one-line config value, and git itself strips
+ * `<`/`>` from idents, so those never mean what was typed.
+ */
+export function gitIdentityProblem(value: string | null | undefined, field: string): string | null {
+  const trimmed = (value ?? '').trim();
+  if (trimmed.length === 0) return null;
+  if (trimmed.length > GIT_IDENTITY_MAX) return `${field} must be at most ${GIT_IDENTITY_MAX} characters.`;
+  // eslint-disable-next-line no-control-regex -- control characters are the point.
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(trimmed)) return `${field} can't contain line breaks or control characters.`;
+  if (/[<>]/.test(trimmed)) return `${field} can't contain < or >.`;
+  return null;
+}
+
+/** The first problem with either field, or null when both are usable. */
+export function gitIdentityProblems(name: string, email: string): string | null {
+  return gitIdentityProblem(name, 'Name') ?? gitIdentityProblem(email, 'Email');
 }
 
 // ---- time ----
