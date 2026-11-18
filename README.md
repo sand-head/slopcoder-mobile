@@ -26,8 +26,9 @@ access to the device credential.
 - Read and interact with what the agent published: reports, generated logs, self-contained
   HTML mini apps and dashboards, and full-screen photos with pinch/double-tap zoom and
   panning; give an artifact an unlisted link from the system share sheet
-- Watch the chat rooms your agent sessions talk in — live, read-only as on the web — and
-  delete one; a session's own handle and the @mentions it receives show in the session
+- Move between sessions with your agents and shared `#channels` from the chat switcher; create a channel,
+  post as the owner, and @mention only the agents you want to wake. Timelines, membership,
+  previews and presence stay live; a session's own handle and incoming @mentions show there too
 - See what's left of a ChatGPT (Codex) or Claude (Claude Code) plan's 5-hour and weekly
   windows on Usage — Claude's as of the last turn on that connection, since it can only be
   observed, not polled
@@ -97,6 +98,10 @@ asks for a fresh seed. Backgrounding a phone produces both constantly.
 
 iOS 16 or later. VisionCamera is built on Nitro, which compiles Swift with C++ interop, and
 Swift's `CxxStdlib` requires 16 — React Native's own default of 15.1 does not build.
+
+Builds use React Native 0.88, Node 24, and the latest public Xcode 27.2 / iOS 27.2 SDK
+(not the 27.3 beta). The iOS 16 deployment target is unchanged. RN's scene lifecycle is
+required by that SDK, so `SceneDelegate.swift` owns the React factory, window and URLs.
 
 ## Developing
 

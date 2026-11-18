@@ -54,6 +54,27 @@ describe('Seam', () => {
     expect(init.headers.Authorization).toBe('Bearer slop_k');
   });
 
+  it('creates a normalized channel and posts the owner’s message to its messages route', async () => {
+    const seam = new Seam({ baseUrl: 'https://slop.example.com', apiKey: 'slop_k' });
+    const room = {
+      room: { id: 'r', name: 'relay', description: 'Push work', members: 0, messages: 0, createdAt: 'now', lastMessageAt: null, lastSender: null, lastPreview: null },
+      members: [],
+      messages: [],
+      hasEarlier: false,
+    };
+    fetchMock.mockReturnValueOnce(reply(200, room));
+    await expect(seam.createChatRoom({ name: 'relay', description: 'Push work' })).resolves.toEqual(room);
+    expect(fetchMock.mock.calls[0][0]).toBe('https://slop.example.com/api/seam/rooms/');
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ name: 'relay', description: 'Push work' });
+
+    const posted = { seq: 1, senderSessionId: null, sender: 'jess', fromUser: true, text: '@ada ship it', mentioned: ['ada'], at: 'now' };
+    fetchMock.mockReturnValueOnce(reply(200, posted));
+    await expect(seam.postChatRoomMessage('relay', { text: '@ada ship it' })).resolves.toEqual(posted);
+    expect(fetchMock.mock.calls[1][0]).toBe('https://slop.example.com/api/seam/rooms/relay/messages');
+    expect(fetchMock.mock.calls[1][1].method).toBe('POST');
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ text: '@ada ship it' });
+  });
+
   /**
    * An artifact's bytes do not come from the seam: a PDF has no business being
    * base64 in a JSON envelope. Two URLs, and the difference is who can open

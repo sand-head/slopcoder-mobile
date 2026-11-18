@@ -115,7 +115,7 @@ describe('an archived session', () => {
     mockState = { ...base, archivedAt: '2026-11-01T12:00:00Z' };
     const { tree, navigation } = await mount();
 
-    expect(tree.root.findAll(n => n.props.accessibilityLabel === 'Send a message…')).toHaveLength(0);
+    expect(tree.root.findAll(n => n.props.accessibilityLabel === 'Message the session…')).toHaveLength(0);
     expect(text(tree)).toContain('read-only now');
     expect(subtitle(navigation)).toContain('archived · read-only');
     expect(subtitle(navigation)).not.toContain('idle');
@@ -128,7 +128,7 @@ describe('an archived session', () => {
 
   it('is not what a live session looks like', async () => {
     const { tree, navigation } = await mount();
-    expect(tree.root.findAll(n => n.props.accessibilityLabel === 'Send a message…').length).toBeGreaterThan(0);
+    expect(tree.root.findAll(n => n.props.accessibilityLabel === 'Message the session…').length).toBeGreaterThan(0);
     expect(subtitle(navigation)).not.toContain('archived');
   });
 });
@@ -144,6 +144,7 @@ describe('a chat-room mention', () => {
         room: 'relay',
         seq: 42,
         sender: 'brisk-comet-42',
+        fromUser: false,
         text: '@quiet-otter-7 take the relay next?',
         interjected: true,
       },
@@ -158,7 +159,7 @@ describe('a chat-room mention', () => {
 
     await act(async () =>
       tree.root
-        .find(n => n.props.accessibilityLabel === 'brisk-comet-42 mentioned this agent in #relay. Open the room')
+        .find(n => n.props.accessibilityLabel === 'brisk-comet-42 mentioned this agent in #relay. Open the channel')
         .props.onPress(),
     );
     expect(navigation.navigate).toHaveBeenCalledWith('Room', { name: 'relay' });

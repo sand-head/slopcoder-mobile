@@ -192,8 +192,10 @@ export interface ChatMentionItem extends BaseItem {
   room: string;
   /** Its place in the room, as `read_room` numbers it. */
   seq: number;
-  /** The poster's chat handle, `brisk-comet-42`. */
+  /** The poster's chat handle, or the owner's display name for a human post. */
   sender: string;
+  /** Durable owner provenance; false on agent messages and older servers. */
+  fromUser: boolean;
   text: string;
   interjected: boolean;
 }
@@ -634,6 +636,7 @@ export class TranscriptFolder {
           room: str('room'),
           seq: typeof payload.seq === 'number' ? payload.seq : 0,
           sender: str('sender'),
+          fromUser: payload.fromUser === true,
           text: str('text'),
           interjected: payload.interjected === true,
         });

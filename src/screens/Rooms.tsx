@@ -2,9 +2,8 @@
  * The chat rooms the user's agent sessions talk in — `Pages/Rooms.razor`, as
  * the two pages a phone-width browser shows: the list, then one room.
  *
- * Read-only, as on the web: agents post, the user watches, and can delete a
- * room. A person's words in a room would reach an agent framed as another
- * agent's input, never as the user's instruction, so there is no composer.
+ * The owner and their agents can post. A human post is marked as such and only
+ * @mentioned agents are woken; everyone else can read it on their next visit.
  *
  * Live over the session hub the app already holds: a `RoomChanged` signal
  * names the room that moved and the page re-reads it over REST. A burst of
@@ -13,13 +12,15 @@
  */
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Platform, Pressable, RefreshControl, ScrollView, View, type ScrollViewInstance } from 'react-native';
+import { KeyboardStickyView } from 'react-native-keyboard-controller';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ChatRoomEntry, ChatRoomListing, ChatRoomPresence } from '../api/contracts';
 import { clock, when } from '../api/routines';
-import { handleTint, memberLine, mergeRoom, plural, prependEarlier, serialRefresh, touches, type RoomPage } from '../api/rooms';
+import { handleTint, memberLine, mergeRoom, plural, prependEarlier, senderDisplayName, serialRefresh, touches, type RoomPage } from '../api/rooms';
 import type { SubSessionMention } from '../api/mentions';
 import { useAuth } from '../state/auth';
 import { useSessionHub } from '../state/hub';
-import { Body, Button, Dot, Meta, Mono, Prose, Skeleton } from '../ui/kit';
+import { Body, Button, Dot, Meta, Mono, Prose, Screen, Skeleton } from '../ui/kit';
 import { BarText, Empty, ListRow, Problem, SettingsPage, useFocusLoad } from '../ui/settings';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 import { Sheet } from '../ui/Sheet';
@@ -27,6 +28,10 @@ import { barMenu } from '../navigation/headers';
 import { OverflowMenu } from '../ui/menu';
 import { tapConfirm, tapError } from '../ui/haptics';
 import { font, mix, tintFor, useTheme } from '../theme';
+import { ChatSwitcher } from '../ui/ChatSwitcher';
+import { RoomComposer } from '../ui/RoomComposer';
+import { useChatDirectory } from '../state/chatDirectory';
+import { useKeyboardOffset } from '../ui/keyboard';
 
 /** Re-run `reload` on every room signal, coalesced; only signals `wants` cares about. */
 function useRoomSignals(wants: (room: string) => boolean, reload: () => Promise<void>) {
@@ -61,7 +66,7 @@ export function RoomsScreen({ navigation }: { navigation: any }) {
   useRoomSignals(() => true, list.reload);
 
   useLayoutEffect(() => {
-    navigation.setOptions({ title: 'Chat rooms' });
+    navigation.setOptions({ title: 'Shared channels' });
   }, [navigation]);
 
   const open = (room: ChatRoomListing) => navigation.navigate('Room', { name: room.name });
@@ -84,7 +89,7 @@ export function RoomsScreen({ navigation }: { navigation: any }) {
       loading={list.data === null && !list.error}>
       {list.data?.length === 0 ? (
         <Empty>
-          No rooms yet. Agent sessions create rooms with create_room when they need to coordinate. Every session has a
+          No channels yet. Create one from Chats, or let an agent create one with create_room. Every session has a
           username; an @mention of it reaches that session directly.
         </Empty>
       ) : null}
@@ -99,7 +104,7 @@ export function RoomsScreen({ navigation }: { navigation: any }) {
               chevron
               menu={[
                 { key: 'open', title: 'Open', symbol: 'bubble.left.and.bubble.right', onPress: () => open(room) },
-                { key: 'delete', title: 'Delete room', symbol: 'trash', destructive: true, onPress: () => remove(room) },
+                { key: 'delete', title: 'Delete channel', symbol: 'trash', destructive: true, onPress: () => remove(room) },
               ]}>
               <Meta style={{ fontSize: 10 }}>
                 {plural(room.members, 'member')} · {plural(room.messages, 'message')} ·{' '}
@@ -116,7 +121,7 @@ export function RoomsScreen({ navigation }: { navigation: any }) {
 function confirmDelete(name: string, onConfirm: () => void) {
   Alert.alert(
     `Delete #${name}?`,
-    'The room, its members and every message in it are gone for good. Sessions keep their usernames and can create the room again.',
+    'The channel, its members and every message in it are gone for good. Sessions keep their usernames and can create the channel again.',
     [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: onConfirm },
@@ -135,7 +140,11 @@ export function RoomScreen({ route, navigation }: { route: any; navigation: any 
   const [refreshing, setRefreshing] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
+  const [chatsOpen, setChatsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const directory = useChatDirectory(chatsOpen);
+  const insets = useSafeAreaInsets();
+  const keyboardOffset = useKeyboardOffset();
 
   const scroll = useRef<ScrollViewInstance>(null);
   // Whether the reader is at the newest message, so a new one keeps them there
@@ -205,25 +214,38 @@ export function RoomScreen({ route, navigation }: { route: any; navigation: any 
     const showMembers = () => setMembersOpen(true);
     navigation.setOptions({
       title: `#${name}`,
+      headerTitle: () => (
+        <Pressable
+          onPress={() => setChatsOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel={`#${name}. Open chats`}
+          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, opacity: pressed ? 0.6 : 1 })}
+        >
+          <Body style={{ fontFamily: font.sansMedium, fontSize: 16 }}>#{name}</Body>
+          <Mono style={{ fontSize: 12 }}>v</Mono>
+        </Pressable>
+      ),
       ...barMenu(
         [
+          { key: 'chats', label: 'All chats', symbol: 'bubble.left.and.bubble.right', onPress: () => setChatsOpen(true) },
           { key: 'members', label: `Members (${memberCount})`, symbol: 'person.2', onPress: showMembers },
-          { key: 'delete', label: 'Delete room', symbol: 'trash', destructive: true, onPress: remove },
+          { key: 'delete', label: 'Delete channel', symbol: 'trash', destructive: true, onPress: remove },
         ],
         () =>
           Platform.OS === 'ios' ? null : (
             <OverflowMenu
               title={`#${name}`}
               items={[
+                { key: 'chats', title: 'All chats', onPress: () => setChatsOpen(true) },
                 { key: 'members', title: `Members (${memberCount})`, onPress: showMembers },
-                { key: 'delete', title: 'Delete room', destructive: true, onPress: remove },
+                { key: 'delete', title: 'Delete channel', destructive: true, onPress: remove },
               ]}>
               <BarText label="More" onPress={() => {}} disabled={busy} />
             </OverflowMenu>
           ),
       ),
     });
-  }, [navigation, name, memberCount, remove, busy]);
+  }, [navigation, name, memberCount, remove, busy, c]);
 
   // Every handle in sight is tinted wherever it is written, as on the web.
   const mentions = useMemo<SubSessionMention[]>(() => {
@@ -238,8 +260,24 @@ export function RoomScreen({ route, navigation }: { route: any; navigation: any 
 
   const openSession = (sessionId: string) => navigation.push('Session', { id: sessionId });
 
+  const createRoom = async (nextName: string, description: string) => {
+    if (!seam) throw new Error('Sign in before creating a channel.');
+    const view = await seam.createChatRoom({ name: nextName, description });
+    return view.room.name;
+  };
+
+  const send = async (text: string) => {
+    if (!seam) throw new Error('Sign in before posting.');
+    await seam.postChatRoomMessage(name, { text });
+    tapConfirm();
+    // Acceptance and refresh are separate: a failed refresh must not leave an
+    // accepted draft looking unsent and invite a duplicate post.
+    void load();
+  };
+
   return (
-    <>
+    <Screen>
+      <KeyboardStickyView style={{ flex: 1 }} offset={keyboardOffset}>
       <ScrollView
         ref={scroll}
         contentInsetAdjustmentBehavior="automatic"
@@ -270,14 +308,32 @@ export function RoomScreen({ route, navigation }: { route: any; navigation: any 
         {error ? <Problem>{error}</Problem> : null}
 
         {missing ? (
-          <Empty>No such room. It was deleted, or it never existed.</Empty>
+          <Empty>No such channel. It was deleted, or it never existed.</Empty>
         ) : page === null ? (
           error ? null : <Skeleton rows={3} height={64} />
         ) : (
           <>
-            {page.view.room.description.length > 0 ? (
-              <Body style={{ fontSize: 13, color: c.mutedForeground }}>{page.view.room.description}</Body>
-            ) : null}
+            <View style={{ paddingVertical: 10, gap: 8 }}>
+              <View
+                style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: 16,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: c.secondary,
+                }}
+              >
+                <Body style={{ fontFamily: font.sansMedium, fontSize: 28, color: c.mutedForeground }}>#</Body>
+              </View>
+              <Body style={{ fontFamily: font.sansMedium, fontSize: 24 }}>{page.view.room.name}</Body>
+              <Body style={{ fontSize: 14, lineHeight: 20, color: c.mutedForeground }}>
+                {page.view.room.description || 'A shared channel for you and your agents.'}
+              </Body>
+              <View style={{ flexDirection: 'row' }}>
+                <Button label={`${memberCount} members`} variant="ghost" onPress={() => setMembersOpen(true)} />
+              </View>
+            </View>
             {page.view.hasEarlier ? (
               <Button
                 label={loadingEarlier ? 'Loading…' : 'Load earlier messages'}
@@ -286,16 +342,38 @@ export function RoomScreen({ route, navigation }: { route: any; navigation: any 
                 onPress={loadEarlier}
               />
             ) : null}
-            {page.messages.length === 0 ? <Empty>No messages yet.</Empty> : null}
-            {page.messages.map(message => (
-              <Message key={message.seq} message={message} mentions={mentions} onOpenSession={openSession} />
+            {page.messages.length === 0 ? <Empty>No messages yet. Mention an agent to start the conversation.</Empty> : null}
+            {page.messages.map((message, index) => (
+              <Message
+                key={message.seq}
+                message={message}
+                members={page.view.members}
+                compact={index > 0 && sameSender(page.messages[index - 1], message)}
+                mentions={mentions}
+                onOpenSession={openSession}
+              />
             ))}
           </>
         )}
       </ScrollView>
+      {!missing && page ? (
+        <View
+          style={{
+            paddingHorizontal: 12,
+            paddingTop: 6,
+            paddingBottom: insets.bottom + 10,
+            borderTopWidth: 1,
+            borderTopColor: c.border,
+            backgroundColor: c.background,
+          }}
+        >
+          <RoomComposer roomName={name} members={page.view.members} onSend={send} />
+        </View>
+      ) : null}
+      </KeyboardStickyView>
 
       <Sheet visible={membersOpen} title={`Members · ${memberCount}`} onClose={() => setMembersOpen(false)}>
-        {page && page.view.members.length === 0 ? <Mono>No sessions are in this room.</Mono> : null}
+        {page && page.view.members.length === 0 ? <Mono>No agents are in this channel.</Mono> : null}
         {page?.view.members.map(member => (
           <Member
             key={member.sessionId}
@@ -308,7 +386,24 @@ export function RoomScreen({ route, navigation }: { route: any; navigation: any 
           />
         ))}
       </Sheet>
-    </>
+      <ChatSwitcher
+        visible={chatsOpen}
+        onClose={() => setChatsOpen(false)}
+        sessions={directory.sessions}
+        rooms={directory.rooms}
+        error={directory.error}
+        selectedRoom={name}
+        onOpenSession={sessionId => {
+          setChatsOpen(false);
+          navigation.replace('Session', { id: sessionId });
+        }}
+        onOpenRoom={room => {
+          setChatsOpen(false);
+          if (room.toLowerCase() !== name.toLowerCase()) navigation.replace('Room', { name: room });
+        }}
+        onCreateRoom={createRoom}
+      />
+    </Screen>
   );
 }
 
@@ -318,38 +413,75 @@ function useHandleColor(handle: string): string {
   return tintFor(handleTint(handle), isDark) ?? c.foreground;
 }
 
+function sameSender(previous: ChatRoomEntry, next: ChatRoomEntry): boolean {
+  return (
+    previous.senderSessionId === next.senderSessionId &&
+    previous.sender === next.sender &&
+    previous.fromUser === next.fromUser &&
+    previous.mentioned.join('\n') === next.mentioned.join('\n') &&
+    Date.parse(next.at) - Date.parse(previous.at) <= 5 * 60 * 1000
+  );
+}
+
 function Message({
   message,
+  members,
   mentions,
   onOpenSession,
+  compact,
 }: {
   message: ChatRoomEntry;
+  members: readonly ChatRoomPresence[];
   mentions: readonly SubSessionMention[];
   onOpenSession: (id: string) => void;
+  compact: boolean;
 }) {
   const { c } = useTheme();
-  const color = useHandleColor(message.sender);
+  const handleColor = useHandleColor(message.sender);
+  const color = message.fromUser ? c.primary : handleColor;
   const sender = message.senderSessionId;
+  // The session title is the name a channel message shows; the handle is
+  // metadata beside it. A sender that is not a member — the owner, an agent
+  // that posted and later left — has no title to find and keeps its handle.
+  const displayName = message.fromUser ? message.sender : senderDisplayName(message, members);
 
   return (
-    <View style={{ gap: 4, paddingTop: 10, borderTopWidth: 1, borderTopColor: c.border }}>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: 8 }}>
-        <Pressable
-          onPress={sender ? () => onOpenSession(sender) : undefined}
-          disabled={!sender}
-          accessibilityRole={sender ? 'link' : undefined}
-          accessibilityLabel={sender ? `${message.sender}, open this session` : `${message.sender}, session deleted`}
-          hitSlop={6}>
-          <Mono style={{ fontSize: 12.5, fontFamily: font.monoSemiBold, color }}>{message.sender}</Mono>
-        </Pressable>
-        <Meta style={{ fontSize: 10 }}>
-          {clock(message.at)} · #{message.seq}
-        </Meta>
-        {message.mentioned.length > 0 ? (
-          <Meta style={{ fontSize: 10 }}>→ {message.mentioned.join(', ')}</Meta>
-        ) : null}
+    <View style={{ paddingVertical: compact ? 2 : 7, gap: 3 }}>
+      {!compact ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: 8 }}>
+          <Pressable
+            onPress={sender ? () => onOpenSession(sender) : undefined}
+            disabled={!sender}
+            accessibilityRole={sender ? 'link' : undefined}
+            accessibilityLabel={
+              sender
+                ? `${displayName}, open this session`
+                : message.fromUser
+                  ? `${message.sender}, channel owner`
+                  : `${message.sender}, session deleted`
+            }
+            hitSlop={6}
+          >
+            <Body style={{ fontSize: 13, fontFamily: font.sansMedium, color }}>{displayName}</Body>
+          </Pressable>
+          {!message.fromUser && displayName !== message.sender ? (
+            <Meta style={{ fontSize: 10 }}>@{message.sender}</Meta>
+          ) : null}
+          {message.fromUser ? <Meta style={{ fontSize: 9 }}>owner</Meta> : null}
+          <Meta style={{ fontSize: 10 }}>{clock(message.at)}</Meta>
+          {message.mentioned.length > 0 ? <Meta style={{ fontSize: 10 }}>→ {message.mentioned.join(', ')}</Meta> : null}
+        </View>
+      ) : null}
+      {/* The owner's words carry a whisper of their colour at the edge — a
+          marker, not a bubble; the timeline stays prose. */}
+      <View
+        style={
+          message.fromUser
+            ? { borderLeftWidth: 2, borderLeftColor: mix(c.primary, 30), paddingLeft: 8 }
+            : null
+        }>
+        <Prose mentions={mentions}>{message.text}</Prose>
       </View>
-      <Prose mentions={mentions}>{message.text}</Prose>
     </View>
   );
 }
@@ -370,7 +502,7 @@ function Member({
     <Pressable
       onPress={onOpen}
       accessibilityRole="button"
-      accessibilityLabel={`${member.handle}, ${memberLine(member, messages)}, ${member.sessionTitle}`}
+      accessibilityLabel={`${member.sessionTitle}, @${member.handle}, ${memberLine(member, messages)}`}
       style={({ pressed }) => ({
         flexDirection: 'row',
         alignItems: 'center',
@@ -383,11 +515,11 @@ function Member({
       })}>
       <Dot color={running ? status.running : c.mutedForeground} filled={running} size={8} />
       <View style={{ flex: 1, gap: 2 }}>
-        <Mono style={{ fontSize: 12.5, color }}>{member.handle}</Mono>
-        <Meta style={{ fontSize: 10 }}>{memberLine(member, messages)}</Meta>
-        <Body numberOfLines={1} style={{ fontSize: 13, color: c.mutedForeground }}>
+        <Body numberOfLines={1} style={{ fontSize: 13.5, fontFamily: font.sansMedium, color }}>
           {member.sessionTitle}
         </Body>
+        <Mono style={{ fontSize: 11.5, color }}>@{member.handle}</Mono>
+        <Meta style={{ fontSize: 10 }}>{memberLine(member, messages)}</Meta>
       </View>
       <Mono style={{ fontSize: 15 }}>›</Mono>
     </Pressable>

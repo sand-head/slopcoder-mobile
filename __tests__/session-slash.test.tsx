@@ -67,7 +67,7 @@ jest.mock('../src/ui/shake', () => ({ useShake: () => {} }));
 jest.mock('../src/ui/keyboard', () => ({ useKeyboardOffset: () => 0 }));
 jest.mock('../src/navigation/headers', () => ({
   useHeaderInset: () => 0,
-  // SessionDetail's Reviews button goes through barButton; the native item
+  // SessionDetail's Chats button goes through barButton; the native item
   // array it builds is the navigator's business, not this test's.
   barButton: () => ({
     headerRight: () => null,
@@ -116,7 +116,7 @@ async function mount() {
 
 async function type(tree: ReturnType<typeof create>, text: string) {
   const input = tree.root.find(
-    node => node.props.accessibilityLabel === 'Send a message…' && !!node.props.onChangeText,
+    node => node.props.accessibilityLabel === 'Message the session…' && !!node.props.onChangeText,
   );
   await act(async () => input.props.onChangeText(text));
 }

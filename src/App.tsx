@@ -104,7 +104,7 @@ export default function App() {
                 {/* On the root stack rather than a tab: reached from Settings and
                     from a session's chat handle alike, and a room's messages
                     open the sessions that wrote them. */}
-                <Root.Screen name="Rooms" component={RoomsScreen} options={{ title: 'Chat rooms', ...glassBar }} />
+                <Root.Screen name="Rooms" component={RoomsScreen} options={{ title: 'Shared channels', ...glassBar }} />
                 <Root.Screen name="Room" component={RoomScreen} options={{ title: '', ...glassBar }} />
                 <Root.Screen
                   name="RoutineEditor"

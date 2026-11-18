@@ -31,7 +31,7 @@
  * to the system's. A prop here has to earn itself.
  */
 import React, { useEffect, useRef } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { Pressable, ScrollView, View, type ScrollViewInstance } from 'react-native';
 import { TrueSheet } from '@lodev09/react-native-true-sheet';
 import { Body, Check, GitMark, Meta, Mono } from './kit';
 import type { GitServiceKind } from '../api/contracts';
@@ -62,6 +62,7 @@ export function Sheet({
 }) {
   const { c } = useTheme();
   const sheet = useRef<TrueSheet>(null);
+  const scrollable = useRef<ScrollViewInstance>(null);
 
   // The sheet stays mounted and the native presentation follows `visible`,
   // which keeps every call site the plain boolean it already was.
@@ -73,10 +74,10 @@ export function Sheet({
   return (
     <TrueSheet
       ref={sheet}
-      // The two props here describe our content, not the sheet. `scrollable`
-      // pins the list inside it, below the header, and is what makes a pull
-      // anywhere in the body expand the sheet rather than scroll it.
-      scrollable
+      // The two props here describe our content, not the sheet. In v4 the
+      // scrollable is connected by ref: it pins the list below the header and
+      // makes a pull anywhere in the body expand the sheet rather than scroll.
+      scrollableRef={scrollable}
       // Fires for a swipe down as well as for `dismiss()`, so the parent's
       // state clears however the sheet went away.
       onDidDismiss={onClose}>
@@ -111,6 +112,7 @@ export function Sheet({
       </View>
 
       <ScrollView
+        ref={scrollable}
         // A tap on a result while the keyboard is up must pick it, not spend
         // itself dismissing the keyboard.
         keyboardShouldPersistTaps="handled"

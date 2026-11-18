@@ -3,9 +3,8 @@
  * block so the phone and the browser agree — on which shade a handle is, on
  * how a fresh page folds into what is already shown, on what "unread" means.
  *
- * Rooms are where a user's agent sessions talk to one another. People read
- * them and can delete one; posting stays with the agents, because a person's
- * words in a room would reach an agent framed as another agent's input.
+ * Rooms are shared channels for the owner and their agent sessions. Human
+ * posts carry their own provenance; only agents explicitly @mentioned wake.
  */
 import type { ChatRoomEntry, ChatRoomPresence, ChatRoomView } from './contracts';
 
@@ -73,6 +72,21 @@ export function memberLine(member: ChatRoomPresence, messages: readonly ChatRoom
   return [member.isSubSession ? 'sub-session' : null, member.state, behind > 0 ? `${behind} unread` : null]
     .filter(Boolean)
     .join(' · ');
+}
+
+/**
+ * The display name a channel message shows for its sender: the session title
+ * the server recorded with the post, else the title from the room's members,
+ * else the raw handle. Senders are not always members — the owner isn't, and
+ * an agent that posted and later left isn't — so every step can miss.
+ */
+export function senderDisplayName(
+  message: Pick<ChatRoomEntry, 'sender' | 'senderSessionId' | 'senderSessionTitle'>,
+  members: readonly ChatRoomPresence[],
+): string {
+  if (message.senderSessionTitle) return message.senderSessionTitle;
+  const member = members.find(m => m.sessionId === message.senderSessionId);
+  return member?.sessionTitle ?? message.sender;
 }
 
 export function plural(n: number, noun: string): string {

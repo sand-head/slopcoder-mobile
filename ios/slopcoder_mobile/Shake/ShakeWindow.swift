@@ -10,7 +10,7 @@ import UIKit
 ///
 /// A window subclass rather than a category on `UIWindow`: overriding an
 /// `@objc` method from an extension is undefined behaviour in Swift, and this
-/// app creates its own window in the AppDelegate anyway, so there is a seam to
+/// app creates its own window in the SceneDelegate anyway, so there is a seam to
 /// use.
 final class ShakeWindow: UIWindow {
     /// Posted on every shake. `ShakeDetector` forwards it to JavaScript.

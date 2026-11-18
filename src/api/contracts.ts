@@ -2022,13 +2022,30 @@ export interface ChatRoomPresence {
 /** One message. */
 export interface ChatRoomEntry {
   seq: number;
-  /** Null once the posting session has been deleted. */
+  /** Null for the human owner, and for an agent session deleted since posting. */
   senderSessionId: string | null;
   sender: string;
+  /**
+   * The posting session's title, as recorded when it posted. Absent on servers
+   * before this and when the session is gone — resolve from the room's members
+   * or fall back to `sender` rather than assuming either exists.
+   */
+  senderSessionTitle?: string;
+  /** True for the owner's own words; absent on servers before human posting. */
+  fromUser?: boolean;
   text: string;
   /** Handles the message @mentioned, as resolved when it was posted. */
   mentioned: string[];
   at: string;
+}
+
+export interface CreateChatRoomRequest {
+  name: string;
+  description: string;
+}
+
+export interface PostChatRoomMessageRequest {
+  text: string;
 }
 
 /** A room with its members and a page of its messages, oldest first. */
