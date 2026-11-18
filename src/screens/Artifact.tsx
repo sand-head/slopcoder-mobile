@@ -236,6 +236,14 @@ function ArtifactBody({
     );
   }
 
+  // Fetch the bytes with the bearer before handing them to WebView. Media
+  // subrequests do not inherit WebView source headers, and injecting the key
+  // into an HTML audio element would widen the artifact trust boundary. The
+  // server's content type is authoritative for playable media.
+  if (rawUrl && isAudioContentType(artifact.contentType)) {
+    return <AudioArtifact artifact={artifact} url={rawUrl} apiKey={apiKey} />;
+  }
+
   if (detail.text !== null) {
     return (
       <ScrollView
@@ -271,6 +279,100 @@ function ArtifactBody({
     <View style={{ flex: 1, justifyContent: 'center', padding: 24, paddingTop: headerInset + 24 }}>
       <Empty>{`This one is a ${artifact.contentType} file of ${bytes(artifact.size)}. Share it to open it elsewhere.`}</Empty>
     </View>
+  );
+}
+
+export function isAudioContentType(contentType: string): boolean {
+  return /^audio\/[a-z0-9.+-]+$/i.test(contentType.split(';', 1)[0].trim());
+}
+
+/**
+ * Fetch privately, then give WebView a bounded in-memory data URL. This avoids
+ * platform-specific range requests losing the bearer, while keeping the key
+ * out of the generated player document and any agent-authored HTML.
+ */
+const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
+
+function blobAsDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Invalid audio data'));
+    reader.onerror = () => reject(reader.error ?? new Error('Could not read audio'));
+    reader.onabort = () => reject(new Error('Audio read aborted'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function AudioArtifact({ artifact, url, apiKey }: {
+  artifact: ArtifactSummary; url: string; apiKey: string | null;
+}) {
+  const { c } = useTheme();
+  const [document, setDocument] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  const mime = artifact.contentType.split(';', 1)[0].trim().toLowerCase();
+  React.useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    setDocument(null);
+    setFailed(false);
+    const load = async () => {
+      try {
+        const response = await fetch(url, {
+          headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error(`Audio request failed (${response.status})`);
+        const length = Number(response.headers.get('content-length'));
+        if (Number.isFinite(length) && length > MAX_AUDIO_BYTES) throw new Error('Audio is too large');
+        const blob = await response.blob();
+        if (blob.size > MAX_AUDIO_BYTES) throw new Error('Audio is too large');
+        const dataUrl = await blobAsDataUrl(blob);
+        const comma = dataUrl.indexOf(',');
+        const payload = comma >= 0 ? dataUrl.slice(comma + 1) : '';
+        if (!/^[A-Za-z0-9+/]*={0,2}$/.test(payload)) throw new Error('Invalid audio data');
+        const safeDataUrl = `data:${mime};base64,${payload}`;
+        if (active) setDocument(`<!doctype html><meta name="viewport" content="width=device-width"><audio controls preload="metadata" src="${safeDataUrl}"></audio>`);
+      } catch {
+        if (active) setFailed(true);
+      }
+    };
+    void load();
+    return () => { active = false; controller.abort(); };
+  }, [url, apiKey, mime]);
+
+  if (failed) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', padding: 24, backgroundColor: c.background }}>
+        <Empty>{`This audio file could not be played on this device (${artifact.contentType}).`}</Empty>
+      </View>
+    );
+  }
+  if (!document) {
+    return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.background }}><ActivityIndicator color={c.primary} /></View>;
+  }
+
+  return (
+    <WebView
+      testID="artifact-audio"
+      accessibilityLabel={`Audio artifact: ${artifact.title}`}
+      source={{ html: document, baseUrl: 'about:blank' }}
+      style={{ flex: 1, backgroundColor: c.background }}
+      originWhitelist={['about:blank', 'data:*']}
+      javaScriptEnabled={false}
+      allowFileAccess={false}
+      allowFileAccessFromFileURLs={false}
+      allowUniversalAccessFromFileURLs={false}
+      mixedContentMode="never"
+      cacheEnabled={false}
+      incognito
+      sharedCookiesEnabled={false}
+      thirdPartyCookiesEnabled={false}
+      setSupportMultipleWindows={false}
+      mediaPlaybackRequiresUserAction
+      webviewDebuggingEnabled={false}
+      onError={() => setFailed(true)}
+      onShouldStartLoadWithRequest={request => request.url === 'about:blank'}
+    />
   );
 }
 
