@@ -864,6 +864,7 @@ export const Field = forwardRef<
     placeholder?: string;
     secure?: boolean;
     autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+    maxLength?: number;
     keyboardType?:
       | 'default'
       | 'url'
@@ -886,6 +887,7 @@ export const Field = forwardRef<
     placeholder,
     secure,
     autoCapitalize = 'none',
+    maxLength,
     keyboardType,
     textContentType,
     autoComplete,
@@ -909,6 +911,7 @@ export const Field = forwardRef<
       secureTextEntry={secure}
       autoCapitalize={autoCapitalize}
       autoCorrect={false}
+      maxLength={maxLength}
       keyboardType={keyboardType}
       textContentType={textContentType}
       autoComplete={autoComplete}

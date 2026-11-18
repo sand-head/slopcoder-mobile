@@ -59,9 +59,12 @@ describe('the sheet', () => {
 
   /** What we do have to say is what our own content is. */
   it('tells the sheet the body is a scroll view', () => {
-    // `scrollable` pins the list inside the sheet and is what makes a pull in
-    // the body open it instead of scrolling a letterbox.
-    expect(sheetOf(mount(true)).props.scrollable).toBe(true);
+    // TrueSheet 4 connects the two by ref: a pull in the body opens the sheet
+    // instead of scrolling a letterbox.
+    const tree = mount(true);
+    const ref = sheetOf(tree).props.scrollableRef;
+    expect(ref).toBeDefined();
+    expect(ref.current).toBe(tree.root.findByType(ScrollView).instance);
   });
 
   /** Otherwise the first tap on a search result is spent closing the keyboard. */

@@ -61,6 +61,7 @@ describe('the Xcode project', () => {
     expect(compiled.map(p => path.basename(p))).toEqual(
       expect.arrayContaining([
         'AppDelegate.swift',
+        'SceneDelegate.swift',
         'Credential.swift',
         'IntentError.swift',
         'SeamClient.swift',
@@ -73,9 +74,9 @@ describe('the Xcode project', () => {
 
   /**
    * The shake gesture is UIKit's, and it only reaches the app through a window
-   * subclass the AppDelegate installs. Leave either file out of the target and
+   * subclass the SceneDelegate installs. Leave either file out of the target and
    * the build still succeeds — `ShakeWindow` simply is not a type, the
-   * AppDelegate stops compiling, and the failure lands ten minutes later on a
+   * SceneDelegate stops compiling, and the failure lands ten minutes later on a
    * macOS runner. Cheaper to notice here.
    */
   it('compiles the shake detector and the window that feeds it', () => {
@@ -103,6 +104,17 @@ describe('the Xcode project', () => {
     // anything that imports them.
     expect(extensionCompiled.map(p => path.basename(p))).not.toContain('PushRegistrar.swift');
     expect(extensionCompiled.map(p => path.basename(p))).not.toContain('SeamClient.swift');
+  });
+
+  it('uses React Native’s scene entry point required by the iOS 27 SDK', () => {
+    const plist = fs.readFileSync(path.join(IOS, 'slopcoder_mobile', 'Info.plist'), 'utf8');
+    expect(plist).toContain('UIApplicationSceneManifest');
+    expect(plist).toContain('$(PRODUCT_MODULE_NAME).SceneDelegate');
+
+    const scene = fs.readFileSync(path.join(IOS, 'slopcoder_mobile', 'SceneDelegate.swift'), 'utf8');
+    expect(scene).toContain('connectionOptions: connectionOptions');
+    expect(scene).toContain('ShakeWindow(windowScene: windowScene)');
+    expect(scene).toContain('RCTLinkingManager.scene(scene, openURLContexts: URLContexts)');
   });
 
   it('leaves no Swift file in Intents/ out of the build', () => {

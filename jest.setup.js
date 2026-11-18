@@ -1,4 +1,3 @@
-/* eslint-env jest */
 /**
  * The keyboard tracker is a native view with a display link behind it, so
  * importing the package with no native module under it throws before a single

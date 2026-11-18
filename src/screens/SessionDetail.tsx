@@ -81,6 +81,8 @@ import { ConnectionBanner } from '../ui/ConnectionBanner';
 import { ToolCard } from '../ui/ToolCard';
 import { SubSessionCard } from '../ui/SubSessionCard';
 import { useAtBottom } from '../ui/atBottom';
+import { ChatSwitcher } from '../ui/ChatSwitcher';
+import { useChatDirectory } from '../state/chatDirectory';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useKeyboardOffset } from '../ui/keyboard';
 import { barButton, useHeaderInset } from '../navigation/headers';
@@ -134,6 +136,8 @@ export function SessionDetailScreen({
   const { pinned, toBottom, props: bottom } = useAtBottom(listRef);
   const [usageOpen, setUsageOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
+  const [chatsOpen, setChatsOpen] = useState(false);
+  const directory = useChatDirectory(chatsOpen);
 
   // Shake to open the terminal — see ui/shake.ts for why that gesture.
   // Only while this screen is the one on top: a shake on the settings tab
@@ -325,35 +329,52 @@ export function SessionDetailScreen({
           accessibilityRole="button"
           accessibilityLabel={`${title}. ${subtitle}. Session usage`}
           style={({ pressed }) => ({
+            flexDirection: 'row',
             alignItems: 'center',
+            gap: 8,
             maxWidth: 240,
             opacity: pressed ? 0.6 : 1,
           })}
         >
-          <Body
-            numberOfLines={1}
-            style={{ fontFamily: font.sansMedium, fontSize: 15 }}
+          <View
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 14,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: mix(c.primary, 16),
+            }}
           >
-            {title}
-          </Body>
-          <Mono numberOfLines={1}>{subtitle}</Mono>
+            <Body style={{ fontFamily: font.sansMedium, fontSize: 12, color: c.primary }}>
+              {title.charAt(0).toUpperCase()}
+            </Body>
+          </View>
+          <View style={{ flexShrink: 1 }}>
+            <Body
+              numberOfLines={1}
+              style={{ fontFamily: font.sansMedium, fontSize: 15 }}
+            >
+              {title}
+            </Body>
+            <Mono numberOfLines={1}>{subtitle}</Mono>
+          </View>
         </Pressable>
       ),
-      // The only header action: everything else the session does lives in
-      // sheets from the composer. Reviews are a separate surface on the web
-      // too, so they get the button.
+      // The two kinds of conversation sit behind one switcher: this session
+      // is a conversation with its agent; shared rooms are the #channels.
       ...barButton(
         {
-          label: 'Reviews',
-          symbol: 'doc.text.magnifyingglass',
-          onPress: () => navigation.navigate('Reviews', { sessionId: id }),
+          label: 'Sessions',
+          symbol: 'bubble.left.and.bubble.right',
+          onPress: () => setChatsOpen(true),
         },
         ({ label, onPress }) => (
           <Button label={label} variant="ghost" onPress={onPress} />
         ),
       ),
     });
-  }, [navigation, title, subtitle, id]);
+  }, [navigation, title, subtitle, id, c]);
 
   // A gate opening or closing, a question answered: the card changes shape,
   // and the lines below it move rather than jump.
@@ -386,6 +407,28 @@ export function SessionDetailScreen({
   const onOpenRoom = useCallback(
     (room: string) => navigation.navigate('Room', { name: room }),
     [navigation],
+  );
+  const switchSession = useCallback(
+    (nextId: string) => {
+      setChatsOpen(false);
+      if (nextId !== id) navigation.replace('Session', { id: nextId });
+    },
+    [navigation, id],
+  );
+  const switchRoom = useCallback(
+    (room: string) => {
+      setChatsOpen(false);
+      navigation.replace('Room', { name: room });
+    },
+    [navigation],
+  );
+  const createRoom = useCallback(
+    async (name: string, description: string) => {
+      if (!seam) throw new Error('Sign in before creating a channel.');
+      const view = await seam.createChatRoom({ name, description });
+      return view.room.name;
+    },
+    [seam],
   );
   const onApprove = useCallback(
     (requestId: string, approved: boolean) => {
@@ -516,7 +559,7 @@ export function SessionDetailScreen({
               // The streaming tail, which in an inverted list is the header.
               ListHeaderComponent={
                 live ? (
-                  <View style={{ gap: 6, paddingTop: 6 }}>
+                  <View style={{ gap: 6, paddingTop: 6, marginBottom: 8 }}>
                     {live.thinking ? (
                       <Body
                         style={{
@@ -614,7 +657,7 @@ export function SessionDetailScreen({
             <Composer
               value={draft}
               onChangeValue={setDraft}
-              placeholder={running ? 'Steer the agent…' : 'Send a message…'}
+              placeholder={running ? 'Steer this conversation…' : `Message ${title}…`}
               action={action}
               onAction={send}
               busy={sending}
@@ -662,6 +705,14 @@ export function SessionDetailScreen({
       >
         {state ? (
           <>
+            <Button
+              label="Open reviews"
+              variant="ghost"
+              onPress={() => {
+                setUsageOpen(false);
+                navigation.navigate('Reviews', { sessionId: id });
+              }}
+            />
             <View style={{ gap: 6 }}>
               <Meta>context</Meta>
               {state.lastUsage && state.lastUsage.contextWindowTokens > 0 ? (
@@ -741,6 +792,18 @@ export function SessionDetailScreen({
           </>
         ) : null}
       </Sheet>
+
+      <ChatSwitcher
+        visible={chatsOpen}
+        onClose={() => setChatsOpen(false)}
+        sessions={directory.sessions}
+        rooms={directory.rooms}
+        error={directory.error}
+        selectedSessionId={id}
+        onOpenSession={switchSession}
+        onOpenRoom={switchRoom}
+        onCreateRoom={createRoom}
+      />
 
       <TerminalSheet
         visible={terminalOpen}
@@ -1106,33 +1169,35 @@ const TranscriptRow = React.memo(function Transcript({
   switch (item.kind) {
     case 'user':
       return (
-        <View
-          style={{
-            marginVertical: 8,
-            borderRadius: radius.lg,
-            borderWidth: 1,
-            borderColor: mix(c.primary, 25),
-            backgroundColor: mix(c.primary, isDark ? 8 : 4),
-            padding: 12,
-            gap: 4,
-          }}
-        >
-          <Meta style={{ color: c.primary, fontSize: 10.5 }}>
-            {parentDriven
-              ? item.steering
-                ? 'parent agent · mid-turn'
-                : 'parent agent'
-              : item.steering
-              ? 'you · steering'
-              : 'you'}
-          </Meta>
-          {item.images.length > 0 ? (
-            <PromptImages images={item.images} />
-          ) : null}
-          {item.text ? (
-            <Body selectable style={{ fontSize: 14 }}>
-              {item.text}
-            </Body>
+        <View style={{ alignItems: 'flex-end', marginVertical: 12 }}>
+          <View
+            style={{
+              maxWidth: '88%',
+              borderRadius: 18,
+              borderBottomRightRadius: 5,
+              backgroundColor: c.secondary,
+              paddingHorizontal: 14,
+              paddingVertical: 10,
+              gap: 6,
+            }}
+          >
+            {item.images.length > 0 ? (
+              <PromptImages images={item.images} />
+            ) : null}
+            {item.text ? (
+              <Body selectable style={{ fontSize: 15, lineHeight: 22 }}>
+                {item.text}
+              </Body>
+            ) : null}
+          </View>
+          {parentDriven || item.steering ? (
+            <Meta style={{ marginTop: 4, paddingHorizontal: 3, fontSize: 9.5 }}>
+              {parentDriven
+                ? item.steering
+                  ? 'parent agent · mid-turn'
+                  : 'parent agent'
+                : 'you · steering'}
+            </Meta>
           ) : null}
         </View>
       );
@@ -1180,16 +1245,16 @@ const TranscriptRow = React.memo(function Transcript({
     }
 
     case 'chat-mention': {
-      // Another agent @mentioned this one in a room. Like a partner's reply it
-      // is a card with a name on it and never the 'you' card — nobody typed it
-      // — in the sender's own shade, the one the rooms page draws them in. A
-      // tap opens the room, where the rest of the conversation is.
-      const tint = tintFor(handleTint(item.sender), isDark) ?? status.subagent;
+      // A room message pushed into this session. Human provenance is visible:
+      // an owner's display name is not an agent handle and must not get one.
+      const tint = item.fromUser
+        ? c.primary
+        : tintFor(handleTint(item.sender), isDark) ?? status.subagent;
       return (
         <Pressable
           onPress={() => onOpenRoom(item.room)}
           accessibilityRole="button"
-          accessibilityLabel={`${item.sender} mentioned this agent in #${item.room}. Open the room`}
+          accessibilityLabel={`${item.sender} mentioned this agent in #${item.room}. Open the channel`}
           style={({ pressed }) => ({
             marginVertical: 8,
             borderRadius: radius.lg,
@@ -1201,7 +1266,7 @@ const TranscriptRow = React.memo(function Transcript({
           })}
         >
           <Meta style={{ color: tint, fontSize: 10.5 }}>
-            @{item.sender} · #{item.room} · message {item.seq}
+            {item.fromUser ? `${item.sender} · owner` : `@${item.sender}`} · #{item.room} · message {item.seq}
             {item.interjected ? ' · mid-turn' : ''}
           </Meta>
           <Body selectable style={{ fontSize: 14 }}>
@@ -1212,8 +1277,13 @@ const TranscriptRow = React.memo(function Transcript({
     }
 
     case 'text':
-      // No bubble, no border: assistant prose is the page.
-      return <Prose mentions={mentions}>{item.text}</Prose>;
+      // Claude-like calm: the answer is prose, not another avatar/name row or
+      // a bubble. Structured work around it keeps its own rendering.
+      return (
+        <View style={{ marginVertical: 14 }}>
+          <Prose mentions={mentions}>{item.text}</Prose>
+        </View>
+      );
 
     case 'think':
       return (

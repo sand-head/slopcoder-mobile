@@ -5,22 +5,54 @@
  * config without pulling the whole app (and every native module in it) into a
  * Node process.
  *
- * React Navigation handles both the cold launch (initial URL, which iOS puts in
- * launchOptions) and the warm case (the `url` event the AppDelegate posts), so
- * there is no listener to wire up by hand.
+ * React Navigation handles both the cold launch (initial URL, which the scene's
+ * connectionOptions carry) and the warm case (scene URL events and notification
+ * posts), so there is no listener to wire up by hand.
  *
  * `initialRouteName` is what puts the tabs *under* a session opened from a
  * notification or from Siri. Without it the cockpit is the only route, its
  * back button goes nowhere, and Android's back button leaves the app.
  */
-import type { LinkingOptions } from '@react-navigation/native';
+import type { LinkingOptions, NavigatorScreenParams } from '@react-navigation/native';
 
 /** A different artifact is a different route, even during warm-link navigation. */
 export function artifactRouteId({ params }: { params?: object }): string | undefined {
   return (params as { id?: string } | undefined)?.id;
 }
 
-export const linking: LinkingOptions<Record<string, any>> = {
+type SettingsLinks = {
+  Settings: undefined;
+  Connections: undefined;
+  McpServers: undefined;
+  RemoteNodes: undefined;
+  Terminal: undefined;
+  GitIdentity: undefined;
+  Facets: undefined;
+  Hooks: undefined;
+  Memory: undefined;
+  Skills: undefined;
+  Channels: undefined;
+  ApiKeys: undefined;
+};
+
+type TabLinks = {
+  SessionsTab: NavigatorScreenParams<{ Sessions: undefined }>;
+  RoutinesTab: NavigatorScreenParams<{ Routines: undefined }>;
+  ArtifactsTab: NavigatorScreenParams<{ Artifacts: undefined }>;
+  UsageTab: NavigatorScreenParams<{ Usage: undefined }>;
+  SettingsTab: NavigatorScreenParams<SettingsLinks>;
+};
+
+type RootLinks = {
+  Tabs: NavigatorScreenParams<TabLinks>;
+  Session: { id: string };
+  Artifact: { id: string };
+  Routine: { id: string; run?: string };
+  Rooms: undefined;
+  Room: { name: string };
+};
+
+export const linking: LinkingOptions<RootLinks> = {
   prefixes: ['slopcoder://'],
   config: {
     initialRouteName: 'Tabs',

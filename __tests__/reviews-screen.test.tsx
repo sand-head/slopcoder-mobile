@@ -153,7 +153,7 @@ jest.mock('../src/state/auth', () => ({
 
 jest.mock('../src/navigation/headers', () => ({
   useHeaderInset: () => 0,
-  // SessionDetail's Reviews button goes through barButton; the native item
+  // SessionDetail's Chats button goes through barButton; the native item
   // array it builds is the navigator's business, not this test's.
   barButton: () => ({
     headerRight: () => null,
@@ -180,13 +180,19 @@ test('the list screen reads the session reviews and offers the detail', async ()
       />,
     );
   });
-  expect(mockSeam.sessionReviews).toHaveBeenCalledWith('s-1');
-  // The card is the web's: target (owner/name#number), kind · mode, state.
-  // The PR title is deliberately not on it — the web doesn't draw it either.
-  const text = renderedText(tree);
-  expect(text).toContain('acme/app#12');
-  expect(text).toContain('pull request');
-  expect(text).toContain('pipeline review');
-  expect(text).toContain('captured');
-  expect(text).toContain('failed');
+  try {
+    expect(mockSeam.sessionReviews).toHaveBeenCalledWith('s-1');
+    // The card is the web's: target (owner/name#number), kind · mode, state.
+    // The PR title is deliberately not on it — the web doesn't draw it either.
+    const text = renderedText(tree);
+    expect(text).toContain('acme/app#12');
+    expect(text).toContain('pull request');
+    expect(text).toContain('pipeline review');
+    expect(text).toContain('captured');
+    expect(text).toContain('failed');
+  } finally {
+    // The read's finally block and the native scroll view must settle before
+    // Jest tears down the environment, not after the next suite has started.
+    await act(async () => tree.unmount());
+  }
 });

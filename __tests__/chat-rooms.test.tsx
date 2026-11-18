@@ -1,6 +1,6 @@
 /**
- * Chat rooms: where a user's agent sessions talk to one another, read on the
- * phone. Ports of `Pages/Rooms.razor`'s decisions, the hub signal that keeps
+ * Chat rooms: shared channels for the owner and their agent sessions. Ports of
+ * the room decisions, the hub signal that keeps
  * the pages live, the transcript row a pushed @mention becomes, and the two
  * screens.
  *
@@ -17,6 +17,7 @@ import {
   memberLine,
   mergeRoom,
   prependEarlier,
+  senderDisplayName,
   serialRefresh,
   touches,
   unread,
@@ -98,6 +99,37 @@ describe('rooms', () => {
     expect(memberLine({ ...member, isSubSession: false, lastReadSeq: 9 }, messages)).toBe('running');
   });
 
+  /**
+   * The name a channel message shows: the title recorded with the post first,
+   * then the title of a matching member, then the raw handle. Senders are not
+   * always members — the owner, a session since deleted, an agent that posted
+   * and left — so every step has to be able to miss.
+   */
+  it('names a sender by its recorded title, else its member title, else its handle', () => {
+    // Recorded title wins, whatever the members say.
+    expect(
+      senderDisplayName(
+        { senderSessionId: 's-2', sender: 'quiet-otter-7', senderSessionTitle: 'Fix the relay' },
+        [],
+      ),
+    ).toBe('Fix the relay');
+
+    // No recorded title: the member list is the fallback.
+    expect(
+      senderDisplayName({ senderSessionId: 's-2', sender: 'quiet-otter-7' }, [member]),
+    ).toBe('Fix the relay');
+
+    // Neither: the handle. 's-1' is not in this room's members.
+    expect(senderDisplayName({ senderSessionId: 's-1', sender: 'brisk-comet-42' }, [member])).toBe(
+      'brisk-comet-42',
+    );
+
+    // A deleted session: no id, no recorded title — only the handle survived.
+    expect(senderDisplayName({ senderSessionId: null, sender: 'lost-fox-3' }, [member])).toBe(
+      'lost-fox-3',
+    );
+  });
+
   it('takes "" as touching every room, and matches names without case', () => {
     expect(touches('', 'relay')).toBe(true);
     expect(touches('Relay', 'relay')).toBe(true);
@@ -160,6 +192,27 @@ describe('the transcript', () => {
         interjected: true,
       }),
     ]);
+  });
+
+  it('keeps the owner’s provenance on a pushed human message', () => {
+    const items = new TranscriptFolder().fold([
+      {
+        ordinal: 0,
+        kind: 'ChatMentionReceived',
+        payloadJson: JSON.stringify({
+          roomId: 'r-1',
+          room: 'relay',
+          seq: 43,
+          senderSessionId: null,
+          sender: 'Jess',
+          fromUser: true,
+          text: '@quiet-otter-7 please review this',
+          member: true,
+          interjected: false,
+        }),
+      },
+    ]);
+    expect(items[0]).toEqual(expect.objectContaining({ kind: 'chat-mention', fromUser: true, sender: 'Jess' }));
   });
 
   /** A change of routed effort alone puts a new divider in; it has to say so. */
@@ -251,6 +304,12 @@ const mockSeam = {
   chatRoom: jest.fn((_name: string, _before?: number | null) =>
     Promise.resolve<ChatRoomView | null>(view([entry(3), entry(4, { mentioned: ['quiet-otter-7'] })], true)),
   ),
+  createChatRoom: jest.fn((_request: { name: string; description: string }) =>
+    Promise.resolve(view([], false)),
+  ),
+  postChatRoomMessage: jest.fn((_name: string, request: { text: string }) =>
+    Promise.resolve(entry(5, { senderSessionId: null, sender: 'jess', fromUser: true, text: request.text })),
+  ),
   deleteChatRoom: jest.fn(() => Promise.resolve(true)),
 };
 const mockRoomListeners = new Set<(room: string) => void>();
@@ -276,6 +335,7 @@ function navigator() {
   return {
     navigate: jest.fn(),
     push: jest.fn(),
+    replace: jest.fn(),
     goBack: jest.fn(),
     setOptions: jest.fn(),
     addListener: () => () => {},
@@ -371,6 +431,60 @@ describe('one room', () => {
     await act(async () => tree.unmount());
   });
 
+  it('names senders by session title, with the handle only as metadata', async () => {
+    mockSeam.chatRoom.mockImplementationOnce(() =>
+      Promise.resolve(
+        view([
+          // Recorded title leads; the handle sits beside it as metadata.
+          entry(7, {
+            senderSessionId: 's-2',
+            sender: 'quiet-otter-7',
+            senderSessionTitle: 'Fix the relay',
+          }),
+          // Not a member and no recorded title: the handle is all there is.
+          entry(8, { senderSessionId: 's-9', sender: 'ghost-wolf-9' }),
+        ]),
+      ),
+    );
+    const tree = await mount(<RoomScreen route={route} navigation={navigator()} />);
+    const rendered = text(tree);
+    expect(rendered).toContain('Fix the relay');
+    expect(rendered).toContain('@quiet-otter-7');
+    expect(rendered).toContain('ghost-wolf-9');
+    await act(async () => tree.unmount());
+  });
+
+  it('marks a human post as the owner’s and sends the composer through the seam', async () => {
+    mockSeam.chatRoom.mockImplementationOnce(() =>
+      Promise.resolve(
+        view([
+          entry(6, {
+            senderSessionId: null,
+            sender: 'jess',
+            fromUser: true,
+            text: '@quiet-otter-7 ship it',
+            mentioned: ['quiet-otter-7'],
+          }),
+        ]),
+      ),
+    );
+    const tree = await mount(<RoomScreen route={route} navigation={navigator()} />);
+    expect(text(tree)).toContain('owner');
+    expect(
+      tree.root.findAll(n => n.props.accessibilityLabel === 'jess, channel owner' && n.props.onPress),
+    ).toHaveLength(0);
+
+    const input = tree.root.find(n => n.props.accessibilityLabel === 'Message #relay' && n.props.onChangeText);
+    await act(async () => input.props.onChangeText('@quiet-otter-7 next'));
+    await act(async () =>
+      tree.root.find(n => n.props.accessibilityLabel === 'Send message' && n.props.onPress).props.onPress(),
+    );
+    await act(async () => {});
+    expect(mockSeam.postChatRoomMessage).toHaveBeenCalledWith('relay', { text: '@quiet-otter-7 next' });
+    expect(input.props.value).toBe('');
+    await act(async () => tree.unmount());
+  });
+
   it('pages back from the oldest message it has', async () => {
     const tree = await mount(<RoomScreen route={route} navigation={navigator()} />);
     mockSeam.chatRoom.mockImplementationOnce(() => Promise.resolve(view([entry(1), entry(2)], false)));
@@ -400,7 +514,7 @@ describe('one room', () => {
   it('says so when the room is gone', async () => {
     mockSeam.chatRoom.mockImplementationOnce(() => Promise.resolve(null));
     const tree = await mount(<RoomScreen route={route} navigation={navigator()} />);
-    expect(text(tree)).toContain('No such room');
+    expect(text(tree)).toContain('No such channel');
     await act(async () => tree.unmount());
   });
 
@@ -411,7 +525,7 @@ describe('one room', () => {
 
     const options = navigation.setOptions.mock.calls[navigation.setOptions.mock.calls.length - 1][0];
     const [menu] = options.unstable_headerRightItems();
-    const remove = menu.menu.items.find((item: { label: string }) => item.label === 'Delete room');
+    const remove = menu.menu.items.find((item: { label: string }) => item.label === 'Delete channel');
     act(() => remove.onPress());
     expect(mockSeam.deleteChatRoom).not.toHaveBeenCalled();
 

@@ -11,7 +11,7 @@
  */
 import React from 'react';
 import { act, create } from 'react-test-renderer';
-import { SessionStatus, type SessionSummary } from '../src/api/contracts';
+import { SessionStatus, type ChatRoomListing, type SessionSummary } from '../src/api/contracts';
 
 const sessionsFixture: SessionSummary[] = [
   {
@@ -37,6 +37,8 @@ const hits = [
 
 const mockSeam = {
   sessions: jest.fn((): Promise<SessionSummary[]> => Promise.resolve(sessionsFixture)),
+  chatRooms: jest.fn((): Promise<ChatRoomListing[]> => Promise.resolve([])),
+  createChatRoom: jest.fn(),
   models: jest.fn(() => Promise.resolve([])),
   facets: jest.fn(() => Promise.resolve([])),
   recentRepos: jest.fn(() => Promise.resolve([])),
@@ -82,6 +84,7 @@ import { SessionsScreen } from '../src/screens/Sessions';
 
 /** The header search bar the navigator owns; the screen only receives its text. */
 let onChangeText: ((e: { nativeEvent: { text: string } }) => void) | undefined;
+const navigate = jest.fn();
 
 async function mount() {
   let tree!: ReturnType<typeof create>;
@@ -96,7 +99,7 @@ async function mount() {
               onChangeText = options.headerSearchBarOptions?.onChangeText;
             },
             addListener: () => () => {},
-            navigate: jest.fn(),
+            navigate,
           } as never
         }
       />,
@@ -108,6 +111,7 @@ async function mount() {
 beforeEach(() => {
   mockSeam.sessionSearch.mockClear();
   mockSeam.sessions.mockClear();
+  navigate.mockClear();
   onChangeText = undefined;
 });
 
@@ -135,6 +139,10 @@ async function type(tree: ReturnType<typeof create>, text: string) {
     if (node == null) return;
     if (typeof node === 'string') {
       out.push(node);
+      return;
+    }
+    if (Array.isArray(node)) {
+      node.forEach(walk);
       return;
     }
     const element = node as { children?: unknown[] };
@@ -189,5 +197,33 @@ describe('launcher recall', () => {
     expect(all).toContain('Codex quota polling');
     expect(all).toContain('· archived');
     expect(all).not.toContain('No sessions yet');
+  });
+
+  it('puts shared channels beside the DMs and opens one', async () => {
+    mockSeam.chatRooms.mockImplementationOnce(() =>
+      Promise.resolve([
+        {
+          id: 'r-1',
+          name: 'relay',
+          description: 'push relay coordination',
+          members: 2,
+          messages: 3,
+          createdAt: '2026-11-17T09:00:00Z',
+          lastMessageAt: '2026-11-17T10:00:00Z',
+          lastSender: 'brisk-comet-42',
+          lastPreview: 'shipped the relay',
+        },
+      ]),
+    );
+    const tree = await mount();
+    try {
+      const row = tree.root.find(
+        n => n.props.accessibilityLabel === '#relay, brisk-comet-42: shipped the relay' && n.props.onPress,
+      );
+      await act(async () => row.props.onPress());
+      expect(navigate).toHaveBeenCalledWith('Room', { name: 'relay' });
+    } finally {
+      await act(async () => tree.unmount());
+    }
   });
 });
