@@ -25,6 +25,7 @@ import { LoginScreen, ScanScreen } from './screens/Login';
 import { SessionDetailScreen } from './screens/SessionDetail';
 import { ReviewsScreen, ReviewDetailScreen } from './screens/Reviews';
 import { RoutineScreen } from './screens/Routine';
+import { RoomScreen, RoomsScreen } from './screens/Rooms';
 import { RoutineEditorScreen } from './screens/RoutineEditor';
 import { DocEditorScreen } from './screens/settings/DocEditor';
 import { ProviderEditorScreen } from './screens/settings/ProviderEditor';
@@ -91,6 +92,11 @@ export default function App() {
                 <Root.Screen name="Reviews" component={ReviewsScreen} options={{ title: 'Reviews', ...glassBar }} />
                 <Root.Screen name="ReviewDetail" component={ReviewDetailScreen} options={{ title: '', ...glassBar }} />
                 <Root.Screen name="Routine" component={RoutineScreen} options={{ title: '', ...glassBar }} />
+                {/* On the root stack rather than a tab: reached from Settings and
+                    from a session's chat handle alike, and a room's messages
+                    open the sessions that wrote them. */}
+                <Root.Screen name="Rooms" component={RoomsScreen} options={{ title: 'Chat rooms', ...glassBar }} />
+                <Root.Screen name="Room" component={RoomScreen} options={{ title: '', ...glassBar }} />
                 <Root.Screen
                   name="RoutineEditor"
                   component={RoutineEditorScreen}

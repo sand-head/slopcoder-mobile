@@ -37,6 +37,7 @@ import {
 import { parseSlashCommand } from '../api/slash';
 import { buildProposalCard, buildToolCard } from '../api/toolcard';
 import type { SubSessionMention } from '../api/mentions';
+import { handleTint } from '../api/rooms';
 import {
   groupSubagents,
   subagentDetail,
@@ -63,6 +64,7 @@ import {
   Mono,
   Screen,
   Prose,
+  stamp,
 } from '../ui/kit';
 import { animateNextLayout } from '../ui/motion';
 import { Composer, type TurnOptions } from '../ui/Composer';
@@ -138,7 +140,8 @@ export function SessionDetailScreen({
   // should not attach a shell to whatever session was last looked at. And not
   // while the terminal is already up, where a shake is just a shake.
   const focused = useIsFocused();
-  useShake(focused && !terminalOpen && !usageOpen, () => {
+  // Nor on an archived session, whose sandbox never starts again.
+  useShake(focused && !terminalOpen && !usageOpen && !state?.archivedAt, () => {
     tapConfirm();
     setTerminalOpen(true);
   });
@@ -208,6 +211,9 @@ export function SessionDetailScreen({
   // A sub-session's prompts come from the agent that opened it: there is no
   // composer, and the prompts in the transcript are not the user's words.
   const parentDriven = !!state?.parentSessionId;
+  // Archived for going untouched too long: kept for its history and for
+  // search, but read-only for good — no turn runs, the sandbox never returns.
+  const archived = !!state?.archivedAt;
 
   const send = async () => {
     if (!seam || !state) return;
@@ -292,12 +298,13 @@ export function SessionDetailScreen({
   }, [state?.lastUsage]);
 
   const subtitle = [
+    archived ? 'archived · read-only' : null,
     parentDriven
       ? state?.closed
         ? 'sub-session · set aside'
         : 'sub-session'
       : null,
-    running ? 'running' : 'idle',
+    archived ? null : running ? 'running' : 'idle',
     contextPercent === null ? null : `${contextPercent}%`,
     state?.usage.estimatedCost == null
       ? null
@@ -376,6 +383,10 @@ export function SessionDetailScreen({
     (subId: string) => navigation.push('Session', { id: subId }),
     [navigation],
   );
+  const onOpenRoom = useCallback(
+    (room: string) => navigation.navigate('Room', { name: room }),
+    [navigation],
+  );
   const onApprove = useCallback(
     (requestId: string, approved: boolean) => {
       if (approved) tapConfirm();
@@ -417,6 +428,7 @@ export function SessionDetailScreen({
       onApprove,
       onAnswer,
       onOpenSubSession,
+      onOpenRoom,
     }),
     [
       parentDriven,
@@ -427,6 +439,7 @@ export function SessionDetailScreen({
       onApprove,
       onAnswer,
       onOpenSubSession,
+      onOpenRoom,
     ],
   );
 
@@ -590,7 +603,12 @@ export function SessionDetailScreen({
             paddingTop: 4,
           }}
         >
-          {parentDriven ? (
+          {archived ? (
+            <ArchivedNote
+              at={state?.archivedAt ?? null}
+              onNewSession={() => navigation.navigate('Tabs', { screen: 'SessionsTab' })}
+            />
+          ) : parentDriven ? (
             <SubSessionNote closed={state?.closed === true} />
           ) : (
             <Composer
@@ -625,6 +643,11 @@ export function SessionDetailScreen({
               }
               onChangeOptions={applyOptions}
               models={models}
+              routed={
+                state?.autoRoute
+                  ? { connectionId: state.connectionId, modelId: state.selectedModel }
+                  : null
+              }
               facets={facets}
               commands={{ list: commands, onNeeded: loadCommands }}
             />
@@ -697,6 +720,24 @@ export function SessionDetailScreen({
                 </Mono>
               ) : null}
             </View>
+
+            {state.chatHandle ? (
+              <View style={{ gap: 6 }}>
+                <Meta>chat rooms</Meta>
+                {/* What other agents @mention to reach this session. */}
+                <Mono selectable style={{ fontSize: 12.5, color: c.foreground }}>
+                  @{state.chatHandle}
+                </Mono>
+                <Button
+                  label="Open chat rooms"
+                  variant="ghost"
+                  onPress={() => {
+                    setUsageOpen(false);
+                    navigation.navigate('Rooms');
+                  }}
+                />
+              </View>
+            ) : null}
           </>
         ) : null}
       </Sheet>
@@ -757,6 +798,28 @@ interface RowHandlers {
   onApprove: (requestId: string, approved: boolean) => void;
   onAnswer: (requestId: string, answers: UserQuestionAnswer[] | null) => void;
   onOpenSubSession: (id: string) => void;
+  onOpenRoom: (room: string) => void;
+}
+
+/**
+ * Where the composer would be on an archived session: the reason there isn't
+ * one, and the way on — a new session, since this one never runs again.
+ */
+function ArchivedNote({ at, onNewSession }: { at: string | null; onNewSession: () => void }) {
+  const { c } = useTheme();
+  return (
+    <GlassSurface
+      cornerRadius={radius.xl}
+      style={{ paddingHorizontal: 14, paddingVertical: 12, gap: 6 }}
+    >
+      <Body style={{ fontSize: 13, color: c.mutedForeground }}>
+        Archived{at ? ` ${stamp(at)}` : ''} after a long stretch without
+        activity. It is read-only now — its sandbox won't start again — but it
+        stays searchable until you delete it.
+      </Body>
+      <Button label="Start a new session" variant="ghost" onPress={onNewSession} />
+    </GlassSurface>
+  );
 }
 
 /**
@@ -1031,6 +1094,7 @@ const TranscriptRow = React.memo(function Transcript({
     onApprove,
     onAnswer,
     onOpenSubSession,
+    onOpenRoom,
   },
 }: {
   item: Item;
@@ -1112,6 +1176,38 @@ const TranscriptRow = React.memo(function Transcript({
             {item.text}
           </Body>
         </View>
+      );
+    }
+
+    case 'chat-mention': {
+      // Another agent @mentioned this one in a room. Like a partner's reply it
+      // is a card with a name on it and never the 'you' card — nobody typed it
+      // — in the sender's own shade, the one the rooms page draws them in. A
+      // tap opens the room, where the rest of the conversation is.
+      const tint = tintFor(handleTint(item.sender), isDark) ?? status.subagent;
+      return (
+        <Pressable
+          onPress={() => onOpenRoom(item.room)}
+          accessibilityRole="button"
+          accessibilityLabel={`${item.sender} mentioned this agent in #${item.room}. Open the room`}
+          style={({ pressed }) => ({
+            marginVertical: 8,
+            borderRadius: radius.lg,
+            borderWidth: 1,
+            borderColor: mix(tint, 25),
+            backgroundColor: mix(tint, isDark ? (pressed ? 14 : 8) : pressed ? 9 : 4),
+            padding: 12,
+            gap: 4,
+          })}
+        >
+          <Meta style={{ color: tint, fontSize: 10.5 }}>
+            @{item.sender} · #{item.room} · message {item.seq}
+            {item.interjected ? ' · mid-turn' : ''}
+          </Meta>
+          <Body selectable style={{ fontSize: 14 }}>
+            {item.text}
+          </Body>
+        </Pressable>
       );
     }
 

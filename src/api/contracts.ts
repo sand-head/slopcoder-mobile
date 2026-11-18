@@ -253,6 +253,16 @@ export interface SessionState {
   subSessionProfile?: string | null;
   /** A sub-session its driving agent has set aside. Reversible: a prompt revives it. */
   closed?: boolean;
+  /**
+   * This session's username in chat rooms (`brisk-comet-42`): what other agents
+   * @mention to reach it. Null on an older session that has never used a room.
+   */
+  chatHandle?: string | null;
+  /**
+   * When it was archived for going untouched too long, or null. An archived
+   * session is read-only for good: its transcript stays, nothing runs again.
+   */
+  archivedAt?: string | null;
 }
 
 /**
@@ -434,6 +444,20 @@ export interface CodexQuotaSummary {
 }
 
 /**
+ * One subscription connection's allowance — a ChatGPT plan behind Codex or a
+ * Claude plan behind Claude Code. Mirrors `PlanQuotaSummary`.
+ */
+export interface PlanQuotaSummary extends CodexQuotaSummary {
+  kind: ProviderKind;
+  /**
+   * Whether asking again can learn anything new. Codex is polled from ChatGPT
+   * on request; a Claude plan is only ever observed — Claude Code reports its
+   * windows as it runs a turn — so it is as of the last turn on that connection.
+   */
+  canRefresh: boolean;
+}
+
+/**
  * One matching moment in a past session: which session, when, who said it
  * ("user" | "assistant" — the server maps the event kinds), and a short
  * excerpt around the match. Scoped to the caller's own sessions.
@@ -444,6 +468,8 @@ export interface SessionSearchHit {
   when: string;
   kind: string;
   snippet: string;
+  /** Archived sessions stay searchable but can no longer be continued. */
+  archived?: boolean;
 }
 
 // ---- catalogs the create screen needs ----
@@ -458,7 +484,12 @@ export interface ModelCandidate {
   tierSource: number;
   contextWindowTokens: number;
   defaultThinkingLevel?: ThinkingLevel | null;
-  supportedThinkingLevels: ThinkingLevel[];
+  /** Effort levels only; null or empty means unknown, which offers every one. */
+  supportedThinkingLevels?: ThinkingLevel[] | null;
+  /** Thinking can't be switched off on this model, so Off isn't offered and runs as Low. */
+  alwaysThinks?: boolean;
+  /** `yyyy-MM-dd`, or null when the release isn't known. Newest sorts first within a tier. */
+  releaseDate?: string | null;
 }
 
 export interface GitRepoRow {
@@ -971,7 +1002,18 @@ export enum ProviderKind {
   OpenAICompatible = 1,
   OpenAICodex = 2,
   ClaudeCode = 3,
+  /** A Kimi Code membership, over the plan's OpenAI-compatible endpoint. */
+  KimiCode = 4,
 }
+
+/**
+ * Kimi Code's endpoints — one plan, two sites, each serving only its own
+ * accounts. Mirrors `KimiCodeEndpoints` on the server.
+ */
+export const KIMI_CODE_ENDPOINTS = {
+  default: 'https://api.kimi.com/coding/v1',
+  overseas: 'https://api.kimi.ai/coding/v1',
+} as const;
 
 export enum ModelTier {
   Simple = 0,
@@ -1012,6 +1054,7 @@ export interface ModelOption {
   contextWindowTokens?: number | null;
   defaultThinkingLevel?: ThinkingLevel | null;
   supportedThinkingLevels?: ThinkingLevel[] | null;
+  alwaysThinks?: boolean;
 }
 
 export interface GitConnectionSummary {
@@ -1931,4 +1974,64 @@ export interface CodeReviewPublicationPreview {
   items: CodeReviewPublicationPreviewItem[];
   target: CodeReviewElevationTarget;
   repository: string | null;
+}
+
+// ---- chat rooms ----
+
+/** One chat room, as the rooms list shows it. Mirrors `ChatRoomListing`. */
+export interface ChatRoomListing {
+  id: string;
+  name: string;
+  description: string;
+  members: number;
+  messages: number;
+  createdAt: string;
+  lastMessageAt: string | null;
+  /** Handle of whoever posted last; null before any message. */
+  lastSender: string | null;
+  /** The start of the last message, one line; null before any. */
+  lastPreview: string | null;
+}
+
+/** One agent session in a room. */
+export interface ChatRoomPresence {
+  sessionId: string;
+  /** Its chat username, `brisk-comet-42`. */
+  handle: string;
+  sessionTitle: string;
+  /** "running", "idle" or "set aside". */
+  state: string;
+  isSubSession: boolean;
+  joinedAt: string;
+  /** How far it has read; behind the room's end means unread messages. */
+  lastReadSeq: number;
+}
+
+/** One message. */
+export interface ChatRoomEntry {
+  seq: number;
+  /** Null once the posting session has been deleted. */
+  senderSessionId: string | null;
+  sender: string;
+  text: string;
+  /** Handles the message @mentioned, as resolved when it was posted. */
+  mentioned: string[];
+  at: string;
+}
+
+/** A room with its members and a page of its messages, oldest first. */
+export interface ChatRoomView {
+  room: ChatRoomListing;
+  members: ChatRoomPresence[];
+  messages: ChatRoomEntry[];
+  /** Older messages exist before the first one here. */
+  hasEarlier: boolean;
+}
+
+// ---- git identity ----
+
+/** The default author a user's session sandboxes commit as. Null or blank: leave it unset. */
+export interface GitIdentityPrefs {
+  name: string | null;
+  email: string | null;
 }

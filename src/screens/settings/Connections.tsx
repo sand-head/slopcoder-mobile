@@ -87,19 +87,22 @@ export function ConnectionsScreen({ navigation }: { navigation: any }) {
   // ---- the bar: one + that opens the four ways in ----
 
   useLayoutEffect(() => {
+    const form = (p: (typeof ADDABLE_PROVIDERS)[number]) => ({
+      key: String(p.kind),
+      label: `${p.label} · ${p.note}`,
+      symbol: 'key',
+      onPress: () => navigation.navigate('ProviderEditor', { kind: p.kind }),
+    });
+    // The web's order: the key-based forms, the Codex sign-in, then Kimi Code.
     const items = [
-      ...ADDABLE_PROVIDERS.map(p => ({
-        key: String(p.kind),
-        label: `${p.label} · ${p.note}`,
-        symbol: 'key',
-        onPress: () => navigation.navigate('ProviderEditor', { kind: p.kind }),
-      })),
+      ...ADDABLE_PROVIDERS.filter(p => p.kind !== ProviderKind.KimiCode).map(form),
       {
         key: 'codex',
         label: 'ChatGPT · Codex · subscription',
         symbol: 'person.crop.circle',
         onPress: () => navigation.navigate('CodexConnect'),
       },
+      ...ADDABLE_PROVIDERS.filter(p => p.kind === ProviderKind.KimiCode).map(form),
     ];
     navigation.setOptions({
       title: 'Connections',
@@ -210,7 +213,9 @@ export function ConnectionsScreen({ navigation }: { navigation: any }) {
                 error:
                   connection.kind === ProviderKind.OpenAICompatible
                     ? 'No models came back from that endpoint. If it doesn\u2019t list its own, add a model catalog for it.'
-                    : 'That connection is no longer available.',
+                    : connection.kind === ProviderKind.KimiCode
+                      ? 'Kimi Code didn\u2019t list any models. Check the key, and that the plan still accepts slopcoder as a client.'
+                      : 'That connection is no longer available.',
               }
             : current,
         );

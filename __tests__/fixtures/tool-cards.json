@@ -1430,9 +1430,9 @@
       "profile": "coder",
       "model": "claude-sonnet-5"
     },
-    "result": "Brought on Priya (push relay) on claude-sonnet-5 \u2014 starting on it now. Their reply does not come back to this call: it arrives on its own and starts a new turn for you.",
+    "result": "Opened brisk-comet-42 (push relay) on claude-sonnet-5: it starts on this now. Its reply is not returned by this call. It is delivered separately: into your current turn if you are mid-turn, or as a new turn if you are idle.",
     "expected": {
-      "verb": "Bring on",
+      "verb": "Open",
       "subject": "push relay",
       "subjectStyle": "plain",
       "facets": [
@@ -1452,7 +1452,7 @@
           "label": "result",
           "open": false,
           "tone": "plain",
-          "text": "Brought on Priya (push relay) on claude-sonnet-5 \u2014 starting on it now. Their reply does not come back to this call: it arrives on its own and starts a new turn for you."
+          "text": "Opened brisk-comet-42 (push relay) on claude-sonnet-5: it starts on this now. Its reply is not returned by this call. It is delivered separately: into your current turn if you are mid-turn, or as a new turn if you are idle."
         }
       ]
     }
@@ -1461,13 +1461,13 @@
     "name": "prompt a sub-session",
     "tool": "prompt_subsession",
     "input": {
-      "subsession": "Priya",
+      "subsession": "brisk-comet-42",
       "prompt": "Now cover the duplicate-subscriber case."
     },
-    "result": "Sent to Priya (push relay) on claude-sonnet-5 \u2014 one earlier message of yours to finish first.",
+    "result": "Sent to brisk-comet-42 (push relay) on claude-sonnet-5: 1 earlier prompt of yours is queued ahead of this one.",
     "expected": {
       "verb": "Send to",
-      "subject": "Priya",
+      "subject": "brisk-comet-42",
       "subjectStyle": "plain",
       "facets": [],
       "blocks": [
@@ -1483,7 +1483,7 @@
           "label": "result",
           "open": false,
           "tone": "plain",
-          "text": "Sent to Priya (push relay) on claude-sonnet-5 \u2014 one earlier message of yours to finish first."
+          "text": "Sent to brisk-comet-42 (push relay) on claude-sonnet-5: 1 earlier prompt of yours is queued ahead of this one."
         }
       ]
     }
@@ -1524,13 +1524,13 @@
     "name": "promote a sub-session",
     "tool": "promote_subsession",
     "input": {
-      "subsession": "Priya",
+      "subsession": "brisk-comet-42",
       "profile": "coder"
     },
-    "result": "Priya now works with the coder profile.",
+    "result": "brisk-comet-42 now runs with the coder profile, from its next turn.",
     "expected": {
       "verb": "Change profile",
-      "subject": "Priya",
+      "subject": "brisk-comet-42",
       "subjectStyle": "plain",
       "facets": [],
       "blocks": [
@@ -1539,7 +1539,7 @@
           "label": "result",
           "open": false,
           "tone": "plain",
-          "text": "Priya now works with the coder profile."
+          "text": "brisk-comet-42 now runs with the coder profile, from its next turn."
         }
       ]
     }
@@ -1548,14 +1548,14 @@
     "name": "move a sub-session to another model",
     "tool": "promote_subsession",
     "input": {
-      "subsession": "Priya",
+      "subsession": "brisk-comet-42",
       "model": "claude-opus-5",
       "effort": "high"
     },
-    "result": "Priya now works with claude-opus-5 (their history carries over; the cache does not) and high effort, from their next turn.",
+    "result": "brisk-comet-42 now runs with claude-opus-5 (its history carries over; the cache does not) and high effort, from its next turn.",
     "expected": {
       "verb": "Move to claude-opus-5",
-      "subject": "Priya",
+      "subject": "brisk-comet-42",
       "subjectStyle": "plain",
       "facets": [],
       "blocks": [
@@ -1564,21 +1564,21 @@
           "label": "result",
           "open": false,
           "tone": "plain",
-          "text": "Priya now works with claude-opus-5 (their history carries over; the cache does not) and high effort, from their next turn."
+          "text": "brisk-comet-42 now runs with claude-opus-5 (its history carries over; the cache does not) and high effort, from its next turn."
         }
       ]
     }
   },
   {
-    "name": "call a sub-session off its work",
+    "name": "stop a sub-session's current turn",
     "tool": "stop_subsession",
     "input": {
-      "subsession": "Priya"
+      "subsession": "brisk-comet-42"
     },
-    "result": "Priya is off that work \u2014 their turn was cancelled mid-flight, so it is unfinished, and they sent no reply. They keep everything they know; prompt Priya with what to do instead.",
+    "result": "brisk-comet-42's turn was cancelled mid-flight; the work is unfinished and no reply will be sent. It keeps its context; prompt brisk-comet-42 with what to do next.",
     "expected": {
-      "verb": "Call off",
-      "subject": "Priya",
+      "verb": "Stop",
+      "subject": "brisk-comet-42",
       "subjectStyle": "plain",
       "facets": [],
       "blocks": [
@@ -1587,7 +1587,7 @@
           "label": "result",
           "open": false,
           "tone": "plain",
-          "text": "Priya is off that work \u2014 their turn was cancelled mid-flight, so it is unfinished, and they sent no reply. They keep everything they know; prompt Priya with what to do instead."
+          "text": "brisk-comet-42's turn was cancelled mid-flight; the work is unfinished and no reply will be sent. It keeps its context; prompt brisk-comet-42 with what to do next."
         }
       ]
     }
@@ -1596,12 +1596,12 @@
     "name": "close a sub-session",
     "tool": "close_subsession",
     "input": {
-      "subsession": "Priya"
+      "subsession": "brisk-comet-42"
     },
-    "result": "Priya is set aside. Prompt them to bring them back.",
+    "result": "brisk-comet-42 is set aside. Prompt it to reopen it.",
     "expected": {
       "verb": "Set aside",
-      "subject": "Priya",
+      "subject": "brisk-comet-42",
       "subjectStyle": "plain",
       "facets": [],
       "blocks": [
@@ -1610,7 +1610,7 @@
           "label": "result",
           "open": false,
           "tone": "plain",
-          "text": "Priya is set aside. Prompt them to bring them back."
+          "text": "brisk-comet-42 is set aside. Prompt it to reopen it."
         }
       ]
     }

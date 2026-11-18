@@ -125,7 +125,7 @@ beforeEach(() => {
 });
 
 describe('the connections page', () => {
-  it('lists a provider with its meta line, the git account, and four ways to add', async () => {
+  it('lists a provider with its meta line, the git account, and five ways to add', async () => {
     const navigation = navigator();
     const tree = await mount(<ConnectionsScreen navigation={navigation} />);
     const rendered = text(tree);
@@ -146,6 +146,7 @@ describe('the connections page', () => {
       'OpenAI-compatible · endpoint',
       'Claude Code · subscription',
       'ChatGPT · Codex · subscription',
+      'Kimi Code · subscription',
     ]);
   });
 
@@ -299,6 +300,46 @@ describe('the provider editor', () => {
     expect(mockSeam.createConnection).toHaveBeenLastCalledWith(
       expect.objectContaining({ modelCatalogJson: '{"models":[{"slug":"m"}]}' }),
     );
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  /**
+   * Kimi Code is a key form like Anthropic's: the base URL is optional (the
+   * kimi.com endpoint is the default), and the kimi.ai one is named where a
+   * member of the overseas site will look for it. No catalog: it lists its own.
+   */
+  it('connects a Kimi Code plan with the default endpoint unless one is typed', async () => {
+    const navigation = navigator();
+    const tree = await mount(
+      <ProviderEditorScreen route={{ params: { kind: ProviderKind.KimiCode } }} navigation={navigation} />,
+    );
+
+    expect(bar(navigation).title).toBe('Connect Kimi Code');
+    const rendered = text(tree);
+    expect(rendered).toContain('kimi.com/code/console');
+    expect(rendered).toContain('https://api.kimi.ai/coding/v1');
+    expect(rendered).toContain('base url (optional)');
+    expect(rendered).not.toContain('preset');
+    expect(tree.root.findAll(n => n.props.accessibilityLabel === "this endpoint doesn't list its models")).toHaveLength(0);
+
+    for (const [label, value] of [['Name', 'My Kimi plan'], ['API key', 'sk-kimi']] as const) {
+      const field = tree.root.findAll(n => typeof n.props.onChangeText === 'function' && n.props.accessibilityLabel === label);
+      await act(async () => {
+        field[field.length - 1].props.onChangeText(value);
+      });
+    }
+    await act(async () => {
+      bar(navigation).unstable_headerRightItems()[0].onPress!();
+    });
+    await act(async () => {});
+
+    expect(mockSeam.createConnection).toHaveBeenLastCalledWith({
+      kind: ProviderKind.KimiCode,
+      displayName: 'My Kimi plan',
+      apiKey: 'sk-kimi',
+      baseUrl: null,
+      modelCatalogJson: null,
+    });
     expect(navigation.goBack).toHaveBeenCalled();
   });
 });

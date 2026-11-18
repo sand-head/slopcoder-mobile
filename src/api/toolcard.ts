@@ -519,7 +519,7 @@ function compose(
 
     // ---- agent ----
     case 'open_subsession':
-      return subSession('Bring on', str(input, 'name'), input, result, isError);
+      return subSession('Open', str(input, 'name'), input, result, isError);
     // The subject is the name the agent typed, which is how it thinks of the
     // partner; legacy rows carry an id there and their reply header is the only
     // place the name appears.
@@ -542,7 +542,7 @@ function compose(
       );
     case 'stop_subsession':
       return named(
-        'Call off',
+        'Stop',
         str(input, 'subsession') ?? shortId(str(input, 'subsession_id')),
         result,
         isError,

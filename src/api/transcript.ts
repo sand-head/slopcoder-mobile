@@ -31,7 +31,8 @@ export type ItemKind =
   | 'divider'
   | 'subagent-start'
   | 'subsession'
-  | 'subsession-reply';
+  | 'subsession-reply'
+  | 'chat-mention';
 
 export interface PlanStep {
   text: string;
@@ -179,9 +180,28 @@ export interface SubSessionReplyItem extends BaseItem {
   interjected: boolean;
 }
 
+/**
+ * Another agent @mentioned this one in a chat room, and the message was pushed
+ * here. Like a partner's reply it is either why the turn under it started or an
+ * arrival inside one — and, like that reply, nobody typed it, so it is never a
+ * `user` item.
+ */
+export interface ChatMentionItem extends BaseItem {
+  kind: 'chat-mention';
+  /** The room's name, without the '#'. */
+  room: string;
+  /** Its place in the room, as `read_room` numbers it. */
+  seq: number;
+  /** The poster's chat handle, `brisk-comet-42`. */
+  sender: string;
+  text: string;
+  interjected: boolean;
+}
+
 export type Item =
   | UserItem
   | SubSessionReplyItem
+  | ChatMentionItem
   | TextItem
   | ThinkItem
   | ToolItem
@@ -219,6 +239,22 @@ function promotion(
   if (parts.length === 0) return 'changed';
   if (parts.length === 1) return parts[0];
   return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+}
+
+/** `ThinkingLevel`'s numbers, as the TUI and the export word them. */
+const EFFORT_WORDS = ['off', 'low', 'medium', 'high', 'max'];
+
+/**
+ * The model divider's label. An Auto turn carries the effort the router settled
+ * on (`ModelSelected.Effort`), and a change of effort alone is what puts a new
+ * divider in the stream — so it has to be on the line, or two dividers in a row
+ * read as the same thing said twice. A fixed-model turn's effort is the dial's,
+ * already on screen, and older rows carry none.
+ */
+export function modelDivider(model: string, autoRouted: boolean, effort: unknown): string {
+  if (!autoRouted) return model;
+  const word = typeof effort === 'number' ? EFFORT_WORDS[effort] : undefined;
+  return word ? `${model} · auto · ${word} effort` : `${model} · auto`;
 }
 
 export class TranscriptFolder {
@@ -495,7 +531,7 @@ export class TranscriptFolder {
         this.add({
           ...base,
           kind: 'divider',
-          label: payload.autoRouted ? `${str('model')} · auto` : str('model'),
+          label: modelDivider(str('model'), payload.autoRouted === true, payload.effort),
         });
         break;
 
@@ -586,6 +622,19 @@ export class TranscriptFolder {
           text: str('text'),
           isError: payload.isError === true,
           color: str('color'),
+          interjected: payload.interjected === true,
+        });
+        break;
+
+      // Like a reply: nobody typed it, so it is never drawn as a prompt.
+      case 'ChatMentionReceived':
+        this.add({
+          ...base,
+          kind: 'chat-mention',
+          room: str('room'),
+          seq: typeof payload.seq === 'number' ? payload.seq : 0,
+          sender: str('sender'),
+          text: str('text'),
           interjected: payload.interjected === true,
         });
         break;

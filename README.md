@@ -10,7 +10,8 @@ Sessions it creates run in the server's Docker sandbox, the same as the web cock
 ## What it does
 
 - Sign in with a password, or by scanning a pairing code from the web UI
-- Create a session: repo search, remote nodes, model, facet, thinking level, approval mode
+- Create a session: repo search, remote nodes, model, facet, thinking level, approval mode — the
+  thinking dial offers what the chosen model offers (no Off on a model that always thinks)
 - Attach photos to a message, from the library or the camera, and see them in the transcript
 - Watch a turn stream in, steer it mid-flight, stop it
 - Answer permission approvals and agent questions
@@ -21,10 +22,17 @@ Sessions it creates run in the server's Docker sandbox, the same as the web cock
   answer goes; edit an existing one; set the heartbeat's cadence, hours and model
 - Read what the agent published: reports, generated logs, a routine's daily file — and
   give one an unlisted link, from the system share sheet
-- Settings, the same ten pages the web has: provider connections (add a key, sign in to
-  Codex, grade and switch models), MCP servers, remote nodes (register, test, install its
-  key), terminal defaults, facets, hooks and permission rules, memory, skills, channels
-  (connect, pair, test) and API keys (mint, revoke, show a pairing code)
+- Watch the chat rooms your agent sessions talk in — live, read-only as on the web — and
+  delete one; a session's own handle and the @mentions it receives show in the session
+- See what's left of a ChatGPT (Codex) or Claude (Claude Code) plan's 5-hour and weekly
+  windows on Usage — Claude's as of the last turn on that connection, since it can only be
+  observed, not polled
+- Read an archived session (one untouched for 30 days): its transcript, without a composer
+- Settings, the same eleven pages the web has: provider connections (add a key, sign in to
+  Codex, connect Claude Code or Kimi Code, grade and switch models), MCP servers, remote
+  nodes (register, test, install its key), terminal defaults, git identity, facets, hooks
+  and permission rules, memory, skills, channels (connect, pair, test) and API keys (mint,
+  revoke, show a pairing code)
 
 ## What it deliberately does not do
 
@@ -49,8 +57,10 @@ src/api/          the seam client — this is the part to read first
   routines.ts     how a routine reads — a port of RoutineFormat.cs
   routineEditor.ts what the editor decides — a port of TriggerEdit.cs and Editor.razor's draft
   settings.ts     what the settings pages decide — the razor @code blocks, function for function
+  models.ts       per-model thinking levels and the picker's order — ThinkingLevels and ModelOrdering
+  rooms.ts        what the chat-room pages decide — Rooms.razor's @code block
 src/state/        auth (keychain), the hub connection, one session's live view
-src/screens/      login (+ scanner), sessions (list + launcher), session detail, routines, routine, routine editor, artifacts (list + one), usage, settings
+src/screens/      login (+ scanner), sessions (list + launcher), session detail, routines, routine, routine editor, artifacts (list + one), chat rooms (list + one), usage, settings
 src/screens/settings/  one list page per web settings page, and the editors they present as sheets
 src/ui/settings.tsx    the grammar those pages share: rows, fields, the focus-reload hook
 src/navigation/   the tab bar and the native-header options every stack shares

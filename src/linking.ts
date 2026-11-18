@@ -34,6 +34,7 @@ export const linking: LinkingOptions<Record<string, any>> = {
               McpServers: 'settings/mcp',
               RemoteNodes: 'settings/nodes',
               Terminal: 'settings/terminal',
+              GitIdentity: 'settings/git-identity',
               Facets: 'settings/facets',
               Hooks: 'settings/hooks',
               Memory: 'settings/memory',
@@ -46,6 +47,8 @@ export const linking: LinkingOptions<Record<string, any>> = {
       },
       Session: 'session/:id',
       Routine: 'routines/:id',
+      Rooms: 'rooms',
+      Room: 'rooms/:name',
     },
   },
 };

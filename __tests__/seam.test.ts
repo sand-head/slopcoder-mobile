@@ -25,6 +25,24 @@ function reply(status: number, body?: unknown) {
 beforeEach(() => fetchMock.mockReset());
 
 describe('Seam', () => {
+  /**
+   * The phone is routinely newer than its server. One from before Claude plans
+   * were listed has no plan-quotas route and answers 404; it still has the
+   * Codex one, and the Usage page must not go blank against it.
+   */
+  it('lists plan quotas, and reads the Codex-only route on a server without them', async () => {
+    const seam = new Seam({ baseUrl: 'https://slop.example.com', apiKey: 'slop_k' });
+    const row = { connectionId: 'c', connectionName: 'plan', windows: [], isStale: true };
+
+    fetchMock.mockReturnValueOnce(reply(200, [{ ...row, kind: 3, canRefresh: false }]));
+    expect(await seam.planQuotas(true)).toEqual([{ ...row, kind: 3, canRefresh: false }]);
+    expect(fetchMock.mock.calls[0][0]).toBe('https://slop.example.com/api/seam/usage/plan-quotas?refresh=true');
+
+    fetchMock.mockReturnValueOnce(reply(404)).mockReturnValueOnce(reply(200, [row]));
+    expect(await seam.planQuotas(false)).toEqual([{ ...row, kind: 2, canRefresh: true }]);
+    expect(fetchMock.mock.calls[2][0]).toBe('https://slop.example.com/api/seam/usage/codex-quotas?refresh=false');
+  });
+
   it('sends the header SameOriginFilter demands on a mutation', async () => {
     fetchMock.mockReturnValue(reply(204));
     const seam = new Seam({ baseUrl: 'https://slop.example.com', apiKey: 'slop_k' });
