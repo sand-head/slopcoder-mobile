@@ -1205,6 +1205,18 @@ export interface ArtifactSummary {
   shared: boolean;
   /** App-relative `a/<token>` while shared, else null. */
   sharePath: string | null;
+  hasApp?: boolean;
+  appConfig?: string | null;
+}
+
+export interface ArtifactAppStatus {
+  state: 'stopped' | 'starting' | 'running' | 'exited' | 'unavailable';
+  repo: string | null;
+  port: number | null;
+  error: string | null;
+  landingPath: string;
+  previewUrl: string;
+  sandbox: string;
 }
 
 /** One artifact with its body — null for a binary one, which is fetched raw. */
