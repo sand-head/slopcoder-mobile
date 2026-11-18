@@ -383,3 +383,32 @@ describe('fonts the app does not ship', () => {
     expect(fence).toContain("'Copied!' : 'Copy'");
   });
 });
+
+/**
+ * Android's navigationType is always "other", so artifact links need the real
+ * WebResourceRequest gesture bit. This is a native dependency patch: keep the
+ * applied source and the reproducible patch honest together, or a clean CI
+ * install can silently bring back script-driven external navigation.
+ */
+describe('artifact navigation gesture evidence', () => {
+  it('forwards Android WebResourceRequest.hasGesture through the WebView patch', () => {
+    const client = fs.readFileSync(
+      path.join(
+        ROOT,
+        'node_modules',
+        'react-native-webview',
+        'android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java',
+      ),
+      'utf8',
+    );
+    const patch = fs.readFileSync(
+      path.join(ROOT, 'patches', 'react-native-webview+14.0.1.patch'),
+      'utf8',
+    );
+
+    expect(client).toContain('request.hasGesture()');
+    expect(client).toContain('event.putBoolean("hasGesture", hasGesture)');
+    expect(patch).toContain('request.hasGesture()');
+    expect(patch).toContain('shouldOverrideUrlLoading(view, url, false)');
+  });
+});
