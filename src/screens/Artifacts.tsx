@@ -55,7 +55,7 @@ export function ArtifactsScreen({ navigation }: { navigation: any }) {
       error={list.error}
       loading={list.data === null && !list.error}>
       {list.data?.length === 0 ? (
-        <Empty>Nothing published yet. Ask the agent to write something up and publish it.</Empty>
+        <Empty>Nothing published yet. Ask the agent for a report, dashboard or mini app and publish it.</Empty>
       ) : null}
       {list.data && list.data.length > 0 ? (
         <View style={{ gap: 14 }}>

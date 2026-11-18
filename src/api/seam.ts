@@ -1089,6 +1089,11 @@ export class Seam {
     return `${this.baseUrl}/artifacts/${id}/raw`;
   }
 
+  /** The owner-authenticated HTML page, including its opaque-origin sandbox CSP. */
+  artifactViewUrl(id: string): string {
+    return `${this.baseUrl}/artifacts/${id}/view`;
+  }
+
   shareUrl(sharePath: string): string {
     return `${this.baseUrl}/${sharePath}`;
   }

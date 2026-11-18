@@ -304,7 +304,8 @@ function Block({ block }: { block: ToolBlock }) {
  * The cockpit puts Open and Download beside the name; a phone has one gesture
  * for "open this" and no use for a second copy of a file it cannot put
  * anywhere, so the whole card is the button and the destination is the artifact
- * screen — where downloading, sharing and the unlisted link already live.
+ * screen — where sharing, provenance and the unlisted link live in its native
+ * overflow menu.
  *
  * A card with no id is a call waiting at the approval gate: it says what would
  * be made, and does not pretend to open something that does not exist yet.
@@ -317,11 +318,7 @@ function ArtifactCard({
   const { c } = useTheme();
   const navigation = useNavigation<any>();
   const open = block.artifactId
-    ? () =>
-        navigation.navigate('Tabs', {
-          screen: 'ArtifactsTab',
-          params: { screen: 'Artifact', params: { id: block.artifactId, title: block.name } },
-        })
+    ? () => navigation.navigate('Artifact', { id: block.artifactId, title: block.name })
     : undefined;
 
   return (

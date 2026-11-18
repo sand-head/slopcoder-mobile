@@ -41,7 +41,6 @@ import { SessionsScreen } from '../screens/Sessions';
 import { RoutinesScreen } from '../screens/Routines';
 import { UsageScreen } from '../screens/Usage';
 import { ArtifactsScreen } from '../screens/Artifacts';
-import { ArtifactScreen } from '../screens/Artifact';
 import { SettingsScreen } from '../screens/Settings';
 import { ConnectionsScreen } from '../screens/settings/Connections';
 import { McpServersScreen } from '../screens/settings/McpServers';
@@ -106,9 +105,6 @@ function ArtifactsTab() {
   return (
     <ArtifactsStack.Navigator screenOptions={stackOptions(theme)}>
       <ArtifactsStack.Screen name="Artifacts" component={ArtifactsScreen} options={rootPageOptions} />
-      {/* Reading one is pushed within the tab, as a list's detail is
-          everywhere else on the phone: the bar stays, and back is a swipe. */}
-      <ArtifactsStack.Screen name="Artifact" component={ArtifactScreen} />
     </ArtifactsStack.Navigator>
   );
 }

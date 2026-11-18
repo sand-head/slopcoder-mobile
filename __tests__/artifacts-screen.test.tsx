@@ -4,12 +4,14 @@
  * Three things are worth holding still. The list has to say what an artifact
  * *is* without opening it; it has to *show* it, which is the whole point of a
  * card and the one part of it a screenshot would catch and a diff would not;
- * and the detail screen has to be honest about the share switch in both states,
- * because an "Unlisted link" row that only explains itself once it is already
- * on is a switch people flip to find out what it does.
+ * and the detail screen has to lead with the artifact itself. Metadata and the
+ * sharing controls belong in its native menu, not in a pile of rows before the
+ * content. HTML must use its sandboxed view, and a photo must be zoomable.
  */
 import React from 'react';
+import { Image, Linking, Platform, Share } from 'react-native';
 import { act, create } from 'react-test-renderer';
+import { createOnShouldStartLoadWithRequest } from 'react-native-webview/lib/WebViewShared';
 import type { ArtifactDetail, ArtifactSummary } from '../src/api/contracts';
 
 const report: ArtifactSummary = {
@@ -61,12 +63,53 @@ const mockSeam = {
   shareArtifact: jest.fn(() => Promise.resolve({ ...report, shareToken: 'fresh', shared: true, sharePath: 'a/fresh' })),
   deleteArtifact: jest.fn(() => Promise.resolve(true)),
   artifactRawUrl: (id: string) => `https://slop.example.com/artifacts/${id}/raw`,
+  artifactViewUrl: (id: string) => `https://slop.example.com/artifacts/${id}/view`,
   shareUrl: (path: string) => `https://slop.example.com/${path}`,
 };
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
+
+jest.mock('react-native-webview', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return { WebView: (props: object) => React.createElement(View, props) };
+});
+
+jest.mock('react-native-reanimated', () => {
+  const { View } = require('react-native');
+  return {
+    __esModule: true,
+    default: { View },
+    useSharedValue: (value: unknown) => ({ value }),
+    useAnimatedStyle: (updater: () => object) => updater(),
+    withTiming: (value: unknown) => value,
+  };
+});
+
+jest.mock('react-native-gesture-handler', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const gesture = (type: string) => {
+    const value: Record<string, unknown> = { type };
+    for (const method of ['onBegin', 'onUpdate', 'onEnd', 'minPointers', 'maxPointers', 'numberOfTaps']) {
+      value[method] = () => value;
+    }
+    return value;
+  };
+  return {
+    GestureHandlerRootView: (props: object) => React.createElement(View, props),
+    GestureDetector: ({ children, gesture: value }: { children: React.ReactNode; gesture: object }) =>
+      React.createElement(View, { testID: 'mock-gestures', gesture: value }, children),
+    Gesture: {
+      Pinch: () => gesture('pinch'),
+      Pan: () => gesture('pan'),
+      Tap: () => gesture('tap'),
+      Simultaneous: (...gestures: object[]) => ({ type: 'simultaneous', gestures }),
+    },
+  };
+});
 
 jest.mock('../src/ui/ConnectionBanner', () => ({ ConnectionBanner: () => null }));
 
@@ -158,35 +201,168 @@ describe('the artifacts list', () => {
   });
 });
 
-describe('one artifact', () => {
-  it('explains the unlisted link while it is still off', async () => {
-    const { tree } = await mount(navigation => (
-      <ArtifactScreen navigation={navigation} route={{ params: { id: 'a-1' } }} />
-    ));
+type HeaderAction = { key: string; label: string; onPress: () => void };
 
-    expect(text(tree)).toContain('off — the artifact is visible only to you');
-    expect(text(tree)).not.toContain('slop.example.com/a/');
+function headerActions(navigation: ReturnType<typeof navigator>): HeaderAction[] {
+  const options = navigation.setOptions.mock.calls
+    .map(call => call[0])
+    .filter(option => typeof option.unstable_headerRightItems === 'function')
+    .at(-1) as any;
+  return options.unstable_headerRightItems()[0].menu.items;
+}
+
+describe('one artifact', () => {
+  it('opens the document itself, with metadata and actions out of the body', async () => {
+    const { tree, navigation } = await mount(nav => (
+      <ArtifactScreen navigation={nav} route={{ params: { id: 'a-1' } }} />
+    ));
+    const shown = text(tree);
+
+    expect(shown).toContain('Findings');
+    expect(shown).not.toContain('# Findings');
+    expect(shown).not.toContain('Where sodium-ion actually stands.');
+    expect(shown).not.toContain('battery-landscape');
+    expect(headerActions(navigation).map(item => item.label)).toEqual(['Share…', 'Details', 'Delete']);
   });
 
-  it('shows the link the moment it is minted', async () => {
-    const { tree } = await mount(navigation => (
-      <ArtifactScreen navigation={navigation} route={{ params: { id: 'a-1' } }} />
+  it('mints an unlisted link and presents the share sheet from the menu', async () => {
+    const shareSheet = jest.spyOn(Share, 'share').mockResolvedValue({ action: Share.sharedAction, activityType: undefined });
+    const { navigation } = await mount(nav => (
+      <ArtifactScreen navigation={nav} route={{ params: { id: 'a-1' } }} />
     ));
-    const toggle = tree.root.findAll(n => n.props?.accessibilityLabel === 'Unlisted link')[0];
 
-    await act(async () => toggle.props.onValueChange(true));
+    await act(async () => headerActions(navigation).find(item => item.label === 'Share…')!.onPress());
 
     expect(mockSeam.shareArtifact).toHaveBeenCalledWith('a-1', true);
-    expect(text(tree)).toContain('https://slop.example.com/a/fresh');
-    expect(text(tree)).toContain('anyone with the link can read it');
+    expect(shareSheet).toHaveBeenCalledWith({
+      message: 'https://slop.example.com/a/fresh',
+      url: 'https://slop.example.com/a/fresh',
+    });
+    expect(headerActions(navigation).map(item => item.label)).toContain('Stop sharing');
   });
 
-  it('renders a report as prose rather than as its source', async () => {
-    const { tree } = await mount(navigation => (
-      <ArtifactScreen navigation={navigation} route={{ params: { id: 'a-1' } }} />
+  it('can revoke a shared artifact without putting a switch over its content', async () => {
+    mockSeam.artifact.mockResolvedValueOnce({ artifact: log, text: '04:12  build started' });
+    const { navigation } = await mount(nav => (
+      <ArtifactScreen navigation={nav} route={{ params: { id: 'a-2' } }} />
     ));
 
-    expect(text(tree)).toContain('Findings');
-    expect(text(tree)).not.toContain('# Findings');
+    await act(async () => headerActions(navigation).find(item => item.label === 'Stop sharing')!.onPress());
+
+    expect(mockSeam.shareArtifact).toHaveBeenCalledWith('a-2', false);
+  });
+
+  it('runs HTML from its sandboxed owner route, never as printed source', async () => {
+    mockSeam.artifact.mockResolvedValueOnce({
+      artifact: { ...report, title: 'Revenue dashboard', format: 'html' },
+      text: '<!doctype html><button>Quarter</button><script>runDashboard()</script>',
+    });
+    const { tree } = await mount(nav => (
+      <ArtifactScreen navigation={nav} route={{ params: { id: 'a-1' } }} />
+    ));
+
+    const webview = tree.root.findAllByProps({ testID: 'artifact-webview' })[0];
+    expect(webview.props.source).toEqual({
+      uri: 'https://slop.example.com/artifacts/a-1/view',
+      headers: { Authorization: 'Bearer slop_k' },
+    });
+    expect(webview.props.javaScriptEnabled).toBe(true);
+    expect(webview.props.incognito).toBe(true);
+    expect(webview.props.sharedCookiesEnabled).toBe(false);
+    expect(webview.props.allowFileAccess).toBe(false);
+    expect(webview.props.setSupportMultipleWindows).toBe(true);
+    expect(webview.props.javaScriptCanOpenWindowsAutomatically).toBe(false);
+    expect(text(tree)).not.toContain('runDashboard()');
+  });
+
+  it('opens only deliberate top-frame external links, without the device key', async () => {
+    const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined);
+    mockSeam.artifact.mockResolvedValueOnce({
+      artifact: { ...report, format: 'html' },
+      text: '<a href="https://example.com/source">source</a>',
+    });
+    const { tree } = await mount(nav => (
+      <ArtifactScreen navigation={nav} route={{ params: { id: 'a-1' } }} />
+    ));
+    const webview = tree.root.findAllByProps({ testID: 'artifact-webview' })[0];
+    const own = 'https://slop.example.com/artifacts/a-1/view';
+    const request = (url: string, extra: object = {}) => ({
+      url,
+      isTopFrame: true,
+      navigationType: 'other',
+      ...extra,
+    });
+
+    expect(webview.props.onShouldStartLoadWithRequest(request(own))).toBe(true);
+    expect(webview.props.onShouldStartLoadWithRequest(request(`${own}#quarter`))).toBe(true);
+    // On iOS a programmatic redirect and an iframe are not a link the user tapped.
+    expect(webview.props.onShouldStartLoadWithRequest(request('https://example.com/redirect'))).toBe(false);
+    expect(webview.props.onShouldStartLoadWithRequest(
+      request('https://example.com/frame', { isTopFrame: false, navigationType: 'click' }),
+    )).toBe(false);
+    expect(openURL).not.toHaveBeenCalled();
+
+    expect(webview.props.onShouldStartLoadWithRequest(
+      request('https://example.com/source', { navigationType: 'click' }),
+    )).toBe(false);
+    expect(openURL).toHaveBeenCalledTimes(1);
+    expect(openURL).toHaveBeenLastCalledWith('https://example.com/source');
+
+    // Android's native new-window event covers target=_blank/window.open.
+    webview.props.onOpenWindow({ nativeEvent: { targetUrl: 'https://example.com/window' } });
+    expect(openURL).toHaveBeenCalledTimes(2);
+    expect(openURL).toHaveBeenLastCalledWith('https://example.com/window');
+
+    // Android needs WebResourceRequest.hasGesture(), not navigationType.
+    const platform = Object.getOwnPropertyDescriptor(Platform, 'OS');
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    try {
+      expect(webview.props.onShouldStartLoadWithRequest(request('https://example.com/script'))).toBe(false);
+      expect(webview.props.onShouldStartLoadWithRequest(
+        request('https://example.com/no-gesture', { hasGesture: false }),
+      )).toBe(false);
+      expect(openURL).toHaveBeenCalledTimes(2);
+      expect(webview.props.onShouldStartLoadWithRequest(
+        request('https://example.com/tapped', { hasGesture: true }),
+      )).toBe(false);
+      expect(openURL).toHaveBeenCalledTimes(3);
+      expect(openURL).toHaveBeenLastCalledWith('https://example.com/tapped');
+    } finally {
+      if (platform) Object.defineProperty(Platform, 'OS', platform);
+    }
+
+    // Exercise the library's real wrapper: '*' keeps non-http schemes away
+    // from its built-in Linking fallback, so our callback is the whole policy.
+    const loadRequest = jest.fn();
+    const wrapped = createOnShouldStartLoadWithRequest(
+      loadRequest,
+      webview.props.originWhitelist,
+      webview.props.onShouldStartLoadWithRequest,
+    );
+    wrapped({ nativeEvent: { ...request('file:///private/passwd', { navigationType: 'click' }), lockIdentifier: 7 } } as any);
+    expect(loadRequest).toHaveBeenCalledWith(false, 'file:///private/passwd', 7);
+    expect(openURL).toHaveBeenCalledTimes(3);
+    expect(openURL).not.toHaveBeenCalledWith('file:///private/passwd');
+  });
+
+  it('opens a private photo full-screen with zoom and pan gestures', async () => {
+    mockSeam.artifact.mockResolvedValueOnce({
+      artifact: { ...report, title: 'Factory floor', format: 'binary', contentType: 'image/png', preview: '' },
+      text: null,
+    });
+    const { tree } = await mount(nav => (
+      <ArtifactScreen navigation={nav} route={{ params: { id: 'a-1' } }} />
+    ));
+
+    const image = tree.root.findByType(Image);
+    expect(image.props.source).toEqual({
+      uri: 'https://slop.example.com/artifacts/a-1/raw',
+      headers: { Authorization: 'Bearer slop_k' },
+    });
+    expect(image.props.resizeMode).toBe('contain');
+    expect(image.props.style).not.toHaveProperty('aspectRatio');
+    expect(tree.root.findAllByProps({ testID: 'artifact-photo' }).length).toBeGreaterThan(0);
+    const gestures = tree.root.findAllByProps({ testID: 'mock-gestures' })[0].props.gesture;
+    expect(gestures.gestures.map((item: { type: string }) => item.type)).toEqual(['pinch', 'pan', 'tap']);
   });
 });

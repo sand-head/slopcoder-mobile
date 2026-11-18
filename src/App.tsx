@@ -25,6 +25,7 @@ import { LoginScreen, ScanScreen } from './screens/Login';
 import { SessionDetailScreen } from './screens/SessionDetail';
 import { ReviewsScreen, ReviewDetailScreen } from './screens/Reviews';
 import { RoutineScreen } from './screens/Routine';
+import { ArtifactScreen } from './screens/Artifact';
 import { RoomScreen, RoomsScreen } from './screens/Rooms';
 import { RoutineEditorScreen } from './screens/RoutineEditor';
 import { DocEditorScreen } from './screens/settings/DocEditor';
@@ -37,7 +38,7 @@ import { Tabs } from './navigation/Tabs';
 import { stackOptions } from './navigation/headers';
 import { GlassBar } from './ui/kit';
 import { useTheme } from './theme';
-import { linking } from './linking';
+import { artifactRouteId, linking } from './linking';
 
 const Root = createNativeStackNavigator();
 
@@ -92,6 +93,14 @@ export default function App() {
                 <Root.Screen name="Reviews" component={ReviewsScreen} options={{ title: 'Reviews', ...glassBar }} />
                 <Root.Screen name="ReviewDetail" component={ReviewDetailScreen} options={{ title: '', ...glassBar }} />
                 <Root.Screen name="Routine" component={RoutineScreen} options={{ title: '', ...glassBar }} />
+                {/* An artifact owns the whole screen, including the bottom edge
+                    the tab bar would otherwise take from a dashboard or photo. */}
+                <Root.Screen
+                  name="Artifact"
+                  component={ArtifactScreen}
+                  getId={artifactRouteId}
+                  options={{ title: '', ...glassBar }}
+                />
                 {/* On the root stack rather than a tab: reached from Settings and
                     from a session's chat handle alike, and a room's messages
                     open the sessions that wrote them. */}

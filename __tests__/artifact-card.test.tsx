@@ -75,9 +75,9 @@ it('opens that artifact when the card is tapped', async () => {
 
   await act(async () => pressable.props.onPress());
 
-  expect(mockNavigate).toHaveBeenCalledWith('Tabs', {
-    screen: 'ArtifactsTab',
-    params: { screen: 'Artifact', params: { id: '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b', title: 'battery-landscape' } },
+  expect(mockNavigate).toHaveBeenCalledWith('Artifact', {
+    id: '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b',
+    title: 'battery-landscape',
   });
 });
 

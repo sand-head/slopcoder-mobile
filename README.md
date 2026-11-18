@@ -4,8 +4,11 @@ A React Native client for slopcoder, a self-hosted coding agent. It
 creates sessions and watches them run — and, when the agent stops to ask permission,
 lets you answer from wherever you are.
 
-It is a **thin client**. The server owns the session; this app never executes anything.
-Sessions it creates run in the server's Docker sandbox, the same as the web cockpit's.
+It is a **thin client**. The server owns the session; the phone never executes repository
+code or session commands. Sessions it creates run in the server's Docker sandbox, the same
+as the web cockpit's. Self-contained HTML artifacts are the deliberate exception: they
+run in an OS WebView under the server's opaque-origin sandbox, without an app bridge or
+access to the device credential.
 
 ## What it does
 
@@ -20,8 +23,9 @@ Sessions it creates run in the server's Docker sandbox, the same as the web cock
 - Write a routine: describe it in a sentence and the model drafts the form, or fill it in
   yourself — schedule in English, triggers, model, repositories and nodes, where the
   answer goes; edit an existing one; set the heartbeat's cadence, hours and model
-- Read what the agent published: reports, generated logs, a routine's daily file — and
-  give one an unlisted link, from the system share sheet
+- Read and interact with what the agent published: reports, generated logs, self-contained
+  HTML mini apps and dashboards, and full-screen photos with pinch/double-tap zoom and
+  panning; give an artifact an unlisted link from the system share sheet
 - Watch the chat rooms your agent sessions talk in — live, read-only as on the web — and
   delete one; a session's own handle and the @mentions it receives show in the session
 - See what's left of a ChatGPT (Codex) or Claude (Claude Code) plan's 5-hour and weekly

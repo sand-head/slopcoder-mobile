@@ -11,8 +11,8 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { getStateFromPath } from '@react-navigation/native';
-import { linking } from '../src/linking';
+import { CommonActions, getStateFromPath, StackRouter } from '@react-navigation/native';
+import { artifactRouteId, linking } from '../src/linking';
 
 const INTENT = path.join(
   __dirname,
@@ -67,6 +67,43 @@ describe('the session deep link', () => {
     const state = getStateFromPath('session/abc-123', linking.config as never);
 
     expect(state?.routes.map(r => r.name)).toEqual(['Tabs', 'Session']);
+  });
+
+  it('puts the tab bar under a cold-launched artifact, so the viewer owns the screen', () => {
+    const state = getStateFromPath('artifacts/abc-123', linking.config as never);
+
+    expect(state?.routes.map(r => r.name)).toEqual(['Tabs', 'Artifact']);
+    expect((state?.routes.at(-1)?.params as { id?: string })?.id).toBe('abc-123');
+  });
+
+  it('gives warm navigation to another artifact a fresh route and screen state', () => {
+    const router = StackRouter({});
+    const config = {
+      routeNames: ['Tabs', 'Artifact'],
+      routeParamList: { Tabs: undefined, Artifact: { id: 'initial' } },
+      routeGetIdList: { Tabs: undefined, Artifact: artifactRouteId },
+    };
+    let state = router.getInitialState(config);
+    const navigate = (id: string) => {
+      state = router.getStateForAction(
+        state,
+        CommonActions.navigate('Artifact', { id }),
+        config,
+      ) as typeof state;
+    };
+
+    navigate('artifact-a');
+    const first = state.routes.at(-1);
+    navigate('artifact-b');
+
+    expect(state.routes.map(route => route.name)).toEqual(['Tabs', 'Artifact', 'Artifact']);
+    expect(state.routes.at(-1)?.params).toEqual({ id: 'artifact-b' });
+    expect(state.routes.at(-1)?.key).not.toBe(first?.key);
+
+    navigate('artifact-a');
+    expect(state.routes.filter(route => route.name === 'Artifact')).toHaveLength(2);
+    expect(state.routes.at(-1)?.params).toEqual({ id: 'artifact-a' });
+    expect(state.routes.at(-1)?.key).toBe(first?.key);
   });
 
   it('routes the path the push payload carries', () => {

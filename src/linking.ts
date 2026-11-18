@@ -15,6 +15,11 @@
  */
 import type { LinkingOptions } from '@react-navigation/native';
 
+/** A different artifact is a different route, even during warm-link navigation. */
+export function artifactRouteId({ params }: { params?: object }): string | undefined {
+  return (params as { id?: string } | undefined)?.id;
+}
+
 export const linking: LinkingOptions<Record<string, any>> = {
   prefixes: ['slopcoder://'],
   config: {
@@ -24,7 +29,7 @@ export const linking: LinkingOptions<Record<string, any>> = {
         screens: {
           SessionsTab: { screens: { Sessions: 'sessions' } },
           RoutinesTab: { screens: { Routines: 'routines' } },
-          ArtifactsTab: { screens: { Artifacts: 'artifacts', Artifact: 'artifacts/:id' } },
+          ArtifactsTab: { screens: { Artifacts: 'artifacts' } },
           UsageTab: { screens: { Usage: 'usage' } },
           SettingsTab: {
             screens: {
@@ -46,6 +51,7 @@ export const linking: LinkingOptions<Record<string, any>> = {
         },
       },
       Session: 'session/:id',
+      Artifact: 'artifacts/:id',
       Routine: 'routines/:id',
       Rooms: 'rooms',
       Room: 'rooms/:name',
