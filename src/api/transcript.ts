@@ -232,12 +232,20 @@ const FOLDED_TOOLS = new Set(['update_plan', 'ask_user_question']);
 function promotion(
   profile: string,
   model: string,
-  effort: string,
+  effort: unknown,
 ): string {
   const parts: string[] = [];
   if (profile) parts.push(`promoted to ${profile}`);
   if (model) parts.push(`moved to ${model}`);
-  if (effort) parts.push(`set to ${effort.toLowerCase()} effort`);
+  // ThinkingLevel crosses the wire as its numeric enum value, not its name.
+  // Accept a name too so a hand-built or older payload remains readable.
+  const effortWord =
+    typeof effort === 'number'
+      ? EFFORT_WORDS[effort]
+      : typeof effort === 'string'
+        ? effort.toLowerCase()
+        : '';
+  if (effortWord) parts.push(`set to ${effortWord} effort`);
   if (parts.length === 0) return 'changed';
   if (parts.length === 1) return parts[0];
   return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
@@ -665,7 +673,7 @@ export class TranscriptFolder {
           text: `sub-session ${promotion(
             str('profile'),
             str('model'),
-            str('effort'),
+            payload.effort,
           )}`,
           tone: 'muted',
         });

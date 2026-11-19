@@ -234,7 +234,8 @@ describe('TranscriptFolder', () => {
       event('SubSessionPromoted', {
         subSessionId: '0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b',
         model: 'claude-opus-5',
-        effort: 'High',
+        // ThinkingLevel is a numeric enum on the server's actual wire.
+        effort: 3,
       }),
       // And an older server, which knows only about profiles.
       event('SubSessionPromoted', {
