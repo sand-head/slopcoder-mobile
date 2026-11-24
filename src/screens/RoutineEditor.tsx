@@ -72,7 +72,7 @@ import {
 import { useAuth } from '../state/auth';
 import { useOwnedRepos } from '../state/repos';
 import { rowToChoice } from '../api/repoPicker';
-import { Body, Button, Check, Field, Hint, Meta, Mono, Screen } from '../ui/kit';
+import { Body, Button, Check, Chevron, Field, Hint, Meta, Mono, Screen } from '../ui/kit';
 import { Sheet, SheetGroup, SheetSegments } from '../ui/Sheet';
 import { AttachChips, AttachSheet, shortRepo, type Attachments } from '../ui/Composer';
 import { SecretSheet } from '../ui/SecretSheet';
@@ -754,11 +754,11 @@ export function RoutineEditorScreen({ route, navigation }: { route: any; navigat
             accessibilityRole="button"
             accessibilityState={{ expanded: more }}
             style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 8, opacity: pressed ? 0.6 : 1, minHeight: 32 })}>
-            <Mono style={{ color: c.foreground, fontSize: 13, transform: [{ rotate: more ? '90deg' : '0deg' }] }}>›</Mono>
             <Meta>more options</Meta>
             <Mono style={{ flex: 1 }} numberOfLines={1}>
               {moreSummary(form)}
             </Mono>
+            <Chevron open={more} color={c.mutedForeground} />
           </Pressable>
 
           {more ? (

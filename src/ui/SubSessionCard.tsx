@@ -14,7 +14,7 @@ import type { Item, SubSessionItem } from '../api/transcript';
 import { useAuth } from '../state/auth';
 import { useSessionHub } from '../state/hub';
 import { useSession } from '../state/session';
-import { Body, Dot, Fork, GLYPHS, Meta, Mono, Prose } from './kit';
+import { Body, Chevron, Dot, Fork, GLYPHS, Meta, Mono, Prose } from './kit';
 import { ToolCard } from './ToolCard';
 import { font, mix, radius, reading, tintFor, useTheme } from '../theme';
 import { ago } from '../api/captions';
@@ -176,7 +176,7 @@ export function SubSessionCard({
             {label}
           </Body>
         </View>
-        <View accessibilityElementsHidden importantForAccessibility="no" style={{ width: 7, height: 7, borderRightWidth: 1.5, borderBottomWidth: 1.5, borderColor: c.mutedForeground, transform: [{ rotate: expanded ? '225deg' : '45deg' }] }} />
+        <Chevron open={expanded} color={c.mutedForeground} />
       </Pressable>
 
       {expanded && prompt ? (

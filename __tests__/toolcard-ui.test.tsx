@@ -26,3 +26,15 @@ it('keeps actual output without adding an outer bordered evidence box', () => {
   expect(typeof outer === 'string' ? null : outer.props.style.borderWidth).toBeUndefined();
   act(() => tree.unmount());
 });
+
+it('shows a call\'s description in place of its verb and command', () => {
+  const card: Card = { verb: 'Bash', subject: 'cd /repo; sed -n 1,130p a.cs', subjectStyle: 'command', title: 'Check the signatures',
+    facets: [], blocks: [{ type: 'code', label: 'command', open: false, language: null, text: 'cd /repo; sed -n 1,130p a.cs' }] };
+  let tree!: ReturnType<typeof create>;
+  act(() => { tree = create(<ToolCard card={card} state="ok" />); });
+  const header = JSON.stringify(tree.toJSON());
+  expect(header).toContain('Check the signatures');
+  expect(header).not.toContain('"Bash"');
+  expect(header).not.toContain('sed -n');
+  act(() => tree.unmount());
+});
