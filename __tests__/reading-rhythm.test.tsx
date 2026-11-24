@@ -25,7 +25,10 @@ describe('reading tokens', () => {
     expect(reading.column).toBe(21);
     expect(reading.prose).toEqual({ fontSize: 14, lineHeight: 24 });
     expect(reading.paragraphGap).toBe(8);
-    expect(reading.user.fontSize).toBe(12);
+  });
+
+  it('sets what the user typed at the size of the reply, not a step below it', () => {
+    expect(reading.user.fontSize).toBe(reading.prose.fontSize);
   });
 
   it('leave every line room for its glyphs', () => {

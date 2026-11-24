@@ -291,6 +291,71 @@ export function Diamond({ color, size = 9 }: { color: string; size?: number }) {
 }
 
 /**
+ * The one geometry every transcript line shares — a tool call, a group of
+ * them, a thinking row, a note. Its mark sits centred in a 12-wide gutter at
+ * the same inset, so the dots and chevrons down the left edge form one column,
+ * and every line is the same height, so the gaps between them are equal.
+ */
+export const ROW = {
+  minHeight: 36,
+  paddingVertical: 6,
+  paddingHorizontal: 6,
+  gap: 8,
+  gutter: 12,
+  /** The status dot's size, in every row that carries one. */
+  dot: 7,
+} as const;
+
+/**
+ * The disclosure mark, drawn: down when closed, up when open, always at the
+ * row's trailing edge. The only one in the app — a typed `>` or `›` beside it
+ * rendered in whichever font the row used, at a different size and weight.
+ */
+export function Chevron({ open, color }: { open: boolean; color: string }) {
+  return (
+    <View
+      accessibilityElementsHidden
+      importantForAccessibility="no"
+      style={{ width: 12, height: 12, alignItems: 'center', justifyContent: 'center' }}
+    >
+      <View
+        style={{
+          width: 7,
+          height: 7,
+          // Nudged against the rotation so the point, not the box, is centred.
+          marginTop: open ? 3 : -3,
+          borderRightWidth: 1.5,
+          borderBottomWidth: 1.5,
+          borderColor: color,
+          transform: [{ rotate: open ? '225deg' : '45deg' }],
+        }}
+      />
+    </View>
+  );
+}
+
+/**
+ * A brain, for thinking: the web's two-tone icon style (a light body, details in
+ * the full colour) drawn on its 16 grid and exported as two tintable layers,
+ * since there is no SVG renderer in the app. The body sits at the web's mix of
+ * the colour — 40% in light, 55% in dark — and the folds at full strength.
+ */
+export function Brain({ color, size = 13 }: { color: string; size?: number }) {
+  const { isDark } = useTheme();
+  const layer = { position: 'absolute', width: size, height: size } as const;
+  return (
+    <View accessible={false} style={{ width: size, height: size }}>
+      <Image
+        source={require('../../assets/icons/brain-body.png')}
+        resizeMode="contain"
+        style={{ ...layer, tintColor: mix(color, isDark ? 55 : 40) }}
+      />
+      <Image source={require('../../assets/icons/brain-folds.png')} resizeMode="contain" style={{ ...layer, tintColor: color }} />
+    </View>
+  );
+}
+
+/**
  * The web's sliders icon, which opens the turn's settings. An ellipsis was
  * standing in for it and read as "more actions" rather than "the dials".
  */

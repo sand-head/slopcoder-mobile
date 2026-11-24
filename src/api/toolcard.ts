@@ -75,6 +75,14 @@ export type ToolBlock =
 export interface ToolCard {
   verb: string;
   subject: string | null;
+  /**
+   * What the caller said the call is for — Claude Code writes one on every
+   * shell command. When present the header reads this instead of verb and
+   * subject: "Check the build script's flags" says more on one line than
+   * "Bash cd /repo && sed -n 1,130p …" cut off at the screen's edge. The
+   * command is then the card's first block, a tap away.
+   */
+  title?: string;
   subjectStyle: SubjectStyle;
   facets: string[];
   blocks: ToolBlock[];
@@ -461,7 +469,11 @@ export function buildProposalCard(
   const card = buildToolCard(toolName, inputJson, null, false);
   const blocks: ToolBlock[] = card.blocks.map(b => ({ ...b, open: true }));
 
-  if (card.subjectStyle === 'command' && card.subject)
+  if (
+    card.subjectStyle === 'command' &&
+    card.subject &&
+    !blocks.some(b => b.type === 'code' && b.label === 'command')
+  )
     blocks.unshift({
       type: 'code',
       label: 'command',
@@ -512,6 +524,13 @@ function compose(
     case 'run_bash':
       return shell('Bash', str(input, 'command'), input, result, isError);
     case 'run_powershell':
+      return shell('PowerShell', str(input, 'command'), input, result, isError);
+    // Claude Code's own shells: the same act, with a description beside the
+    // command and `run_in_background` for `background`. Its `timeout` is a
+    // ceiling in milliseconds, not something a reader needs in the header.
+    case 'Bash':
+      return shell('Bash', str(input, 'command'), input, result, isError);
+    case 'PowerShell':
       return shell('PowerShell', str(input, 'command'), input, result, isError);
     case 'run_on_node': {
       const node = str(input, 'node');
@@ -1017,7 +1036,8 @@ function shell(
   isError: boolean,
 ): ToolCard {
   const facets: string[] = [];
-  if (bool(input, 'background')) facets.push('background');
+  if (bool(input, 'background') || bool(input, 'run_in_background'))
+    facets.push('background');
 
   let body = result;
   // run_bash prefixes its output with "exit code: N". That belongs in the
@@ -1033,6 +1053,16 @@ function shell(
   }
 
   const blocks: ToolBlock[] = [];
+  const title = str(input, 'description')?.trim() || undefined;
+  if (title && command)
+    blocks.push({
+      type: 'code',
+      label: 'command',
+      open: false,
+      language: null,
+      text: command,
+    });
+
   const output = body ? trimEnd(body) : '';
   if (output.length > 0)
     blocks.push(
@@ -1053,7 +1083,14 @@ function shell(
           },
     );
 
-  return { verb, subject: command, subjectStyle: 'command', facets, blocks };
+  return {
+    verb,
+    subject: command,
+    subjectStyle: 'command',
+    facets,
+    blocks,
+    ...(title ? { title } : null),
+  };
 }
 
 function job(

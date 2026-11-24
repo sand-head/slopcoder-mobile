@@ -11,7 +11,7 @@
  * one-line row the transcript had before cards existed, which is what keeps a
  * forty-call turn scrollable on a phone.
  *
- * Every mark here is ASCII (`+`, `-`, `>`) or drawn in {@link kit}. Geist Mono
+ * Every mark here is ASCII (`+`, `-`) or drawn in {@link kit}. Geist Mono
  * ships without dingbats and React Native has no CSS fallback stack, so a `✓`
  * typed into this file would render as nothing at all — silently, and only on a
  * device. `__tests__/glyphs.test.ts` scans for it.
@@ -20,7 +20,7 @@ import React, { useState } from 'react';
 import { Image, Pressable, ScrollView, View } from 'react-native';
 import type { DiffLine, ToolBlock, ToolCard as Card } from '../api/toolcard';
 import { useNavigation } from '@react-navigation/native';
-import { Body, Diamond, Dot, GLYPHS, Meta, Mono } from './kit';
+import { Body, Chevron, Diamond, Dot, GLYPHS, Meta, Mono, ROW } from './kit';
 import { animateNextLayout } from './motion';
 import { FilePeekPreview } from './FilePeek';
 import { LinkedText, useTranscriptServices } from './transcriptServices';
@@ -79,7 +79,7 @@ export function ToolCard({
           }}
           accessibilityRole="button"
           accessibilityState={{ expanded }}
-          accessibilityLabel={`${card.verb} ${card.subject ?? ''}`.trim()}
+          accessibilityLabel={card.title ?? `${card.verb} ${card.subject ?? ''}`.trim()}
           style={({ pressed }) => ({
             borderRadius: radius.md,
             backgroundColor: pressed ? mix(c.mutedForeground, 10) : 'transparent',
@@ -125,20 +125,28 @@ function Head({
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
-        minHeight: 34,
-        paddingVertical: 5,
-        paddingHorizontal: 6,
+        gap: ROW.gap,
+        minHeight: ROW.minHeight,
+        paddingVertical: ROW.paddingVertical,
+        paddingHorizontal: ROW.paddingHorizontal,
       }}>
-      <View style={{ width: 12, alignItems: 'center' }}>
+      <View style={{ width: ROW.gutter, alignItems: 'center' }}>
         <Mark state={state} />
       </View>
 
-      <Body numberOfLines={1} style={{ flexShrink: 0, fontFamily: font.sansMedium, fontSize: 12.5 }}>
-        {card.verb}
-      </Body>
+      {/* A described call says what it is for, in place of the tool's name and
+          the start of its command; the command waits in the body. */}
+      {card.title ? (
+        <Body numberOfLines={1} style={{ flexShrink: 1, fontFamily: font.sansMedium, fontSize: 12.5 }}>
+          {card.title}
+        </Body>
+      ) : (
+        <Body numberOfLines={1} style={{ flexShrink: 0, fontFamily: font.sansMedium, fontSize: 12.5 }}>
+          {card.verb}
+        </Body>
+      )}
 
-      {card.subject ? (
+      {card.subject && !card.title ? (
         <Mono
           numberOfLines={1}
           // A path is worth more from its tail than its head, so it truncates at
@@ -162,9 +170,7 @@ function Head({
 
       <View style={{ flex: 1, minWidth: 0 }} />
 
-      {hasChevron ? (
-        <Mono style={{ transform: [{ rotate: expanded ? '90deg' : '0deg' }] }}>&gt;</Mono>
-      ) : null}
+      {hasChevron ? <Chevron open={expanded} color={c.mutedForeground} /> : null}
     </View>
   );
 }
@@ -176,7 +182,7 @@ function Mark({ state }: { state: ToolCardState }) {
       <Body style={{ fontFamily: font.mono, fontSize: 13, color: c.destructive }}>{GLYPHS.error}</Body>
     );
   if (state === 'pending') return <Diamond color={status.running} />;
-  return <Dot color={state === 'running' ? status.running : status.ok} size={8} />;
+  return <Dot color={state === 'running' ? status.running : status.ok} size={ROW.dot} />;
 }
 
 /** Counts earn colour; everything else is a neutral chip. */

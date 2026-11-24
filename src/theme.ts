@@ -209,8 +209,13 @@ export const reading = {
   proseSmall: { fontSize: 13, lineHeight: 20 },
   /** Between two paragraphs (web: `p` margin-block .5rem, collapsed). */
   paragraphGap: 8,
-  /** What the user typed: the web draws it a step below prose on a phone. */
-  user: { fontSize: 12, lineHeight: 19 },
+  /**
+   * What the user typed: the prose's size, so a prompt never reads smaller than
+   * the answer to it. (The web steps it down to 12 at phone width; copied, it
+   * read as fine print inside its bubble.) A touch tighter than prose, since a
+   * prompt is usually a line or two and 24 leaves it airy.
+   */
+  user: { fontSize: 14, lineHeight: 22 },
   /** Disclosure rows — thinking, plan, tool activity — and their meta. */
   summary: { fontSize: 12, lineHeight: 18 },
   /** Turn notes ("done", "stopped") and attributed-row captions. */

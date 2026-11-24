@@ -53,7 +53,9 @@ import { useSession } from '../state/session';
 import {
   Bars,
   Body,
+  Brain,
   Button,
+  Chevron,
   Dot,
   Field,
   Fork,
@@ -64,6 +66,7 @@ import {
   Mono,
   Screen,
   Prose,
+  ROW,
   stamp,
 } from '../ui/kit';
 import { animateNextLayout } from '../ui/motion';
@@ -1092,7 +1095,8 @@ function DateMarker({ at }: { at: string }) {
 
 function LiveThinking({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
-  return <Collapsible chevron="leading" name="Thinking…"
+  const { c } = useTheme();
+  return <Collapsible mark={<Brain color={c.mutedForeground} />} name="Thinking…"
     open={open} onToggle={() => setOpen(!open)}>
     <Body selectable style={{ fontSize: 13 }}>{text}</Body>
   </Collapsible>;
@@ -1108,8 +1112,8 @@ function ToolRunBlock({ group, handlers }: { group: ToolRun; handlers: RowHandle
   // while a call is still running. It names what the tools are, never whether
   // tests passed.
   const phrase = toolRunPhrase([...group.tools].reverse());
-  return <Collapsible mark={<Dot color={failed ? c.destructive : c.mutedForeground} size={7} />}
-    name={`${phrase}${running ? '…' : ''}`} weight="regular" chevron="trailing"
+  return <Collapsible mark={<Dot color={failed ? c.destructive : c.mutedForeground} size={ROW.dot} />}
+    name={`${phrase}${running ? '…' : ''}`} weight="regular"
     open={open} onToggle={() => setOpen(!open)}>
     {[...group.tools].reverse().map(tool => <TranscriptRow key={tool.key} item={tool} handlers={handlers} />)}
   </Collapsible>;
@@ -1221,9 +1225,7 @@ function SubagentBlock({
             {detail}
           </Mono>
         </View>
-        <Mono style={{ transform: [{ rotate: open ? '90deg' : '0deg' }] }}>
-          &gt;
-        </Mono>
+        <Chevron open={open} color={c.mutedForeground} />
       </Pressable>
 
       {open ? (
@@ -1459,7 +1461,7 @@ const TranscriptRow = React.memo(function Transcript({
     case 'think':
       return (
         <Collapsible
-          chevron="leading"
+          mark={<Brain color={c.mutedForeground} />}
           name={thoughtFor(item.durationMs)}
           open={open}
           onToggle={() => setOpen(!open)}
@@ -1488,7 +1490,7 @@ const TranscriptRow = React.memo(function Transcript({
     case 'plan':
       return (
         <Collapsible mark={<Bars color={c.mutedForeground} />} name={planProgress(item.steps)}
-          strong chevron="trailing" open={open} onToggle={() => setOpen(!open)}>
+          strong open={open} onToggle={() => setOpen(!open)}>
           {item.steps.map((step, index) => (
             <View
               key={index}
@@ -1714,17 +1716,19 @@ const TranscriptRow = React.memo(function Transcript({
 
     case 'note':
       return (
+        // The same line as a tool call's: same inset, same gutter, same
+        // height, so its dot is in the column theirs are and the gaps match.
         <View
           style={{
             flexDirection: 'row',
-            gap: 8,
-            paddingVertical: 3,
-            // The web leaves 26 between a reply and the note that closes it.
-            marginTop: 5,
             alignItems: 'center',
+            gap: ROW.gap,
+            minHeight: ROW.minHeight,
+            paddingVertical: ROW.paddingVertical,
+            paddingHorizontal: ROW.paddingHorizontal,
           }}
         >
-          <View style={{ width: 12, alignItems: 'center' }}>
+          <View style={{ width: ROW.gutter, alignItems: 'center' }}>
             <Dot
               color={
                 item.tone === 'ok'
@@ -1734,7 +1738,7 @@ const TranscriptRow = React.memo(function Transcript({
                   : c.mutedForeground
               }
               filled={item.tone !== 'muted'}
-              size={7}
+              size={ROW.dot}
             />
           </View>
           <Body style={{ ...reading.note, flexShrink: 1, color: c.mutedForeground }}>
@@ -1872,12 +1876,11 @@ function Collapsible({
   meta,
   weight = 'medium',
   strong = false,
-  chevron,
   open,
   onToggle,
   children,
 }: {
-  /** A glyph in the left gutter; a leading chevron takes its place. */
+  /** A glyph in the left gutter, in the column every row's mark sits in. */
   mark?: React.ReactNode;
   name: string;
   meta?: string;
@@ -1885,8 +1888,6 @@ function Collapsible({
   weight?: 'medium' | 'regular';
   /** The plan's caption reads in the foreground colour, the others muted. */
   strong?: boolean;
-  /** The web's disclosure mark: › before a thinking row, ⌄ after a group. */
-  chevron?: 'leading' | 'trailing';
   open: boolean;
   onToggle: () => void;
   children: React.ReactNode;
@@ -1904,19 +1905,15 @@ function Collapsible({
         style={({ pressed }) => ({
           flexDirection: 'row',
           alignItems: 'center',
-          gap: 8,
-          paddingVertical: 6,
-          paddingHorizontal: 6,
+          gap: ROW.gap,
+          paddingVertical: ROW.paddingVertical,
+          paddingHorizontal: ROW.paddingHorizontal,
           borderRadius: radius.md,
-          minHeight: 36,
+          minHeight: ROW.minHeight,
           backgroundColor: pressed ? mix(c.mutedForeground, 10) : 'transparent',
         })}
       >
-        <View style={{ width: 12, alignItems: 'center' }}>
-          {chevron === 'leading' ? (
-            <Body style={{ ...reading.summary, color: c.mutedForeground, transform: [{ rotate: open ? '90deg' : '0deg' }] }}>›</Body>
-          ) : mark}
-        </View>
+        <View style={{ width: ROW.gutter, alignItems: 'center' }}>{mark}</View>
         {/* The web's disclosure rows are quiet sans at 12, so a run of them
             reads as one muted band under the prose. */}
         <Body numberOfLines={meta ? undefined : 1} style={{
@@ -1932,14 +1929,7 @@ function Collapsible({
             {meta}
           </Body>
         ) : <View style={{ flex: 1 }} />}
-        {chevron === 'trailing' ? (
-          // Drawn, not typed: neither font has U+2304. The sub-session card's chevron.
-          <View accessibilityElementsHidden importantForAccessibility="no" style={{
-            width: 7, height: 7, marginRight: 4, marginTop: open ? 3 : -3,
-            borderRightWidth: 1.5, borderBottomWidth: 1.5, borderColor: c.mutedForeground,
-            transform: [{ rotate: open ? '225deg' : '45deg' }],
-          }} />
-        ) : null}
+        <Chevron open={open} color={c.mutedForeground} />
       </Pressable>
       {open ? (
         <View style={{ paddingLeft: 24, paddingRight: 4, paddingBottom: 6 }}>

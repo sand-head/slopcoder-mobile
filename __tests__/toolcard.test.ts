@@ -135,6 +135,40 @@ describe('the pieces the fixtures cannot pin', () => {
     expect(card.blocks[0]).toMatchObject({ type: 'code', label: 'command', text: 'rm -rf build' });
   });
 
+  /**
+   * Claude Code says what each command is for. That sentence is the header;
+   * the command it describes is the first thing behind the chevron, and the
+   * millisecond timeout is nowhere.
+   */
+  it('heads a described Claude Code command with its description', () => {
+    const input = JSON.stringify({
+      command: 'cd /repo; sed -n 1,130p src/Harness.cs',
+      description: 'Check StartProcessAsync signatures',
+      timeout: 120000,
+    });
+    const card = buildToolCard('Bash', input, 'exit code: 0\nok', false);
+    expect(card).toMatchObject({
+      verb: 'Bash',
+      title: 'Check StartProcessAsync signatures',
+      subjectStyle: 'command',
+      facets: ['exit 0'],
+    });
+    expect(card.blocks[0]).toMatchObject({ type: 'code', label: 'command', open: false, text: 'cd /repo; sed -n 1,130p src/Harness.cs' });
+    expect(card.blocks[1]).toMatchObject({ type: 'code', label: 'output', text: 'ok' });
+
+    // Gated, it is the same one command block, opened — not two.
+    const proposal = buildProposalCard('PowerShell', input);
+    expect(proposal.title).toBe('Check StartProcessAsync signatures');
+    expect(proposal.blocks.filter(b => b.type === 'code' && b.label === 'command')).toHaveLength(1);
+    expect(proposal.blocks.every(b => b.open)).toBe(true);
+  });
+
+  it('keeps an undescribed command in the header', () => {
+    const card = buildToolCard('Bash', JSON.stringify({ command: 'ls', run_in_background: true }), null, false);
+    expect(card.title).toBeUndefined();
+    expect(card).toMatchObject({ verb: 'Bash', subject: 'ls', facets: ['background'], blocks: [] });
+  });
+
   it('opens an edit proposal on its diff', () => {
     const card = buildProposalCard(
       'edit_file',

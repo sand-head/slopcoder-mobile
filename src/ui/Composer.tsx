@@ -24,7 +24,7 @@
  * where that popover would go, so it grows upward instead — see `SlashMenu`.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { Image, Pressable, ScrollView, TextInput, View } from 'react-native';
 import {
   ApprovalMode,
   GitServiceKind,
@@ -236,7 +236,7 @@ export function Composer({
     attachments || images ? (
       <IconButton
         onPress={() => (images ? undefined : setSheet('attach'))}
-        accessibilityLabel="Attach" label={launcher ? "Attach" : undefined}>
+        accessibilityLabel="Attach">
         <Body
           style={{
             fontFamily: font.mono,
@@ -300,7 +300,11 @@ export function Composer({
             backgroundColor: 'transparent' }}
         />
 
-        <View testID="composer-toolbar" style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+        {/* One line, never wrapped: icons on the left, the action on the
+            right, and between them the dials that are off their defaults.
+            Those scroll sideways when they will not fit, rather than pushing
+            the send button onto a second row. */}
+        <View testID="composer-toolbar" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           {images && addButton ? (
             <OverflowMenu title="Attach" items={addItems}>
               {addButton}
@@ -308,16 +312,26 @@ export function Composer({
           ) : (
             addButton
           )}
-          {!launcher ? <Pill label={modelLabel} onPress={() => setSheet('model')} /> : null}
-          <IconButton onPress={() => setSheet('turn')} accessibilityLabel="Turn settings" label={launcher ? "Settings" : undefined}>
+          <IconButton onPress={() => setSheet('turn')} accessibilityLabel="Turn settings">
             <Sliders color={c.mutedForeground} />
           </IconButton>
-          {launcher && !options.selection.auto ? <Pill label={modelLabel} onPress={() => setSheet('model')} muted /> : null}
-          {/* Dials appear only when off default, as on the web. */}
-          {options.thinking !== null ? <Pill label={thinkingLabel} muted /> : null}
-          {options.approval !== ApprovalMode.Dangerous ? <Pill label={approvalLabel} muted /> : null}
-
-          <View style={{ flexGrow: 1 }} />
+          <ScrollView
+            testID="composer-dials"
+            horizontal
+            style={{ flex: 1 }}
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44 }}>
+            {/* The launcher's model starts at Auto and says so only once it is not. */}
+            {!launcher || !options.selection.auto ? (
+              <Pill label={modelLabel} onPress={() => setSheet('model')} muted={launcher} />
+            ) : null}
+            {/* Dials appear only when off default, as on the web. */}
+            {options.thinking !== null ? <Pill label={thinkingLabel} onPress={() => setSheet('turn')} muted /> : null}
+            {options.approval !== ApprovalMode.Dangerous ? (
+              <Pill label={approvalLabel} onPress={() => setSheet('turn')} muted />
+            ) : null}
+          </ScrollView>
           {running && onStop ? (
             <SendButton
               mode="stop"
@@ -327,17 +341,7 @@ export function Composer({
               accessibilityLabel={stopping ? 'Stopping' : 'Stop'}
             />
           ) : null}
-          {launcher ? (
-            <Pressable accessibilityRole="button" accessibilityLabel={action} disabled={disabled || !reachable || busy}
-              onPress={onAction} style={({ pressed }) => ({ minHeight: 44, paddingHorizontal: 14, borderRadius: 22,
-                flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.primary,
-                opacity: disabled || !reachable || busy ? 0.4 : pressed ? 0.75 : 1 })}>
-              {busy ? <ActivityIndicator color={c.primaryForeground} size="small" /> : <>
-                <Body style={{ color: c.primaryForeground, fontFamily: font.sansMedium }}>{action}</Body>
-                <Mono style={{ color: c.primaryForeground, fontSize: 17 }}>↑</Mono>
-              </>}
-            </Pressable>
-          ) : <SendButton
+          <SendButton
             mode="send"
             onPress={onAction}
             busy={busy}
@@ -345,7 +349,7 @@ export function Composer({
             // send that silently fails is worse than a button that says no.
             disabled={disabled || !reachable}
             accessibilityLabel={action}
-          />}
+          />
         </View>
       </GlassSurface>
 
@@ -749,6 +753,10 @@ export function shortRepo(url: string): string {
   return parts.slice(-2).join('/') || url;
 }
 
+/**
+ * A dial, drawn at 30 and touched at 44: at full height three of them made the
+ * composer's toolbar taller than its text.
+ */
 function Pill({ label, onPress, muted }: { label: string; onPress?: () => void; muted?: boolean }) {
   const { c } = useTheme();
   return (
@@ -756,16 +764,18 @@ function Pill({ label, onPress, muted }: { label: string; onPress?: () => void; 
       onPress={onPress}
       disabled={!onPress}
       accessibilityRole={onPress ? 'button' : undefined}
+      hitSlop={{ top: 7, bottom: 7 }}
       style={({ pressed }) => ({
-        minHeight: 44,
-        flexShrink: 1,
+        height: 30,
         maxWidth: muted ? 120 : 160,
         justifyContent: 'center',
         paddingHorizontal: 11,
         borderRadius: 9999,
         backgroundColor: mix(c.mutedForeground, pressed ? 22 : 12),
       })}>
-      <Body style={{ fontSize: 12, color: muted ? c.mutedForeground : c.foreground }}>{label}</Body>
+      <Body numberOfLines={1} style={{ fontSize: 12, color: muted ? c.mutedForeground : c.foreground }}>
+        {label}
+      </Body>
     </Pressable>
   );
 }
@@ -774,12 +784,10 @@ function IconButton({
   onPress,
   accessibilityLabel,
   children,
-  label,
 }: {
   onPress: () => void;
   accessibilityLabel: string;
   children: React.ReactNode;
-  label?: string;
 }) {
   const { c } = useTheme();
   return (
@@ -789,18 +797,14 @@ function IconButton({
       accessibilityRole="button"
       hitSlop={6}
       style={({ pressed }) => ({
-        minWidth: 44,
-        minHeight: 44,
-        paddingHorizontal: label ? 6 : 0,
-        flexDirection: 'row',
-        gap: 5,
+        width: 44,
+        height: 44,
         borderRadius: 15,
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: pressed ? mix(c.mutedForeground, 12) : 'transparent',
       })}>
       {children}
-      {label ? <Body style={{ color: c.mutedForeground, fontSize: 13 }}>{label}</Body> : null}
     </Pressable>
   );
 }
