@@ -71,3 +71,40 @@ export function turnCompleteLabel(durationMs: number | null | undefined, subagen
   const base = subagent ? 'done' : 'Turn complete';
   return durationMs != null ? `${base} · completed in ${duration(durationMs)}` : base;
 }
+
+/** "just now", "5m ago", "2h ago", "3d ago" — the web's TimeFormat.Ago. */
+export function ago(at: string, now: number = Date.now()): string {
+  const delta = now - Date.parse(at);
+  if (!(delta >= 60_000)) return 'just now';
+  if (delta < 3_600_000) return `${Math.floor(delta / 60_000)}m ago`;
+  if (delta < 86_400_000) return `${Math.floor(delta / 3_600_000)}h ago`;
+  return `${Math.floor(delta / 86_400_000)}d ago`;
+}
+
+/** The server's cap on repository names in a summary (SessionSummary.MaxRepoNames). */
+const MAX_REPO_NAMES = 32;
+
+/**
+ * What a recent-sessions row says the session works on, as the web's
+ * RecentWorkspaceLabel: "No repositories", the one repository's name, "N
+ * repositories". Null when the server did not say — unknown is never zero — and
+ * for a client-machine workspace, whose label this app's contract cannot build.
+ */
+export function workspaceLabel(session: { repoNames?: readonly string[] | null; clientWorkspace?: unknown }): string | null {
+  if (session.clientWorkspace) return null;
+  const names = session.repoNames;
+  if (names == null) return null;
+  if (names.length === 0) return 'No repositories';
+  if (names.length === 1) return names[0];
+  if (names.length >= MAX_REPO_NAMES) return `${MAX_REPO_NAMES}+ repositories`;
+  return `${names.length} repositories`;
+}
+
+/** The approval card's verdict, worded as the web's; null while it is open. */
+export function approvalVerdict(approved: boolean | null | undefined, pending: boolean, refused: boolean): string | null {
+  if (approved === true) return 'approved';
+  if (approved === false) return 'denied';
+  if (!pending) return 'Read-only · no longer pending';
+  if (refused) return 'refused';
+  return null;
+}

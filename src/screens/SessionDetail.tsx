@@ -92,7 +92,7 @@ import { useHeaderInset } from '../navigation/headers';
 import { tapConfirm, tapError, tapRefuse } from '../ui/haptics';
 import { newTokens } from '../api/contracts';
 import { font, mix, radius, reading, tintFor, useTheme } from '../theme';
-import { planProgress, thoughtFor, toolRunPhrase, turnCompleteLabel } from '../api/captions';
+import { approvalVerdict, planProgress, thoughtFor, toolRunPhrase, turnCompleteLabel } from '../api/captions';
 
 type WorkspaceRepo = { repo: string; branch?: string | null; detached?: boolean; sandboxDown?: boolean; notARepository?: boolean; error?: string | null };
 
@@ -1554,21 +1554,18 @@ const TranscriptRow = React.memo(function Transcript({
             gap: 8,
           }}
         >
-          {/* Only when there is something to say. The card below already names
-              the tool, so an open gate needs no line of its own. */}
-          {!pending || item.refused ? (
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-              <Meta style={{ fontSize: 10 }}>
-                {item.approved === true
-                  ? 'approved'
-                  : item.approved === false
-                  ? 'denied'
-                  : !pending
-                  ? 'no longer pending'
-                  : 'refused'}
-              </Meta>
-            </View>
-          ) : null}
+          {/* The web's heading, with the verdict beside it once there is one;
+              an open gate has none, and the card below names the tool. */}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+            <Body style={{ flex: 1, minWidth: 140, fontFamily: font.sansMedium, fontSize: 12.5, lineHeight: 20 }}>
+              Permission request
+            </Body>
+            {approvalVerdict(item.approved, pending, !!item.refused) ? (
+              <Body style={{ fontFamily: font.sansMedium, fontSize: 10, lineHeight: 16, color: c.mutedForeground }}>
+                {approvalVerdict(item.approved, pending, !!item.refused)}
+              </Body>
+            ) : null}
+          </View>
 
           {/* Never truncated: this is the evidence the decision rests on. */}
           {item.reason ? (

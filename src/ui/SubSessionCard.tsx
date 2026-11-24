@@ -17,6 +17,7 @@ import { useSession } from '../state/session';
 import { Body, Dot, Fork, GLYPHS, Meta, Mono, Prose } from './kit';
 import { ToolCard } from './ToolCard';
 import { font, mix, radius, reading, tintFor, useTheme } from '../theme';
+import { ago } from '../api/captions';
 
 /** How many of the sub-session's latest items the card shows. */
 const TAIL_LENGTH = 5;
@@ -97,7 +98,8 @@ export function SubSessionCard({
     : running
     ? tint
     : c.mutedForeground;
-  const waitingFor = queued > 0 ? ` · ${queued} queued` : '';
+  // The web's status words: "idle · 1d ago" says how stale an idle partner
+  // is; nothing at all while the state is still loading.
   const label = error
     ? 'gone'
     : closed
@@ -105,10 +107,10 @@ export function SubSessionCard({
     : waiting
     ? 'waiting for you'
     : running
-    ? `working${waitingFor}`
+    ? 'working'
     : state
-    ? `idle${waitingFor}`
-    : '…';
+    ? `idle · ${ago(state.lastActivityAt)}`
+    : '';
   // Who this is, and what they are on. The name carries the colour; the beat
   // beside it does not, so the thing that repeats down the transcript is the
   // thing that stands out.
@@ -131,9 +133,14 @@ export function SubSessionCard({
         onPress={() => setExpanded(value => !value)}
         accessibilityRole="button"
         accessibilityState={{ expanded }}
+        // The queue and the spend are not drawn — the web's card shows neither
+        // (its hover title carries the detail) — but a screen reader still
+        // hears them, the nearest thing a phone has to that title.
         accessibilityLabel={`Sub-session ${who}${beat ? `, ${beat}` : ''}, ${
           item.profile
-        }, ${item.model}, ${label}. ${expanded ? 'Collapse' : 'Expand'}`}
+        }, ${item.model}, ${label}${queued > 0 ? `, ${queued} queued` : ''}${
+          spent > 0 ? `, ${spend(spent, cost)}` : ''
+        }. ${expanded ? 'Collapse' : 'Expand'}`}
         style={({ pressed }) => ({
           flexDirection: 'row',
           alignItems: 'center',
@@ -149,10 +156,12 @@ export function SubSessionCard({
         </View>
         <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: 6 }}>
-            <Body style={{ fontFamily: font.sansMedium, fontSize: 13, lineHeight: 19, color: tint }}>{who}</Body>
-            {beat ? <Body style={{ flexShrink: 1, fontSize: 13, lineHeight: 19 }}>{beat}</Body> : null}
+            <Body style={{ flexShrink: 1, fontSize: 13, lineHeight: 19 }}>
+              <Body style={{ fontFamily: font.sansMedium, fontSize: 13, lineHeight: 19, color: tint }}>{who}</Body>
+              {beat ? ` · ${beat}` : ''}
+            </Body>
           </View>
-          <Body style={{ ...reading.summary, color: c.mutedForeground }}>{item.profile} · {item.model}{spent > 0 ? ` · ${spend(spent, cost)}` : ''}</Body>
+          <Body style={{ ...reading.summary, color: c.mutedForeground }}>{item.profile} · {item.model}</Body>
         </View>
         <View
           style={{
@@ -162,17 +171,17 @@ export function SubSessionCard({
             flexShrink: 0,
           }}
         >
-          <Dot color={tone} filled={running || waiting} size={7} />
-          <Mono numberOfLines={1} style={{ fontSize: 11, color: tone }}>
+          {running || waiting ? <Dot color={tone} filled size={7} /> : null}
+          <Body numberOfLines={1} style={{ ...reading.summary, color: running || waiting ? tone : c.mutedForeground }}>
             {label}
-          </Mono>
+          </Body>
         </View>
         <View accessibilityElementsHidden importantForAccessibility="no" style={{ width: 7, height: 7, borderRightWidth: 1.5, borderBottomWidth: 1.5, borderColor: c.mutedForeground, transform: [{ rotate: expanded ? '225deg' : '45deg' }] }} />
       </Pressable>
 
       {expanded && prompt ? (
         <View style={{ borderTopWidth: 1, borderTopColor: mix(c.border, 70), paddingHorizontal: 10, paddingTop: 8, gap: 3 }}>
-          <Body style={{ ...reading.summary, color: c.mutedForeground }}>{prompt.steering ? 'Steer' : 'Prompt'} to {who}</Body>
+          <Body style={{ ...reading.summary, color: c.mutedForeground }}>→ Parent session → {who}</Body>
           <Body selectable style={{ color: c.foreground, fontSize: 13 }}>{prompt.text}</Body>
         </View>
       ) : null}
@@ -201,8 +210,8 @@ export function SubSessionCard({
       ) : null) : null}
       <Pressable onPress={() => onOpen(item.subSessionId)} accessibilityRole="button"
           accessibilityLabel={`Open ${who} activity`} hitSlop={4}
-          style={{ alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', paddingHorizontal: 10 }}>
-          <Body style={{ color: c.primary, fontFamily: font.sansMedium, fontSize: 13 }}>Open activity ›</Body>
+          style={{ alignSelf: 'flex-end', minHeight: 44, justifyContent: 'center', paddingHorizontal: 10 }}>
+          <Body style={{ ...reading.summary, color: c.mutedForeground }}>Open activity ↗</Body>
       </Pressable>
     </View>
   );
@@ -232,7 +241,7 @@ function TailRow({ item, recipient }: { item: Item; recipient: string }) {
     case 'user':
       return (
         <View style={{ gap: 3 }}>
-          <Body style={{ ...reading.summary, color: c.mutedForeground }}>{item.steering ? 'Steer' : 'Prompt'} to {recipient}</Body>
+          <Body style={{ ...reading.summary, color: c.mutedForeground }}>→ Parent session → {recipient}</Body>
           <Body selectable style={{ fontSize: 13, color: c.foreground }}>{item.text}</Body>
         </View>
       );
