@@ -53,3 +53,32 @@ describe('the other captions', () => {
     expect(turnCompleteLabel(65_000, true)).toBe('done · completed in 1m 05s');
   });
 });
+
+describe('home and card labels', () => {
+  const { ago, workspaceLabel, approvalVerdict } = jest.requireActual('../src/api/captions');
+  const now = Date.parse('2026-11-24T12:00:00Z');
+
+  it('says how long ago, the web way', () => {
+    expect(ago('2026-11-24T11:59:30Z', now)).toBe('just now');
+    expect(ago('2026-11-24T11:55:00Z', now)).toBe('5m ago');
+    expect(ago('2026-11-24T10:00:00Z', now)).toBe('2h ago');
+    expect(ago('2026-11-21T12:00:00Z', now)).toBe('3d ago');
+  });
+
+  it('names the workspace, and never turns unknown into zero', () => {
+    expect(workspaceLabel({ repoNames: [] })).toBe('No repositories');
+    expect(workspaceLabel({ repoNames: ['slopcoder'] })).toBe('slopcoder');
+    expect(workspaceLabel({ repoNames: ['a', 'b'] })).toBe('2 repositories');
+    expect(workspaceLabel({ repoNames: Array.from({ length: 32 }, (_, i) => `r${i}`) })).toBe('32+ repositories');
+    expect(workspaceLabel({})).toBeNull();
+    expect(workspaceLabel({ repoNames: null })).toBeNull();
+  });
+
+  it('words an approval verdict as the web does', () => {
+    expect(approvalVerdict(true, false, false)).toBe('approved');
+    expect(approvalVerdict(false, false, false)).toBe('denied');
+    expect(approvalVerdict(null, false, false)).toBe('Read-only · no longer pending');
+    expect(approvalVerdict(null, true, true)).toBe('refused');
+    expect(approvalVerdict(null, true, false)).toBeNull();
+  });
+});

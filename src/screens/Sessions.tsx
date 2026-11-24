@@ -66,6 +66,7 @@ import { ConnectionBanner } from '../ui/ConnectionBanner';
 import { useConnection } from '../state/connection';
 import { tapConfirm, tapError, tapRefuse } from '../ui/haptics';
 import { font, mix, radius, useTheme } from '../theme';
+import { ago, workspaceLabel } from '../api/captions';
 
 export function SessionsScreen({ navigation }: { navigation: any }) {
   const { c } = useTheme();
@@ -604,7 +605,7 @@ function SessionCard({
   flush?: boolean;
   first?: boolean;
 }) {
-  const { c } = useTheme();
+  const { c, status } = useTheme();
   const running = session.status === SessionStatus.Running;
   const offline = session.clientWorkspace != null && session.workspaceConnected === false;
 
@@ -657,10 +658,14 @@ function SessionCard({
               {/* Last activity, not creation: the list is ordered by it, and a
                   row stamped with a date two weeks old next to one stamped
                   today would say the opposite of what the order says. */}
-              {running ? 'running · ' : ''}{stamp(session.updatedAt)} · {session.autoRoute ? 'auto' : session.model}
+              {/* The web's meta: what it works on, then how long ago. */}
+              {[workspaceLabel(session), ago(session.updatedAt)].filter(Boolean).join(' · ')}
             </Body>
             {offline ? <Meta style={{ color: c.destructive }}>workspace offline</Meta> : null}
           </View>
+          <Body style={{ fontSize: 11, lineHeight: 15, marginTop: 1, color: running ? status.running : c.mutedForeground }}>
+            {running ? 'Running' : 'Idle'}
+          </Body>
         </Pressable>
 
         <OverflowMenu title={session.title} items={items}>
