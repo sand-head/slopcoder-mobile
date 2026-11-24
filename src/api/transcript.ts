@@ -87,6 +87,8 @@ export interface NoteItem extends BaseItem {
   tone: 'muted' | 'ok' | 'warn';
   /** Which turn boundary this is, if it is one — what a subagent's status reduces over. */
   turn?: 'completed' | 'cancelled';
+  /** How long a completed turn took, when the server timed it. */
+  durationMs?: number | null;
 }
 
 export interface PlanItem extends BaseItem {
@@ -574,6 +576,7 @@ export class TranscriptFolder {
           text: 'done',
           tone: 'ok',
           turn: 'completed',
+          ...(typeof payload.durationMs === 'number' ? { durationMs: payload.durationMs } : {}),
         });
         break;
 

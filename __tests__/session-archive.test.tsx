@@ -196,9 +196,9 @@ test('adjacent tool calls and plans are collapsible without inventing evidence',
     { kind: 'plan', key: 'c', ordinal: 3, sub: null, steps: [{ text: 'Real step', status: 'pending' }] },
   ];
   const { tree } = await mount();
-  expect(text(tree)).toContain('Tool activity');
-  expect(text(tree)).toContain('Read 2');
-  expect(text(tree)).toContain('Plan');
+  // The web's captions: a sentence for the run, progress for the plan.
+  expect(text(tree)).toContain('Read 2 files');
+  expect(text(tree)).toContain('0 of 1 steps complete');
   expect(text(tree)).not.toContain('Real step');
   expect(tree.root.findAll(n => n.props.accessibilityState?.expanded === false && n.props.onPress).length).toBeGreaterThanOrEqual(2);
 });

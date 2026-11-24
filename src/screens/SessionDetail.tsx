@@ -92,6 +92,7 @@ import { useHeaderInset } from '../navigation/headers';
 import { tapConfirm, tapError, tapRefuse } from '../ui/haptics';
 import { newTokens } from '../api/contracts';
 import { font, mix, radius, reading, tintFor, useTheme } from '../theme';
+import { planProgress, thoughtFor, toolRunPhrase, turnCompleteLabel } from '../api/captions';
 
 type WorkspaceRepo = { repo: string; branch?: string | null; detached?: boolean; sandboxDown?: boolean; notARepository?: boolean; error?: string | null };
 
@@ -1097,7 +1098,7 @@ function DateMarker({ at }: { at: string }) {
 
 function LiveThinking({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
-  return <Collapsible mark={<Dot color={useTheme().status.thinking} size={7} />} name="Thinking" meta="Live"
+  return <Collapsible chevron="leading" name="Thinking…"
     open={open} onToggle={() => setOpen(!open)}>
     <Body selectable style={{ fontSize: 13 }}>{text}</Body>
   </Collapsible>;
@@ -1108,16 +1109,13 @@ function ToolRunBlock({ group, handlers }: { group: ToolRun; handlers: RowHandle
   const { c } = useTheme();
   const running = group.tools.some(tool => tool.running);
   const failed = group.tools.some(tool => tool.isError);
-  // Use the existing card classifier, never infer that tests passed or that a
-  // call succeeded from its name. Unknown verbs remain actual card labels.
-  const verbs = new Map<string, number>();
-  for (const tool of [...group.tools].reverse()) {
-    const verb = buildToolCard(tool.name, tool.input, tool.result, tool.isError).verb;
-    verbs.set(verb, (verbs.get(verb) ?? 0) + 1);
-  }
-  const summary = [...verbs].map(([verb, count]) => `${verb} ${count}`).join(' · ');
+  // The web's sentence for the run, oldest call first: "Read 2 files, edited
+  // 2 files, ran 2 commands", with a failure count and a trailing ellipsis
+  // while a call is still running. It names what the tools are, never whether
+  // tests passed.
+  const phrase = toolRunPhrase([...group.tools].reverse());
   return <Collapsible mark={<Dot color={failed ? c.destructive : c.mutedForeground} size={7} />}
-    name="Tool activity" meta={`${summary}${running ? ' · running' : ''}${failed ? ' · includes errors' : ''}`}
+    name={`${phrase}${running ? '…' : ''}`} weight="regular" chevron="trailing"
     open={open} onToggle={() => setOpen(!open)}>
     {[...group.tools].reverse().map(tool => <TranscriptRow key={tool.key} item={tool} handlers={handlers} />)}
   </Collapsible>;
@@ -1467,19 +1465,8 @@ const TranscriptRow = React.memo(function Transcript({
     case 'think':
       return (
         <Collapsible
-          mark={
-            <Body
-              style={{
-                fontFamily: font.mono,
-                fontSize: 12,
-                color: status.thinking,
-              }}
-            >
-              {GLYPHS.thinking}
-            </Body>
-          }
-          name="Recorded thinking"
-          meta={`${item.durationMs != null ? `${(item.durationMs / 1000).toFixed(1)}s · ` : ''}${summarize(item.text)}`}
+          chevron="leading"
+          name={thoughtFor(item.durationMs)}
           open={open}
           onToggle={() => setOpen(!open)}
         >
@@ -1506,9 +1493,8 @@ const TranscriptRow = React.memo(function Transcript({
 
     case 'plan':
       return (
-        <Collapsible mark={<Bars color={status.plan} />} name="Plan"
-          meta={`${item.steps.filter(s => s.status === 'done').length}/${item.steps.length} done`}
-          open={open} onToggle={() => setOpen(!open)}>
+        <Collapsible mark={<Bars color={c.mutedForeground} />} name={planProgress(item.steps)}
+          strong chevron="trailing" open={open} onToggle={() => setOpen(!open)}>
           {item.steps.map((step, index) => (
             <View
               key={index}
@@ -1760,7 +1746,9 @@ const TranscriptRow = React.memo(function Transcript({
               size={7}
             />
           </View>
-          <Body style={{ ...reading.note, color: c.mutedForeground }}>{item.text}</Body>
+          <Body style={{ ...reading.note, flexShrink: 1, color: c.mutedForeground }}>
+            {item.turn === 'completed' ? turnCompleteLabel(item.durationMs, item.sub != null) : item.text}
+          </Body>
         </View>
       );
 
@@ -1891,13 +1879,23 @@ function Collapsible({
   mark,
   name,
   meta,
+  weight = 'medium',
+  strong = false,
+  chevron,
   open,
   onToggle,
   children,
 }: {
-  mark: React.ReactNode;
+  /** A glyph in the left gutter; a leading chevron takes its place. */
+  mark?: React.ReactNode;
   name: string;
-  meta: string;
+  meta?: string;
+  /** The web sets thinking and plan captions at 500, a tool run's at 400. */
+  weight?: 'medium' | 'regular';
+  /** The plan's caption reads in the foreground colour, the others muted. */
+  strong?: boolean;
+  /** The web's disclosure mark: › before a thinking row, ⌄ after a group. */
+  chevron?: 'leading' | 'trailing';
   open: boolean;
   onToggle: () => void;
   children: React.ReactNode;
@@ -1923,15 +1921,29 @@ function Collapsible({
           backgroundColor: pressed ? mix(c.mutedForeground, 10) : 'transparent',
         })}
       >
-        <View style={{ width: 12, alignItems: 'center' }}>{mark}</View>
-        {/* The web's disclosure rows are quiet sans at 12, name over meta in
-            weight only, so a run of them reads as one muted band. */}
-        <Body style={{ ...reading.summary, fontFamily: font.sansMedium, color: c.mutedForeground }}>
+        <View style={{ width: 12, alignItems: 'center' }}>
+          {chevron === 'leading' ? (
+            <Body style={{ ...reading.summary, color: c.mutedForeground, transform: [{ rotate: open ? '90deg' : '0deg' }] }}>›</Body>
+          ) : mark}
+        </View>
+        {/* The web's disclosure rows are quiet sans at 12, so a run of them
+            reads as one muted band under the prose. */}
+        <Body numberOfLines={meta ? undefined : 1} style={{
+          ...reading.summary,
+          flexShrink: 1,
+          fontFamily: weight === 'medium' ? font.sansMedium : font.sans,
+          color: strong ? c.foreground : c.mutedForeground,
+        }}>
           {name}
         </Body>
-        <Body numberOfLines={1} style={{ ...reading.summary, flex: 1, color: c.mutedForeground }}>
-          {meta}
-        </Body>
+        {meta ? (
+          <Body numberOfLines={1} style={{ ...reading.summary, flex: 1, color: c.mutedForeground }}>
+            {meta}
+          </Body>
+        ) : <View style={{ flex: 1 }} />}
+        {chevron === 'trailing' ? (
+          <Body style={{ ...reading.summary, color: c.mutedForeground, transform: [{ rotate: open ? '180deg' : '0deg' }] }}>⌄</Body>
+        ) : null}
       </Pressable>
       {open ? (
         <View style={{ paddingLeft: 24, paddingRight: 4, paddingBottom: 6 }}>
