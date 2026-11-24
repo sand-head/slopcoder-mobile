@@ -342,7 +342,7 @@ function ArtifactBody({
             : { flexGrow: 1, paddingTop: 12, paddingBottom: 24 }
         }>
         {artifact.format === 'markdown' ? (
-          <Prose>{detail.text}</Prose>
+          <Prose size="document">{detail.text}</Prose>
         ) : (
           <View
             style={{

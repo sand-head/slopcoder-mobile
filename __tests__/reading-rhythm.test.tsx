@@ -69,3 +69,35 @@ describe('prose', () => {
     expect(markdownStyles(paletteFor(true), 'small').body.fontSize).toBe(reading.proseSmall.fontSize);
   });
 });
+
+describe('blocks in a message, against the web transcript stylesheet', () => {
+  const styles = markdownStyles(paletteFor(false));
+
+  it('sets h1–h4 alike, one quiet step above the text, as the web does', () => {
+    for (const level of [1, 2, 3, 4] as const) {
+      const heading = styles[`heading${level}`];
+      expect(heading.fontSize).toBe(15);
+      // 20 above and 8 below once the paragraph's half gap is added back.
+      expect(heading.marginTop + reading.paragraphGap / 2).toBe(20);
+      expect(heading.marginBottom + reading.paragraphGap / 2).toBe(8);
+    }
+  });
+
+  it('keeps a document its hierarchy', () => {
+    const doc = markdownStyles(paletteFor(false), 'document');
+    expect(doc.heading1.fontSize).toBeGreaterThan(doc.heading4.fontSize);
+  });
+
+  it('rules tables in the border colour, not the library black', () => {
+    const c = paletteFor(true);
+    const dark = markdownStyles(c);
+    expect(dark.table.borderColor).toBe(c.border);
+    expect(dark.tr.borderColor).toBe(c.border);
+  });
+
+  it('pads fences and code blocks as the web pre', () => {
+    expect(styles.fence_code.padding).toBe(12);
+    expect(styles.code_block.padding).toBe(12);
+    expect(styles.fence_token.lineHeight).toBe(20);
+  });
+});

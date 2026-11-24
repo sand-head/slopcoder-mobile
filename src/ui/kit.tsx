@@ -1075,8 +1075,12 @@ export function Prose({
   size = 'body',
 }: {
   children: string;
-  /** `small` for prose quoted inside a card — a sub-session's tail. */
-  size?: 'body' | 'small';
+  /**
+   * `small` for prose quoted inside a card — a sub-session's tail;
+   * `document` for a whole document (an artifact), whose headings keep a
+   * document's hierarchy where a message's are all one quiet step up.
+   */
+  size?: ProseSize;
   /**
    * The session's partners. Their names are tinted wherever they appear in
    * this prose, so one of them can be followed down a transcript by eye.
@@ -1178,9 +1182,11 @@ function mentionRules(
  * the same paragraph should not read differently depending on which screen it
  * is on.
  */
-export function markdownStyles(c: Palette, size: 'body' | 'small' = 'body') {
+export type ProseSize = 'body' | 'small' | 'document';
+
+export function markdownStyles(c: Palette, size: ProseSize = 'body') {
   const half = reading.paragraphGap / 2;
-  return {
+  const styles = {
     body: {
       color: c.foreground,
       fontFamily: font.sans,
@@ -1252,9 +1258,14 @@ export function markdownStyles(c: Palette, size: 'body' | 'small' = 'body') {
       color: c.foreground,
     },
     // Wide code must scroll inside itself, never widen the screen.
+    // Code blocks and fences: the web's pre — 12.48 on 1.625, 12 inside,
+    // 12 above and below (less the paragraph's half gap).
     code_block: {
       fontFamily: font.mono,
-      fontSize: 12,
+      fontSize: 12.5,
+      lineHeight: 20,
+      padding: 12,
+      marginVertical: 12 - half,
       backgroundColor: mix(c.muted, 40),
       borderWidth: 1,
       borderColor: c.border,
@@ -1267,7 +1278,8 @@ export function markdownStyles(c: Palette, size: 'body' | 'small' = 'body') {
     // header is where the copy button lives.
     fence: {
       fontFamily: font.mono,
-      fontSize: 12,
+      fontSize: 12.5,
+      marginVertical: 12 - half,
       backgroundColor: mix(c.muted, 40),
       borderWidth: 1,
       borderColor: c.border,
@@ -1292,7 +1304,7 @@ export function markdownStyles(c: Palette, size: 'body' | 'small' = 'body') {
     },
     fence_copy_button: { paddingHorizontal: 6, paddingVertical: 2 },
     fence_copy_text: { fontFamily: font.mono, fontSize: 11, color: c.primary },
-    fence_code: { backgroundColor: mix(c.muted, 40), padding: 10 },
+    fence_code: { backgroundColor: mix(c.muted, 40), padding: 12 },
     fence_token: { fontFamily: font.mono, fontSize: 12.5, lineHeight: 20 },
     // The web's link: primary, medium, no underline at rest (the underline is
     // its hover state, which a phone has none of). The library's default also
@@ -1312,7 +1324,40 @@ export function markdownStyles(c: Palette, size: 'body' | 'small' = 'body') {
       backgroundColor: 'transparent',
       borderLeftWidth: 2,
       borderLeftColor: c.border,
-      paddingLeft: 10,
+      marginLeft: 0,
+      paddingLeft: 12,
+      paddingHorizontal: 0,
+      paddingRight: 0,
+      marginVertical: half,
     },
+    // The library's table is ruled in black, which on the dark ground is a
+    // hole and on the light one a shout; the web's is the border colour, with
+    // 4x8 cells, 12 from the text around it.
+    table: { borderWidth: 1, borderColor: c.border, borderRadius: radius.sm, marginVertical: 12 - half },
+    tr: { borderBottomWidth: 1, borderColor: c.border, flexDirection: 'row' as const },
+    th: { flex: 1, paddingVertical: 4, paddingHorizontal: 8 },
+    td: { flex: 1, paddingVertical: 4, paddingHorizontal: 8 },
+    hr: { backgroundColor: c.border, height: 1, marginVertical: 12 },
+  };
+  if (size === 'document') return styles;
+  // In a message the web sets h1–h4 alike, one quiet step above the text
+  // (15.2px, 600, 20 above and 8 below); a phone message follows it. The
+  // margins net out the paragraph's half gap on either side.
+  const messageHeading = {
+    fontFamily: font.sansMedium,
+    fontSize: 15,
+    lineHeight: 20,
+    letterSpacing: -0.375,
+    marginTop: 20 - half,
+    marginBottom: 8 - half,
+  };
+  return {
+    ...styles,
+    heading1: messageHeading,
+    heading2: messageHeading,
+    heading3: messageHeading,
+    heading4: messageHeading,
+    heading5: { ...messageHeading, fontSize: 14, letterSpacing: 0 },
+    heading6: { ...messageHeading, fontSize: 13, letterSpacing: 0, color: c.mutedForeground },
   };
 }
