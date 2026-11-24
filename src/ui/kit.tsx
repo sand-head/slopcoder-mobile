@@ -1186,7 +1186,7 @@ export type ProseSize = 'body' | 'small' | 'document';
 
 export function markdownStyles(c: Palette, size: ProseSize = 'body') {
   const half = reading.paragraphGap / 2;
-  const styles = {
+  const base = {
     body: {
       color: c.foreground,
       fontFamily: font.sans,
@@ -1339,7 +1339,7 @@ export function markdownStyles(c: Palette, size: ProseSize = 'body') {
     td: { flex: 1, paddingVertical: 4, paddingHorizontal: 8 },
     hr: { backgroundColor: c.border, height: 1, marginVertical: 12 },
   };
-  if (size === 'document') return styles;
+  if (size === 'document') return base;
   // In a message the web sets h1–h4 alike, one quiet step above the text
   // (15.2px, 600, 20 above and 8 below); a phone message follows it. The
   // margins net out the paragraph's half gap on either side.
@@ -1352,7 +1352,7 @@ export function markdownStyles(c: Palette, size: ProseSize = 'body') {
     marginBottom: 8 - half,
   };
   return {
-    ...styles,
+    ...base,
     heading1: messageHeading,
     heading2: messageHeading,
     heading3: messageHeading,

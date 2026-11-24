@@ -17,7 +17,7 @@ it('discloses real activity independently from opening the read-only session', (
   const header = () => tree.root.find(node => node.props.accessibilityRole === 'button' && node.props.accessibilityState?.expanded !== undefined && node.props.onPress);
   expect(header().props.accessibilityLabel).toContain('Explorer, model-1');
   expect(tree.root.findAll(node => node.props.children === 'Check keyboard').length).toBeGreaterThan(0);
-  expect(JSON.stringify(tree.toJSON())).toContain('Prompt');
+  expect(JSON.stringify(tree.toJSON())).toContain('Parent session');
   expect(JSON.stringify(tree.toJSON())).toContain('Cedar');
   act(() => header().props.onPress());
   expect(header().props.accessibilityState.expanded).toBe(false);

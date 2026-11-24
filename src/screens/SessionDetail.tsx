@@ -1939,7 +1939,12 @@ function Collapsible({
           </Body>
         ) : <View style={{ flex: 1 }} />}
         {chevron === 'trailing' ? (
-          <Body style={{ ...reading.summary, color: c.mutedForeground, transform: [{ rotate: open ? '180deg' : '0deg' }] }}>⌄</Body>
+          // Drawn, not typed: neither font has U+2304. The sub-session card's chevron.
+          <View accessibilityElementsHidden importantForAccessibility="no" style={{
+            width: 7, height: 7, marginRight: 4, marginTop: open ? 3 : -3,
+            borderRightWidth: 1.5, borderBottomWidth: 1.5, borderColor: c.mutedForeground,
+            transform: [{ rotate: open ? '225deg' : '45deg' }],
+          }} />
         ) : null}
       </Pressable>
       {open ? (
