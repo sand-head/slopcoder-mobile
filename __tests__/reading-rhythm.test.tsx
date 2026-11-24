@@ -62,6 +62,7 @@ describe('prose', () => {
     expect(link.textDecorationLine).toBe('none');
     expect(link.marginBottom).toBe(0);
     expect(link.fontFamily).toBe('Allo-Medium');
+    expect(link.lineHeight).toBe(reading.prose.lineHeight);
   });
 
   it('steps down inside a card', () => {

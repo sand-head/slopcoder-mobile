@@ -1298,7 +1298,11 @@ export function markdownStyles(c: Palette, size: 'body' | 'small' = 'body') {
     // its hover state, which a phone has none of). The library's default also
     // pulls the line up 4 with a negative margin, which nudged linked words
     // off the baseline of the text around them.
+    // A link is its own Text inside a Pressable, so it inherits nothing from
+    // the paragraph: without the body's size and leading it was drawn in a
+    // shorter line box and rode above the words around it.
     link: {
+      ...(size === 'small' ? reading.proseSmall : reading.prose),
       color: c.primary,
       fontFamily: font.sansMedium,
       textDecorationLine: 'none' as const,
