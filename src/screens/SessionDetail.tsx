@@ -37,7 +37,7 @@ import {
 import { parseSlashCommand } from '../api/slash';
 import { buildProposalCard, buildToolCard } from '../api/toolcard';
 import type { SubSessionMention } from '../api/mentions';
-import { handleTint } from '../api/rooms';
+import { handleTint } from '../api/sessionIdentity';
 import {
   groupSubagents,
   subagentDetail,
@@ -82,13 +82,52 @@ import { ToolCard } from '../ui/ToolCard';
 import { SubSessionCard } from '../ui/SubSessionCard';
 import { useAtBottom } from '../ui/atBottom';
 import { ChatSwitcher } from '../ui/ChatSwitcher';
+import { OverflowMenu } from '../ui/menu';
 import { useChatDirectory } from '../state/chatDirectory';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useKeyboardOffset } from '../ui/keyboard';
-import { barButton, useHeaderInset } from '../navigation/headers';
+import { useHeaderInset } from '../navigation/headers';
 import { tapConfirm, tapError, tapRefuse } from '../ui/haptics';
 import { newTokens } from '../api/contracts';
 import { font, mix, radius, tintFor, useTheme } from '../theme';
+
+type WorkspaceRepo = { repo: string; branch?: string | null; detached?: boolean; sandboxDown?: boolean; notARepository?: boolean; error?: string | null };
+
+type ToolRun = { kind: 'tool-run'; key: string; tools: Extract<Item, { kind: 'tool' }>[] };
+type DateRow = { kind: 'date-marker'; key: string; at: string };
+type DisplayRow = Row | ToolRun | DateRow;
+
+/** Group only known event times in the viewer's local calendar; never invent old dates. */
+export function insertDateMarkers(rows: Row[]): (Row | DateRow)[] {
+  const result: (Row | DateRow)[] = [];
+  let lastDay: string | null = null;
+  for (const row of rows) {
+    const at = row.kind === 'subagent' ? row.items.find(item => item.at)?.at : row.at;
+    if (at) {
+      const date = new Date(at);
+      if (!Number.isNaN(date.getTime())) {
+        const day = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+        if (day !== lastDay) { result.push({ kind: 'date-marker', key: `date:${row.key}`, at }); lastDay = day; }
+      }
+    }
+    result.push(row);
+  }
+  return result;
+}
+
+
+/** Group adjacent actual calls only; no inferred summaries or counts. */
+function groupToolRuns(rows: (Row | DateRow)[]): DisplayRow[] {
+  const result: DisplayRow[] = [];
+  for (let i = 0; i < rows.length;) {
+    if (rows[i].kind !== 'tool') { result.push(rows[i++]); continue; }
+    const tools: Extract<Item, { kind: 'tool' }>[] = [];
+    while (i < rows.length && rows[i].kind === 'tool') tools.push(rows[i++] as Extract<Item, { kind: 'tool' }>);
+    if (tools.length === 1) result.push(tools[0]);
+    else result.push({ kind: 'tool-run', key: `tools:${tools[tools.length - 1].key}`, tools });
+  }
+  return result;
+}
 
 export function SessionDetailScreen({
   route,
@@ -122,6 +161,16 @@ export function SessionDetailScreen({
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [imageError, setImageError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [jumpNotice, setJumpNotice] = useState<string | null>(null);
+  const [jumpTarget, setJumpTarget] = useState<string | null>(null);
+  const [jumpSearching, setJumpSearching] = useState(false);
+  const screenId = useRef(id);
+  const screenActive = useRef(true);
+  const currentState = useRef(state);
+  screenId.current = id;
+  currentState.current = state;
+  useEffect(() => { screenActive.current = true; return () => { screenActive.current = false; }; }, []);
   const [models, setModels] = useState<ModelCandidate[]>([]);
   const [commands, setCommands] = useState<SlashCommandInfo[]>([]);
   const [facets, setFacets] = useState<FacetOption[]>([]);
@@ -129,12 +178,34 @@ export function SessionDetailScreen({
   // Measured, not guessed: the composer grows with the text and with however
   // many dials are off default, and the transcript has to clear whatever it is.
   const [composerHeight, setComposerHeight] = useState(96);
-  const listRef = useRef<FlatList<Row>>(null);
+  const listRef = useRef<FlatList<DisplayRow>>(null);
+  const jumpTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const jumpRetries = useRef(0);
+  const jumpKey = useRef<string | null>(null);
+  const jumpRows = useRef<readonly DisplayRow[]>([]);
+  useEffect(() => () => { if (jumpTimer.current) clearTimeout(jumpTimer.current); }, []);
 
   // The list is inverted: index 0 is the newest line, and the platform keeps
   // it in view as lines arrive. This only says whether the reader is there.
   const { pinned, toBottom, props: bottom } = useAtBottom(listRef);
   const [usageOpen, setUsageOpen] = useState(false);
+  const [contextOpen, setContextOpen] = useState(false);
+  const [repoDetails, setRepoDetails] = useState<WorkspaceRepo[] | null>(null);
+  const [repoError, setRepoError] = useState<string | null>(null);
+  const [repoUrl, setRepoUrl] = useState('');
+  const [addingRepo, setAddingRepo] = useState(false);
+  const [repoMessage, setRepoMessage] = useState<string | null>(null);
+  const [repoRevision, setRepoRevision] = useState(0);
+  useEffect(() => {
+    if (!contextOpen || !seam) return;
+    let active = true;
+    setRepoDetails(null);
+    setRepoError(null);
+    void seam.get<WorkspaceRepo[]>(`api/seam/sessions/${encodeURIComponent(id)}/workspace/changes`)
+      .then(rows => { if (active) rows === null ? setRepoError('Workspace is unavailable.') : setRepoDetails(rows); })
+      .catch(() => { if (active) setRepoError('Could not load workspace details.'); });
+    return () => { active = false; };
+  }, [contextOpen, seam, id, repoRevision]);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [chatsOpen, setChatsOpen] = useState(false);
   const directory = useChatDirectory(chatsOpen);
@@ -224,6 +295,7 @@ export function SessionDetailScreen({
     const typed = draft.trim();
     if (!typed) return;
     setSending(true);
+    setSendError(null);
     try {
       setDraft('');
       tapConfirm();
@@ -234,9 +306,7 @@ export function SessionDetailScreen({
       // which falls through and is sent as if it had been typed.
       let prompt = typed;
       if (parseSlashCommand(prompt)) {
-        const result = await seam
-          .runSlashCommand(id, prompt)
-          .catch(() => ({ promptToSend: null }));
+        const result = await seam.runSlashCommand(id, prompt);
         if (!result?.promptToSend) return;
         prompt = result.promptToSend;
       }
@@ -247,8 +317,6 @@ export function SessionDetailScreen({
       if (running && (await seam.steer(id, { prompt }))) return;
 
       const images = pendingImages.length > 0 ? pendingImages.map(strip) : null;
-      setPendingImages([]);
-      setImageError(null);
       const started = await seam.start(id, {
         prompt,
         selection: options?.selection ?? {
@@ -258,13 +326,18 @@ export function SessionDetailScreen({
         },
         images,
       });
-      // A refused start leaves what was typed and attached where it was — what
-      // was typed, not what a template expanded to.
-      if (!started) {
-        setDraft(typed);
-        setPendingImages(pendingImages);
-        tapError();
-      }
+      if (!started) throw new Error('The session did not accept the message.');
+      // Remove only attachments included in this request, not any picked while
+      // it was in flight. Steering above intentionally keeps all images.
+      const sentKeys = new Set(pendingImages.map(image => image.key));
+      setPendingImages(current => current.filter(image => !sentKeys.has(image.key)));
+      setImageError(null);
+    } catch (sendFailure) {
+      // Never replace text typed while the request was pending. Both the
+      // refused message and the newer draft remain editable.
+      setDraft(current => current ? `${typed}\n\n${current}` : typed);
+      setSendError(sendFailure instanceof Error ? sendFailure.message : 'The message could not be sent.');
+      tapError();
     } finally {
       setSending(false);
     }
@@ -301,80 +374,43 @@ export function SessionDetailScreen({
     );
   }, [state?.lastUsage]);
 
-  const subtitle = [
-    archived ? 'archived · read-only' : null,
-    parentDriven
-      ? state?.closed
-        ? 'sub-session · set aside'
-        : 'sub-session'
-      : null,
-    archived ? null : running ? 'running' : 'idle',
-    contextPercent === null ? null : `${contextPercent}%`,
-    state?.usage.estimatedCost == null
-      ? null
-      : `$${state.usage.estimatedCost.toFixed(2)}`,
-  ]
-    .filter(Boolean)
-    .join(' · ');
-
-  // The bar is the platform's; the title inside it is ours — the session's
-  // name over its status line, and a tap on it opens the usage sheet.
+  // Native stack keeps its back control and platform chrome; the title area
+  // follows the approved repository-context-over-session hierarchy.
   const title = state?.title ?? 'Session';
+  const repoCount = state?.repoNames.length ?? 0;
+  const contextLabel = repoCount === 0 ? 'No repositories' : `${repoCount} ${repoCount === 1 ? 'repository' : 'repositories'}`;
   useLayoutEffect(() => {
     navigation.setOptions({
       title,
       headerTitle: () => (
-        <Pressable
-          onPress={() => setUsageOpen(true)}
-          accessibilityRole="button"
-          accessibilityLabel={`${title}. ${subtitle}. Session usage`}
-          style={({ pressed }) => ({
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 8,
-            maxWidth: 240,
-            opacity: pressed ? 0.6 : 1,
-          })}
-        >
-          <View
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 14,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: mix(c.primary, 16),
-            }}
-          >
-            <Body style={{ fontFamily: font.sansMedium, fontSize: 12, color: c.primary }}>
-              {title.charAt(0).toUpperCase()}
-            </Body>
-          </View>
-          <View style={{ flexShrink: 1 }}>
-            <Body
-              numberOfLines={1}
-              style={{ fontFamily: font.sansMedium, fontSize: 15 }}
-            >
-              {title}
-            </Body>
-            <Mono numberOfLines={1}>{subtitle}</Mono>
-          </View>
+        <Pressable onPress={() => setContextOpen(true)} accessibilityRole="button"
+          accessibilityLabel={`${contextLabel}. ${title}. ${archived ? 'archived · read-only. ' : ''}Session context`} style={{ flexShrink: 1, maxWidth: '100%' }}>
+          <Mono numberOfLines={1} style={{ color: c.mutedForeground }}>{contextLabel} ›</Mono>
+          <Body numberOfLines={1} style={{ fontFamily: font.sansMedium, fontSize: 17 }}>{title}</Body>
         </Pressable>
       ),
-      // The two kinds of conversation sit behind one switcher: this session
-      // is a conversation with its agent; shared rooms are the #channels.
-      ...barButton(
-        {
-          label: 'Sessions',
-          symbol: 'bubble.left.and.bubble.right',
-          onPress: () => setChatsOpen(true),
-        },
-        ({ label, onPress }) => (
-          <Button label={label} variant="ghost" onPress={onPress} />
-        ),
+      headerRight: () => (
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <OverflowMenu title="Session options" items={[
+            ...(!archived ? [{ key: 'terminal', title: 'Open terminal', symbol: 'terminal', onPress: () => setTerminalOpen(true) }] : []),
+            { key: 'sessions', title: 'Switch session', symbol: 'bubble.left.and.bubble.right', onPress: () => setChatsOpen(true) },
+            { key: 'usage', title: 'Session usage', symbol: 'chart.bar', onPress: () => setUsageOpen(true) },
+          ]}>
+            <View accessibilityRole="button" accessibilityLabel="Session options" style={{ width: 36, height: 40, alignItems: 'center', justifyContent: 'center' }}>
+              <Body style={{ color: c.foreground, fontSize: 22 }}>…</Body>
+            </View>
+          </OverflowMenu>
+        </View>
       ),
+      unstable_headerRightItems: () => [
+        { type: 'menu', label: 'Session options', icon: { type: 'sfSymbol', name: 'ellipsis' }, menu: { items: [
+          ...(!archived ? [{ type: 'action', label: 'Open terminal', icon: { type: 'sfSymbol', name: 'terminal' }, onPress: () => setTerminalOpen(true) }] : []),
+          { type: 'action', label: 'Switch session', icon: { type: 'sfSymbol', name: 'bubble.left.and.bubble.right' }, onPress: () => setChatsOpen(true) },
+          { type: 'action', label: 'Session usage', icon: { type: 'sfSymbol', name: 'chart.bar' }, onPress: () => setUsageOpen(true) },
+        ] } },
+      ],
     });
-  }, [navigation, title, subtitle, id, c]);
+  }, [navigation, title, contextLabel, c.mutedForeground, c.foreground, archived]);
 
   // A gate opening or closing, a question answered: the card changes shape,
   // and the lines below it move rather than jump.
@@ -388,7 +424,57 @@ export function SessionDetailScreen({
   // Each subagent's thread folded under its own row, then newest first for
   // the inverted list. `items` only changes identity when the fold changed, so
   // this holds still through a whole streaming turn.
-  const reversed = useMemo(() => groupSubagents(items).reverse(), [items]);
+  const reversed = useMemo(() => groupToolRuns(insertDateMarkers(groupSubagents(items)).reverse()), [items]);
+  jumpRows.current = reversed;
+  // Only offer a jump when the current server-authoritative request is in the
+  // loaded transcript; an old resolved card must never be presented as live.
+  const currentRequestIndex = reversed.findIndex(row =>
+    row.kind === 'approval' ? (state?.pendingApprovalIds ?? []).includes(row.requestId) :
+    row.kind === 'question' ? (state?.pendingQuestionIds ?? []).includes(row.requestId) : false);
+
+  useEffect(() => {
+    if (!jumpTarget) return;
+    const index = reversed.findIndex(row => row.key === jumpTarget);
+    if (index < 0) return;
+    const row = reversed[index];
+    const latest = currentState.current;
+    const pending = row.kind === 'approval' ? latest?.pendingApprovalIds.includes(row.requestId) : row.kind === 'question' ? latest?.pendingQuestionIds.includes(row.requestId) : false;
+    if (!pending) { setJumpTarget(null); setJumpNotice('The request is no longer pending.'); return; }
+    jumpRetries.current = 0;
+    jumpKey.current = jumpTarget;
+    listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+    setJumpTarget(null);
+  }, [jumpTarget, reversed]);
+
+  const jumpCurrent = async () => {
+    if (jumpSearching || !state) return;
+    const owner = id;
+    const approvals = new Set(state.pendingApprovalIds);
+    const questions = new Set(state.pendingQuestionIds);
+    const findPending = (rows: readonly Item[]) => rows.find(row =>
+      row.kind === 'approval' ? approvals.has(row.requestId) && currentState.current?.pendingApprovalIds.includes(row.requestId) :
+      row.kind === 'question' ? questions.has(row.requestId) && currentState.current?.pendingQuestionIds.includes(row.requestId) : false);
+    setJumpNotice(null);
+    if (currentRequestIndex >= 0) { setJumpTarget(reversed[currentRequestIndex].key); return; }
+    if (!canLoadEarlier) { setJumpNotice('Current request was not found in the available transcript.'); return; }
+    setJumpSearching(true);
+    try {
+      for (let page = 0; page < 3; page++) {
+        const result = await loadEarlier();
+        if (!screenActive.current || screenId.current !== owner) return;
+        const latest = currentState.current;
+        const stillPending = latest && ([...approvals].some(value => latest.pendingApprovalIds.includes(value)) || [...questions].some(value => latest.pendingQuestionIds.includes(value)));
+        if (!stillPending) { setJumpNotice('The request is no longer pending.'); return; }
+        if (result.error) { setJumpNotice(`Could not load earlier messages: ${result.error}`); return; }
+        if (!result.progress) { setJumpNotice('Could not find the request in earlier messages.'); return; }
+        const target = findPending(result.items ?? []);
+        if (target) { setJumpTarget(target.key); return; }
+        if (!result.hasMore) { setJumpNotice('Current request was not found in the available transcript.'); return; }
+      }
+      setJumpNotice('Request not found in three earlier pages. Tap status to search further.');
+    } finally { if (screenActive.current && screenId.current === owner) setJumpSearching(false); }
+  };
+
 
   // Everything a row is given, as one object that holds still.
   //
@@ -404,31 +490,12 @@ export function SessionDetailScreen({
     (subId: string) => navigation.push('Session', { id: subId }),
     [navigation],
   );
-  const onOpenRoom = useCallback(
-    (room: string) => navigation.navigate('Room', { name: room }),
-    [navigation],
-  );
   const switchSession = useCallback(
     (nextId: string) => {
       setChatsOpen(false);
       if (nextId !== id) navigation.replace('Session', { id: nextId });
     },
     [navigation, id],
-  );
-  const switchRoom = useCallback(
-    (room: string) => {
-      setChatsOpen(false);
-      navigation.replace('Room', { name: room });
-    },
-    [navigation],
-  );
-  const createRoom = useCallback(
-    async (name: string, description: string) => {
-      if (!seam) throw new Error('Sign in before creating a channel.');
-      const view = await seam.createChatRoom({ name, description });
-      return view.room.name;
-    },
-    [seam],
   );
   const onApprove = useCallback(
     (requestId: string, approved: boolean) => {
@@ -471,7 +538,6 @@ export function SessionDetailScreen({
       onApprove,
       onAnswer,
       onOpenSubSession,
-      onOpenRoom,
     }),
     [
       parentDriven,
@@ -482,12 +548,11 @@ export function SessionDetailScreen({
       onApprove,
       onAnswer,
       onOpenSubSession,
-      onOpenRoom,
     ],
   );
 
   const renderRow = useCallback(
-    ({ item }: { item: Row }) => <RowView row={item} handlers={handlers} />,
+    ({ item }: { item: DisplayRow }) => <RowView row={item} handlers={handlers} />,
     [handlers],
   );
 
@@ -556,21 +621,29 @@ export function SessionDetailScreen({
                 ) : undefined
               }
               renderItem={renderRow}
+              onScrollToIndexFailed={({ index, averageItemLength }) => {
+                // Variable-height transcript rows cannot use getItemLayout.
+                listRef.current?.scrollToOffset({ offset: index * averageItemLength, animated: false });
+                if (jumpRetries.current++ < 3) {
+                  if (jumpTimer.current) clearTimeout(jumpTimer.current);
+                  jumpTimer.current = setTimeout(() => {
+                    jumpTimer.current = null;
+                    if (!screenActive.current || screenId.current !== id) return;
+                    const target = jumpRows.current.findIndex(row => row.key === jumpKey.current);
+                    if (target < 0) return;
+                    const row = jumpRows.current[target];
+                    const latest = currentState.current;
+                    const pending = row.kind === 'approval' ? latest?.pendingApprovalIds.includes(row.requestId) : row.kind === 'question' ? latest?.pendingQuestionIds.includes(row.requestId) : false;
+                    if (pending) listRef.current?.scrollToIndex({ index: target, animated: true, viewPosition: 0.5 });
+                    else setJumpNotice('The request is no longer pending.');
+                  }, 200);
+                }
+              }}
               // The streaming tail, which in an inverted list is the header.
               ListHeaderComponent={
                 live ? (
                   <View style={{ gap: 6, paddingTop: 6, marginBottom: 8 }}>
-                    {live.thinking ? (
-                      <Body
-                        style={{
-                          fontStyle: 'italic',
-                          color: c.mutedForeground,
-                          fontSize: 13,
-                        }}
-                      >
-                        {live.thinking}
-                      </Body>
-                    ) : null}
+                    {live.thinking ? <LiveThinking text={live.thinking} /> : null}
                     {live.text ? <Prose>{live.text}</Prose> : null}
                   </View>
                 ) : undefined
@@ -582,7 +655,7 @@ export function SessionDetailScreen({
         {/* Mounted, never faded: the glass is a UIVisualEffectView, and an
             ancestor animating its opacity leaves it drawing nothing at all —
             the arrow floated on its own with no circle behind it. */}
-        {!pinned ? (
+        {!pinned && (archived || parentDriven) ? (
           <KeyboardStickyView
             pointerEvents="box-none"
             offset={keyboardOffset}
@@ -654,6 +727,9 @@ export function SessionDetailScreen({
           ) : parentDriven ? (
             <SubSessionNote closed={state?.closed === true} />
           ) : (
+            <View style={{ gap: 6 }}>
+            {sendError ? <Body accessibilityLiveRegion="polite" style={{ color: c.destructive }}>{sendError}</Body> : null}
+            {jumpNotice ? <Body accessibilityLiveRegion="polite">{jumpNotice}</Body> : null}
             <Composer
               value={draft}
               onChangeValue={setDraft}
@@ -674,6 +750,9 @@ export function SessionDetailScreen({
                 error: imageError,
               }}
               running={running}
+              sessionStatus={state ? (state.pendingApprovalIds.length ? 'Waiting for permission' : state.pendingQuestionIds.length ? 'Waiting for an answer' : state.stopRequested ? 'Stopping' : running ? 'Running' : 'Idle') : undefined}
+              onJumpLatest={!pinned ? toBottom : undefined}
+              onJumpStatus={state && (state.pendingApprovalIds.length > 0 || state.pendingQuestionIds.length > 0) && !jumpSearching ? () => void jumpCurrent() : undefined}
               onStop={stop}
               stopping={state?.stopRequested}
               options={
@@ -694,9 +773,39 @@ export function SessionDetailScreen({
               facets={facets}
               commands={{ list: commands, onNeeded: loadCommands }}
             />
+            </View>
           )}
         </KeyboardStickyView>
       </View>
+
+      <Sheet visible={contextOpen} title="Session context" onClose={() => setContextOpen(false)}>
+        <View style={{ gap: 12, paddingHorizontal: 16, paddingBottom: 20 }}>
+          <Body>{contextLabel}</Body>
+          {(state?.repoNames ?? []).map(name => <Mono key={name} selectable>{name}</Mono>)}
+          {repoError ? <Body accessibilityLiveRegion="polite">{repoError}</Body> : null}
+          {repoDetails === null && !repoError ? <Body>Loading workspace details…</Body> : null}
+          {(repoDetails ?? []).map(repo => <View key={repo.repo} style={{ gap: 2 }}>
+            <Body selectable>{repo.repo}</Body>
+            <Mono selectable>{repo.sandboxDown ? 'Workspace unavailable' : repo.notARepository ? 'Not a repository' : repo.error ? repo.error : repo.branch ? `${repo.detached ? 'Detached · ' : 'Branch · '}${repo.branch}` : 'Branch unknown'}</Mono>
+          </View>)}
+          {!archived ? <View style={{ gap: 8 }}>
+            <Field value={repoUrl} onChangeText={setRepoUrl} autoCapitalize="none" placeholder="Repository URL" accessibilityLabel="Repository URL" />
+            <Button label="Add repository" disabled={!repoUrl.trim() || addingRepo} busy={addingRepo} onPress={async () => {
+              if (!seam || addingRepo || !repoUrl.trim()) return;
+              setAddingRepo(true); setRepoMessage(null);
+              try {
+                const problem = await seam.addSessionRepository(id, repoUrl.trim());
+                if (problem) setRepoMessage(problem);
+                else { setRepoUrl(''); setRepoMessage('Repository added.'); setRepoRevision(value => value + 1); }
+              } catch (repoFailure) { setRepoMessage(repoFailure instanceof Error ? repoFailure.message : 'Could not add repository.'); }
+              finally { setAddingRepo(false); }
+            }} />
+            {repoMessage ? <Body accessibilityLiveRegion="polite">{repoMessage}</Body> : null}
+          </View> : null}
+          {state?.chatHandle ? <Mono selectable>Agent: {state.chatHandle}</Mono> : null}
+          <Button label="Session usage" variant="ghost" onPress={() => { setContextOpen(false); setUsageOpen(true); }} />
+        </View>
+      </Sheet>
 
       <Sheet
         visible={usageOpen}
@@ -774,19 +883,8 @@ export function SessionDetailScreen({
 
             {state.chatHandle ? (
               <View style={{ gap: 6 }}>
-                <Meta>chat rooms</Meta>
-                {/* What other agents @mention to reach this session. */}
-                <Mono selectable style={{ fontSize: 12.5, color: c.foreground }}>
-                  @{state.chatHandle}
-                </Mono>
-                <Button
-                  label="Open chat rooms"
-                  variant="ghost"
-                  onPress={() => {
-                    setUsageOpen(false);
-                    navigation.navigate('Rooms');
-                  }}
-                />
+                <Meta>agent handle</Meta>
+                <Mono selectable style={{ fontSize: 12.5, color: c.foreground }}>@{state.chatHandle}</Mono>
               </View>
             ) : null}
           </>
@@ -797,12 +895,9 @@ export function SessionDetailScreen({
         visible={chatsOpen}
         onClose={() => setChatsOpen(false)}
         sessions={directory.sessions}
-        rooms={directory.rooms}
         error={directory.error}
         selectedSessionId={id}
         onOpenSession={switchSession}
-        onOpenRoom={switchRoom}
-        onCreateRoom={createRoom}
       />
 
       <TerminalSheet
@@ -861,7 +956,6 @@ interface RowHandlers {
   onApprove: (requestId: string, approved: boolean) => void;
   onAnswer: (requestId: string, answers: UserQuestionAnswer[] | null) => void;
   onOpenSubSession: (id: string) => void;
-  onOpenRoom: (room: string) => void;
 }
 
 /**
@@ -913,7 +1007,7 @@ function SubSessionNote({ closed }: { closed: boolean }) {
 }
 
 /** The list's key, out here so the list is not handed a new one each render. */
-function keyOf(row: Row): string {
+function keyOf(row: DisplayRow): string {
   return row.key;
 }
 
@@ -948,14 +1042,47 @@ function useStableIds(ids: readonly string[] | undefined): readonly string[] {
  * reason to look at again.
  */
 const RowView = React.memo(
-  ({ row, handlers }: { row: Row; handlers: RowHandlers }) =>
-    row.kind === 'subagent' ? (
+  ({ row, handlers }: { row: DisplayRow; handlers: RowHandlers }) =>
+    row.kind === 'date-marker' ? (
+      <View style={{ alignItems: 'center', paddingVertical: 10 }}><Mono>{new Date(row.at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })} · {new Date(row.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</Mono></View>
+    ) : row.kind === 'tool-run' ? (
+      <ToolRunBlock group={row} handlers={handlers} />
+    ) : row.kind === 'subagent' ? (
       <SubagentBlock group={row} handlers={handlers} />
     ) : (
       <TranscriptRow item={row} handlers={handlers} />
     ),
 );
 RowView.displayName = 'RowView';
+
+function LiveThinking({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return <Collapsible mark={<Dot color={useTheme().status.thinking} size={7} />} name="Thinking" meta="Live"
+    open={open} onToggle={() => setOpen(!open)}>
+    <Body selectable style={{ fontSize: 13 }}>{text}</Body>
+  </Collapsible>;
+}
+
+function ToolRunBlock({ group, handlers }: { group: ToolRun; handlers: RowHandlers }) {
+  const [open, setOpen] = useState(false);
+  const { c } = useTheme();
+  const running = group.tools.some(tool => tool.running);
+  const failed = group.tools.some(tool => tool.isError);
+  // Use the existing card classifier, never infer that tests passed or that a
+  // call succeeded from its name. Unknown verbs remain actual card labels.
+  const verbs = new Map<string, number>();
+  for (const tool of [...group.tools].reverse()) {
+    const verb = buildToolCard(tool.name, tool.input, tool.result, tool.isError).verb;
+    verbs.set(verb, (verbs.get(verb) ?? 0) + 1);
+  }
+  const summary = [...verbs].map(([verb, count]) => `${verb} ${count}`).join(' · ');
+  return <Collapsible mark={<Dot color={failed ? c.destructive : c.mutedForeground} size={7} />}
+    name="Tool activity" meta={`${summary}${running ? ' · running' : ''}${failed ? ' · includes errors' : ''}`}
+    open={open} onToggle={() => setOpen(!open)}>
+    {[...group.tools].reverse().map(tool => <TranscriptRow key={tool.key} item={tool} handlers={handlers} />)}
+  </Collapsible>;
+}
+
 
 /**
  * A subagent's whole thread behind one row, closed by default, as on the web:
@@ -1157,7 +1284,6 @@ const TranscriptRow = React.memo(function Transcript({
     onApprove,
     onAnswer,
     onOpenSubSession,
-    onOpenRoom,
   },
 }: {
   item: Item;
@@ -1175,7 +1301,7 @@ const TranscriptRow = React.memo(function Transcript({
               maxWidth: '88%',
               borderRadius: 18,
               borderBottomRightRadius: 5,
-              backgroundColor: c.secondary,
+              backgroundColor: c.userBubble,
               paddingHorizontal: 14,
               paddingVertical: 10,
               gap: 6,
@@ -1244,6 +1370,24 @@ const TranscriptRow = React.memo(function Transcript({
       );
     }
 
+    case 'direct-message': {
+      const tint = tintFor(handleTint(item.sender), isDark) ?? status.subagent;
+      return (
+        <View style={{ marginVertical: 8, borderRadius: radius.lg, borderWidth: 1,
+          borderColor: mix(tint, 25), backgroundColor: mix(tint, isDark ? 8 : 4), padding: 12, gap: 4 }}>
+          {item.senderSessionId ? (
+            <Pressable accessibilityRole="link" accessibilityLabel={`Open agent session for ${item.sender}`}
+              onPress={() => onOpenSubSession(item.senderSessionId!)}>
+              <Meta style={{ color: tint, fontSize: 10.5 }}>@{item.sender} · direct agent message{item.interjected ? ' · mid-turn' : ''}</Meta>
+            </Pressable>
+          ) : (
+            <Meta style={{ color: tint, fontSize: 10.5 }}>@{item.sender} · direct agent message{item.interjected ? ' · mid-turn' : ''}</Meta>
+          )}
+          <Body selectable style={{ fontSize: 14 }}>{item.text}</Body>
+        </View>
+      );
+    }
+
     case 'chat-mention': {
       // A room message pushed into this session. Human provenance is visible:
       // an owner's display name is not an agent handle and must not get one.
@@ -1251,19 +1395,17 @@ const TranscriptRow = React.memo(function Transcript({
         ? c.primary
         : tintFor(handleTint(item.sender), isDark) ?? status.subagent;
       return (
-        <Pressable
-          onPress={() => onOpenRoom(item.room)}
-          accessibilityRole="button"
-          accessibilityLabel={`${item.sender} mentioned this agent in #${item.room}. Open the channel`}
-          style={({ pressed }) => ({
+        <View
+          accessibilityLabel={`${item.sender} mentioned this agent in former room #${item.room}`}
+          style={{
             marginVertical: 8,
             borderRadius: radius.lg,
             borderWidth: 1,
             borderColor: mix(tint, 25),
-            backgroundColor: mix(tint, isDark ? (pressed ? 14 : 8) : pressed ? 9 : 4),
+            backgroundColor: mix(tint, isDark ? 8 : 4),
             padding: 12,
             gap: 4,
-          })}
+          }}
         >
           <Meta style={{ color: tint, fontSize: 10.5 }}>
             {item.fromUser ? `${item.sender} · owner` : `@${item.sender}`} · #{item.room} · message {item.seq}
@@ -1272,7 +1414,7 @@ const TranscriptRow = React.memo(function Transcript({
           <Body selectable style={{ fontSize: 14 }}>
             {item.text}
           </Body>
-        </Pressable>
+        </View>
       );
     }
 
@@ -1299,8 +1441,8 @@ const TranscriptRow = React.memo(function Transcript({
               {GLYPHS.thinking}
             </Body>
           }
-          name="thinking"
-          meta={summarize(item.text)}
+          name="Recorded thinking"
+          meta={`${item.durationMs != null ? `${(item.durationMs / 1000).toFixed(1)}s · ` : ''}${summarize(item.text)}`}
           open={open}
           onToggle={() => setOpen(!open)}
         >
@@ -1327,14 +1469,9 @@ const TranscriptRow = React.memo(function Transcript({
 
     case 'plan':
       return (
-        <View style={{ gap: 4, paddingVertical: 6 }}>
-          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-            <Bars color={status.plan} />
-            <Meta>
-              plan · {item.steps.filter(s => s.status === 'done').length}/
-              {item.steps.length} done
-            </Meta>
-          </View>
+        <Collapsible mark={<Bars color={status.plan} />} name="Plan"
+          meta={`${item.steps.filter(s => s.status === 'done').length}/${item.steps.length} done`}
+          open={open} onToggle={() => setOpen(!open)}>
           {item.steps.map((step, index) => (
             <View
               key={index}
@@ -1368,7 +1505,7 @@ const TranscriptRow = React.memo(function Transcript({
               </Body>
             </View>
           ))}
-        </View>
+        </Collapsible>
       );
 
     case 'approval': {
@@ -1748,7 +1885,7 @@ function Collapsible({
         })}
       >
         <View style={{ width: 12, alignItems: 'center' }}>{mark}</View>
-        <Body style={{ fontFamily: font.monoSemiBold, fontSize: 12.5 }}>
+        <Body style={{ fontFamily: font.sansMedium, fontSize: 13 }}>
           {name}
         </Body>
         <Mono numberOfLines={1} style={{ flex: 1 }}>

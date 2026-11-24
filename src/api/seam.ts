@@ -40,11 +40,6 @@ import type {
   ArtifactDetail,
   ArtifactSummary,
   ArtifactAppStatus,
-  ChatRoomEntry,
-  ChatRoomListing,
-  ChatRoomView,
-  CreateChatRoomRequest,
-  PostChatRoomMessageRequest,
   GitIdentityPrefs,
   MemorySummary,
   MintedApiKey,
@@ -333,6 +328,11 @@ export class Seam {
   private async landed(method: string, path: string, body?: unknown): Promise<boolean> {
     const { status } = await this.request<void>(method, path, body ?? {});
     return status !== 404;
+  }
+
+  /** Null means attached; a returned sentence is the server's validation error. */
+  addSessionRepository(id: string, url: string): Promise<string | null> {
+    return this.textResult('POST', `api/seam/sessions/${encodeURIComponent(id)}/workspace/repos`, { url }, 'That session is gone.');
   }
 
   // ---- sessions ----
@@ -1106,45 +1106,6 @@ export class Seam {
 
   shareUrl(sharePath: string): string {
     return `${this.baseUrl}/${sharePath}`;
-  }
-
-  // -- chat rooms --
-
-  /** The shared channels the owner and their agent sessions talk in. */
-  async chatRooms(signal?: AbortSignal): Promise<ChatRoomListing[]> {
-    return (await this.get<ChatRoomListing[]>('api/seam/rooms/', signal)) ?? [];
-  }
-
-  /**
-   * The room and its newest `limit` messages, or those before `beforeSeq`.
-   * Null when it is gone, or was never this account's.
-   */
-  chatRoom(name: string, beforeSeq?: number | null, limit = 100, signal?: AbortSignal): Promise<ChatRoomView | null> {
-    const before = beforeSeq == null ? '' : `&beforeSeq=${beforeSeq}`;
-    return this.get<ChatRoomView>(`api/seam/rooms/${encodeURIComponent(name)}?limit=${limit}${before}`, signal);
-  }
-
-  /** Create (or open) one of the owner's shared agent channels. */
-  async createChatRoom(request: CreateChatRoomRequest): Promise<ChatRoomView> {
-    const view = await this.send<ChatRoomView>('POST', 'api/seam/rooms/', request);
-    if (!view) throw new SeamError(404, 'That channel could not be created.');
-    return view;
-  }
-
-  /** Post as the owner. Only agents @mentioned in the text are notified. */
-  async postChatRoomMessage(name: string, request: PostChatRoomMessageRequest): Promise<ChatRoomEntry> {
-    const message = await this.send<ChatRoomEntry>(
-      'POST',
-      `api/seam/rooms/${encodeURIComponent(name)}/messages`,
-      request,
-    );
-    if (!message) throw new SeamError(404, 'That channel is gone.');
-    return message;
-  }
-
-  /** False when the room was already gone. */
-  deleteChatRoom(name: string) {
-    return this.landed('DELETE', `api/seam/rooms/${encodeURIComponent(name)}`);
   }
 
   // -- memory --

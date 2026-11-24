@@ -11,7 +11,8 @@
  */
 import React from 'react';
 import { act, create } from 'react-test-renderer';
-import { SessionStatus, type ChatRoomListing, type SessionSummary } from '../src/api/contracts';
+import { SessionStatus, type SessionSummary } from '../src/api/contracts';
+import { matchesSession } from '../src/api/sessionIdentity';
 
 const sessionsFixture: SessionSummary[] = [
   {
@@ -37,8 +38,6 @@ const hits = [
 
 const mockSeam = {
   sessions: jest.fn((): Promise<SessionSummary[]> => Promise.resolve(sessionsFixture)),
-  chatRooms: jest.fn((): Promise<ChatRoomListing[]> => Promise.resolve([])),
-  createChatRoom: jest.fn(),
   models: jest.fn(() => Promise.resolve([])),
   facets: jest.fn(() => Promise.resolve([])),
   recentRepos: jest.fn(() => Promise.resolve([])),
@@ -199,31 +198,42 @@ describe('launcher recall', () => {
     expect(all).not.toContain('No sessions yet');
   });
 
-  it('puts shared channels beside the DMs and opens one', async () => {
-    mockSeam.chatRooms.mockImplementationOnce(() =>
-      Promise.resolve([
-        {
-          id: 'r-1',
-          name: 'relay',
-          description: 'push relay coordination',
-          members: 2,
-          messages: 3,
-          createdAt: '2026-11-17T09:00:00Z',
-          lastMessageAt: '2026-11-17T10:00:00Z',
-          lastSender: 'brisk-comet-42',
-          lastPreview: 'shipped the relay',
-        },
-      ]),
-    );
+  it('does not expose retired shared rooms on the launcher', async () => {
     const tree = await mount();
     try {
-      const row = tree.root.find(
-        n => n.props.accessibilityLabel === '#relay, brisk-comet-42: shipped the relay' && n.props.onPress,
-      );
-      await act(async () => row.props.onPress());
-      expect(navigate).toHaveBeenCalledWith('Room', { name: 'relay' });
-    } finally {
-      await act(async () => tree.unmount());
-    }
+      expect(tree.root.findAll(n => n.props.accessibilityLabel === 'Create channel')).toHaveLength(0);
+    } finally { await act(async () => tree.unmount()); }
   });
+});
+
+
+test('local session search matches optional repository labels and real status without breaking old servers', () => {
+  const old = sessionsFixture[0];
+  expect(matchesSession(old, 'mobile')).toBe(true);
+  expect(matchesSession(old, 'slopcoder')).toBe(false);
+  expect(matchesSession({ ...old, repoNames: null }, 'idle')).toBe(true);
+  expect(matchesSession({ ...old, repoNames: ['SlopCoder-Mobile'], status: SessionStatus.Running }, 'CODER-MOBILE')).toBe(true);
+  expect(matchesSession({ ...old, repoNames: [] }, 'running')).toBe(false);
+  expect(matchesSession({ ...old, status: SessionStatus.Running }, 'running')).toBe(true);
+});
+
+it('places recents in a single rounded pane without a leading divider', async () => {
+  const tree = await mount();
+  const pane = tree.root.findByProps({ testID: 'recent-sessions-pane' });
+  expect(pane.props.style.borderRadius).toBeGreaterThan(0);
+  expect(tree.root.findAll(node => node.props.children === 'Recent sessions').length).toBeGreaterThan(0);
+  expect(pane.findAll(node => node.props.accessibilityLabel === 'Mobile parity, idle').length).toBeGreaterThan(0);
+  await act(async () => tree.unmount());
+});
+
+it('filters recents without triggering full-text recall or losing the list', async () => {
+  const tree = await mount();
+  const filter = (label: string) => tree.root.find(node => node.props.accessibilityLabel === label && node.props.onPress);
+  act(() => filter('Running sessions').props.onPress());
+  expect(filter('Running sessions').props.accessibilityState.selected).toBe(true);
+  expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Mobile parity, idle')).toHaveLength(0);
+  expect(mockSeam.sessionSearch).not.toHaveBeenCalled();
+  act(() => filter('All recent sessions').props.onPress());
+  expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Mobile parity, idle').length).toBeGreaterThan(0);
+  await act(async () => tree.unmount());
 });

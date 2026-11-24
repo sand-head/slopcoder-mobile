@@ -18,7 +18,32 @@
  * ones go, and everything around them slides into place — which is all the
  * callers ever wanted.
  */
-import { LayoutAnimation, type LayoutAnimationConfig } from 'react-native';
+import { useEffect, useState } from 'react';
+import { AccessibilityInfo, LayoutAnimation, type LayoutAnimationConfig } from 'react-native';
+
+// Unknown means still until the OS preference is known. All subscribers watch
+// the same system value; App subscribes even when no animated child is mounted.
+let reduceMotion = true;
+export function useReducedMotion() {
+  const [reduced, setReduced] = useState(true);
+  useEffect(() => {
+    let alive = true;
+    let changed = false;
+    const update = (value: boolean) => {
+      if (alive) { reduceMotion = value; setReduced(value); }
+    };
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', value => {
+      changed = true;
+      update(value);
+    });
+    AccessibilityInfo.isReduceMotionEnabled().then(value => {
+      if (!changed) update(value);
+    }).catch(() => { /* Safe still state on failure. */ });
+    return () => { alive = false; sub.remove(); };
+  }, []);
+  return reduced;
+}
+
 
 /** Neighbours slide as a row grows, folds, appears or leaves. */
 export function slide(duration = 300): LayoutAnimationConfig {
@@ -27,5 +52,5 @@ export function slide(duration = 300): LayoutAnimationConfig {
 
 /** `LayoutAnimation.configureNext`, with the rule above built in. */
 export function animateNextLayout(config: LayoutAnimationConfig = slide()) {
-  LayoutAnimation.configureNext(config);
+  if (!reduceMotion) LayoutAnimation.configureNext(config);
 }

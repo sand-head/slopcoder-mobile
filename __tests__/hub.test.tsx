@@ -31,7 +31,8 @@ jest.mock('@microsoft/signalr', () => {
     static failNext = false;
 
     on() {}
-    onreconnected() {}
+    reconnected: (() => void) | null = null;
+    onreconnected(handler: () => void) { this.reconnected = handler; }
     onreconnecting() {}
     onclose(handler: () => void) {
       this.closed = handler;
@@ -290,4 +291,17 @@ describe('a handshake that fails', () => {
 
     list.close();
   });
+});
+
+
+it('refreshes registry subscribers after reconnect because changes may have been missed', async () => {
+  const { SessionHub } = require('../src/api/hub');
+  const onRegistryChanged = jest.fn(); const listener = jest.fn();
+  const hub = new SessionHub({ baseUrl: 'https://slop.example', apiKey: 'key', onRegistryChanged });
+  const unsubscribe = hub.addRegistryListener(listener);
+  await hub.start();
+  built.at(-1).reconnected();
+  expect(listener).toHaveBeenCalledTimes(1);
+  expect(onRegistryChanged).toHaveBeenCalledTimes(1);
+  unsubscribe(); await hub.stop();
 });

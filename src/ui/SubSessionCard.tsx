@@ -6,7 +6,7 @@
  * copied into the parent's scrollback. A tap on the head opens the
  * sub-session's own screen — the full transcript, without a composer.
  */
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { SessionStatus } from '../api/contracts';
 import { buildToolCard } from '../api/toolcard';
@@ -77,7 +77,10 @@ export function SubSessionCard({
   const { hub } = useSessionHub();
   const { state, items, error } = useSession(seam, hub, item.subSessionId);
 
-  const tail = useMemo(() => subSessionTail(items), [items]);
+  const [expanded, setExpanded] = useState(true);
+  // Only use prompts actually loaded from the child's stream; old pages may not be resident.
+  const prompt = useMemo(() => items.find(entry => entry.kind === 'user'), [items]);
+  const tail = useMemo(() => subSessionTail(items.filter(entry => entry.key !== prompt?.key)), [items, prompt]);
   const running = state?.status === SessionStatus.Running;
   const closed = state?.closed === true;
   const waiting =
@@ -119,21 +122,18 @@ export function SubSessionCard({
         marginVertical: 6,
         borderRadius: radius.lg,
         borderWidth: 1,
-        borderColor: c.border,
-        borderLeftWidth: 3,
-        borderLeftColor: closed
-          ? mix(c.mutedForeground, 45)
-          : mix(tint, running ? 100 : 55),
-        backgroundColor: closed ? 'transparent' : mix(c.mutedForeground, 6),
+        borderColor: closed ? c.border : mix(tint, 45),
+        backgroundColor: closed ? c.card : mix(tint, 5),
         overflow: 'hidden',
       }}
     >
       <Pressable
-        onPress={() => onOpen(item.subSessionId)}
+        onPress={() => setExpanded(value => !value)}
         accessibilityRole="button"
+        accessibilityState={{ expanded }}
         accessibilityLabel={`Sub-session ${who}${beat ? `, ${beat}` : ''}, ${
           item.profile
-        }, ${label}. Open`}
+        }, ${item.model}, ${label}. ${expanded ? 'Collapse' : 'Expand'}`}
         style={({ pressed }) => ({
           flexDirection: 'row',
           alignItems: 'center',
@@ -147,26 +147,13 @@ export function SubSessionCard({
         <View style={{ width: 12, alignItems: 'center' }}>
           <Fork color={tint} />
         </View>
-        <Body
-          numberOfLines={1}
-          style={{
-            flexShrink: 0,
-            fontFamily: font.sansMedium,
-            fontSize: 13.5,
-            color: tint,
-          }}
-        >
-          {who}
-        </Body>
-        {beat ? (
-          <Body numberOfLines={1} style={{ flexShrink: 1, fontSize: 13.5 }}>
-            {beat}
-          </Body>
-        ) : null}
-        <Mono numberOfLines={1} style={{ flex: 1, fontSize: 11 }}>
-          {item.profile} · {item.model}
-          {spent > 0 ? ` · ${spend(spent, cost)}` : ''}
-        </Mono>
+        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: 6 }}>
+            <Body style={{ fontFamily: font.sansMedium, fontSize: 13.5, color: tint }}>{who}</Body>
+            {beat ? <Body style={{ flexShrink: 1, fontSize: 13.5 }}>{beat}</Body> : null}
+          </View>
+          <Meta>{item.profile} · {item.model}{spent > 0 ? ` · ${spend(spent, cost)}` : ''}</Meta>
+        </View>
         <View
           style={{
             flexDirection: 'row',
@@ -180,10 +167,16 @@ export function SubSessionCard({
             {label}
           </Mono>
         </View>
-        <Mono style={{ fontSize: 12 }}>›</Mono>
+        <View accessibilityElementsHidden importantForAccessibility="no" style={{ width: 7, height: 7, borderRightWidth: 1.5, borderBottomWidth: 1.5, borderColor: c.mutedForeground, transform: [{ rotate: expanded ? '225deg' : '45deg' }] }} />
       </Pressable>
 
-      {tail.length > 0 ? (
+      {expanded && prompt ? (
+        <View style={{ borderTopWidth: 1, borderTopColor: mix(c.border, 70), paddingHorizontal: 10, paddingTop: 8, gap: 3 }}>
+          <Meta>{prompt.steering ? 'Steer' : 'Prompt'} to {who}</Meta>
+          <Body selectable style={{ color: c.foreground, fontSize: 13 }}>{prompt.text}</Body>
+        </View>
+      ) : null}
+      {expanded ? (tail.length > 0 ? (
         <View
           style={{
             borderTopWidth: 1,
@@ -194,10 +187,10 @@ export function SubSessionCard({
           }}
         >
           {tail.map(entry => (
-            <TailRow key={entry.key} item={entry} />
+            <TailRow key={entry.key} item={entry} recipient={who} />
           ))}
         </View>
-      ) : (
+      ) : !prompt ? (
         <Meta style={{ paddingHorizontal: 10, paddingBottom: 8 }}>
           {error
             ? 'This sub-session is no longer available.'
@@ -205,7 +198,12 @@ export function SubSessionCard({
             ? 'Nothing yet.'
             : 'Loading…'}
         </Meta>
-      )}
+      ) : null) : null}
+      <Pressable onPress={() => onOpen(item.subSessionId)} accessibilityRole="button"
+          accessibilityLabel={`Open ${who} activity`} hitSlop={4}
+          style={{ alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', paddingHorizontal: 10 }}>
+          <Body style={{ color: c.primary, fontFamily: font.sansMedium, fontSize: 13 }}>Open activity ›</Body>
+      </Pressable>
     </View>
   );
 }
@@ -227,22 +225,15 @@ function spend(tokens: number, cost: number | null): string {
 }
 
 /** One line of the tail, in the transcript's vocabulary but shorter. */
-function TailRow({ item }: { item: Item }) {
+function TailRow({ item, recipient }: { item: Item; recipient: string }) {
   const { c, status } = useTheme();
 
   switch (item.kind) {
     case 'user':
       return (
-        <View
-          style={{ flexDirection: 'row', gap: 6, alignItems: 'flex-start' }}
-        >
-          <Mono style={{ fontSize: 12, color: c.primary }}>▷</Mono>
-          <Mono
-            numberOfLines={2}
-            style={{ flex: 1, fontSize: 12, color: mix(c.foreground, 80) }}
-          >
-            {item.text}
-          </Mono>
+        <View style={{ gap: 3 }}>
+          <Meta>{item.steering ? 'Steer' : 'Prompt'} to {recipient}</Meta>
+          <Body selectable style={{ fontSize: 13, color: c.foreground }}>{item.text}</Body>
         </View>
       );
 

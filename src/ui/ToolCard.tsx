@@ -51,7 +51,6 @@ export function ToolCard({
 
   const hidden = card.blocks.some(b => !b.open);
   const shown = card.blocks.filter(b => expanded || b.open);
-  const failed = state === 'failed';
 
   const head = <Head card={card} state={state} expanded={expanded} hasChevron={hidden} />;
 
@@ -69,18 +68,7 @@ export function ToolCard({
   }
 
   return (
-    <View
-      style={
-        shown.length > 0
-          ? {
-              borderRadius: radius.md,
-              borderWidth: 1,
-              borderColor: failed ? mix(c.destructive, 30) : c.border,
-              backgroundColor: failed ? mix(c.destructive, 4) : mix(c.muted, 40),
-              paddingBottom: 6,
-            }
-          : undefined
-      }>
+    <View style={shown.length > 0 ? { paddingBottom: 6 } : undefined}>
       {hidden ? (
         <Pressable
           onPress={() => {
@@ -138,7 +126,7 @@ function Head({
         <Mark state={state} />
       </View>
 
-      <Body numberOfLines={1} style={{ flexShrink: 0, fontFamily: font.monoSemiBold, fontSize: 12.5 }}>
+      <Body numberOfLines={1} style={{ flexShrink: 0, fontFamily: font.sansMedium, fontSize: 12.5 }}>
         {card.verb}
       </Body>
 

@@ -34,6 +34,25 @@ describe('TranscriptFolder', () => {
     expect(items.map(i => i.kind)).toEqual(['user', 'text']);
   });
 
+  it('retains valid payload times without fabricating missing or malformed dates', () => {
+    const folder = new TranscriptFolder();
+    const items = folder.fold([
+      event('UserPrompt', { text: 'one', at: '2026-11-22T12:34:00Z' }),
+      event('AssistantText', { text: 'two' }),
+      event('AssistantText', { text: 'three', at: 'not-a-date' }),
+    ]);
+    expect(items.map(item => item.at)).toEqual(['2026-11-22T12:34:00Z', undefined, undefined]);
+  });
+
+  it('preserves nested event time, or a valid enclosing time when absent', () => {
+    const folder = new TranscriptFolder();
+    folder.fold([
+      event('SubagentEvent', { subagentId: 1, at: '2026-11-21T10:00:00Z', innerKind: 'AssistantText', innerPayloadJson: JSON.stringify({ text: 'inner', at: '2026-11-22T10:00:00Z' }) }),
+      event('SubagentEvent', { subagentId: 2, at: '2026-11-21T10:00:00Z', innerKind: 'AssistantText', innerPayloadJson: JSON.stringify({ text: 'fallback' }) }),
+    ]);
+    expect(folder.all.map(item => item.at)).toEqual(['2026-11-22T10:00:00Z', '2026-11-21T10:00:00Z']);
+  });
+
   /** Images ride the prompt as the seam persisted them, or not at all. */
   it("carries a prompt's images through, and reads an old prompt as having none", () => {
     const folder = new TranscriptFolder();

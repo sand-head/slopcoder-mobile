@@ -92,6 +92,7 @@ jest.mock('../src/state/session', () => ({
 
 // After the mocks: a screen imported first would capture the real stores.
 import { SessionDetailScreen } from '../src/screens/SessionDetail';
+import * as imageTools from '../src/ui/images';
 
 /**
  * Unmounted after each test: the transcript is a `VirtualizedList`, whose
@@ -192,4 +193,33 @@ describe('the cockpit composer', () => {
       .map(node => node.props.accessibilityLabel as string);
     expect(labels).toContain('/compact');
   });
+});
+
+test('a failed transport preserves the submitted draft without overwriting newer typing', async () => {
+  let reject!: (reason: Error) => void;
+  mockSeam.start.mockImplementationOnce(() => new Promise<boolean>((_, fail) => { reject = fail; }));
+  const tree = await mount();
+  await type(tree, 'first draft');
+  await act(async () => {
+    tree.root.find(node => node.props.accessibilityLabel === 'Send' && node.props.accessibilityRole === 'button').props.onPress();
+  });
+  await type(tree, 'newer text');
+  await act(async () => { reject(new Error('Offline')); await Promise.resolve(); });
+  const input = tree.root.findAll(node => typeof node.props.onChangeText === 'function' && node.props.value === 'first draft\n\nnewer text');
+  expect(input.length).toBeGreaterThan(0);
+  expect(tree.root.findAll(node => node.props.children === 'Offline').length).toBeGreaterThan(0);
+});
+
+
+test('transport failure preserves attached images', async () => {
+  const pick = jest.spyOn(imageTools, 'pickImages').mockResolvedValueOnce({ images: [{ key: 'img1', mediaType: 'image/png', base64Data: 'QUJD' }], error: null });
+  mockSeam.start.mockRejectedValueOnce(new Error('offline'));
+  const tree = await mount();
+  const menu = tree.root.findByType('MenuView' as never);
+  await act(async () => { menu.props.onPressAction({ nativeEvent: { event: 'library' } }); await Promise.resolve(); });
+  await type(tree, 'draft with image');
+  await press(tree, 'Send');
+  expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Remove image 1 of 1' && node.props.onPress).length).toBeGreaterThan(0);
+  expect(tree.root.findAll(node => node.props.value === 'draft with image' && node.props.onChangeText).length).toBeGreaterThan(0);
+  pick.mockRestore();
 });

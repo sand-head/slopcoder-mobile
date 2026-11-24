@@ -97,6 +97,8 @@
 	<false/>
 	<key>UIAppFonts</key>
 	<array>
+		<string>Allo-Regular.ttf</string>
+		<string>Allo-Medium.ttf</string>
 		<string>Baloo2-ExtraBold.ttf</string>
 		<string>Geist-Medium.ttf</string>
 		<string>GeistMono-Regular.ttf</string>

@@ -100,7 +100,7 @@ function charactersInSource(): Map<string, string[]> {
 
 describe('glyph coverage', () => {
   const mono = codepoints(path.join(FONT_DIR, 'GeistMono-Regular.ttf'));
-  const sans = codepoints(path.join(FONT_DIR, 'Geist-Regular.ttf'));
+  const sans = codepoints(path.join(FONT_DIR, 'Allo-Regular.ttf'));
 
   it.each(Object.entries(GLYPHS))('%s (%s) exists in Geist Mono', (_name, ch) => {
     expect(mono.has(ch.codePointAt(0)!)).toBe(true);
@@ -121,7 +121,7 @@ describe('glyph coverage', () => {
    * what happened with a tick in a sheet row, and it would have rendered as
    * whatever the OS substituted or as nothing at all.
    */
-  it('has every non-ASCII character used anywhere in src, in both fonts', () => {
+  it('has every used character in both fonts', () => {
     const missing = [...charactersInSource().entries()]
       .filter(([ch]) => !mono.has(ch.codePointAt(0)!) || !sans.has(ch.codePointAt(0)!))
       .map(([ch, where]) => `${ch} (U+${ch.codePointAt(0)!.toString(16).toUpperCase()}) at ${where[0]}`);

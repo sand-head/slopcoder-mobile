@@ -376,7 +376,7 @@ function severityColor(
     case 0:
       return c.destructive;
     case 1:
-      return '#e17100';
+      return c.warning;
     default:
       return c.foreground;
   }
@@ -592,9 +592,9 @@ export function ReviewDetailScreen({ route, navigation }: { route: any; navigati
 
   // Before the early return below: hooks must run in the same order on every
   // render, and `missing` returns first.
-  const { c: themeColor } = useTheme();
-  // Line colours must survive a light surface, like the transcript's code.
-  const dark = themeColor.background === '#0a0a0a' || themeColor.background === '#000000';
+  // Scheme is explicit; comparing a palette background to old hex values
+  // silently misclassifies the current charcoal theme as light.
+  const { isDark: dark } = useTheme();
 
   if (missing) {
     return (
@@ -886,15 +886,6 @@ function PublicationPanel({
                 borderRadius: radius.lg,
                 borderWidth: 1,
                 borderColor: c.border,
-                // The one status colour that reads at a glance.
-                borderLeftWidth: 3,
-                borderLeftColor:
-                  pub.state === CodeReviewPublicationState.Published
-                    ? c.primary
-                    : pub.state === CodeReviewPublicationState.Failed ||
-                      pub.state === CodeReviewPublicationState.PartiallyPublished
-                    ? c.destructive
-                    : c.border,
                 padding: 12,
                 gap: 8,
               }}
@@ -1530,9 +1521,6 @@ function FindingCard({
         borderRadius: radius.lg,
         borderWidth: 1,
         borderColor: c.border,
-        // The severity edge the web's ReviewCard draws with border-left.
-        borderLeftWidth: 3,
-        borderLeftColor: severityColor(shown.severity, c),
         overflow: 'hidden',
       }}
     >

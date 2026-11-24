@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		ABC123000000000000000001 /* Allo-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = ABC123000000000000000003 /* Allo-Regular.ttf */; };
+		ABC123000000000000000002 /* Allo-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = ABC123000000000000000004 /* Allo-Medium.ttf */; };
 		0C80B921A6F3F58F76C31292 /* libPods-slopcoder_mobile.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DCACB8F33CDC322A6C60F78 /* libPods-slopcoder_mobile.a */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
@@ -64,6 +66,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		ABC123000000000000000003 /* Allo-Regular.ttf */ = {isa = PBXFileReference; name = "Allo-Regular.ttf"; path = "../assets/fonts/Allo-Regular.ttf"; sourceTree = "<group>"; lastKnownFileType = file; };
+		ABC123000000000000000004 /* Allo-Medium.ttf */ = {isa = PBXFileReference; name = "Allo-Medium.ttf"; path = "../assets/fonts/Allo-Medium.ttf"; sourceTree = "<group>"; lastKnownFileType = file; };
 		13B07F961A680F5B00A75B9A /* slopcoder_mobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = slopcoder_mobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = slopcoder_mobile/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = slopcoder_mobile/Info.plist; sourceTree = "<group>"; };
@@ -192,6 +196,8 @@
 		8AD3E010F8EC4F32B0D1D46D /* Resources */ = {
 			isa = "PBXGroup";
 			children = (
+				ABC123000000000000000003 /* Allo-Regular.ttf */,
+				ABC123000000000000000004 /* Allo-Medium.ttf */,
 				CB34804E109043B1B31CAD5C /* Baloo2-ExtraBold.ttf */,
 				3266754216274678A0539AFD /* Geist-Medium.ttf */,
 				D5994DFF8699492196C3898D /* GeistMono-Regular.ttf */,
@@ -342,6 +348,8 @@
 			files = (
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
+				ABC123000000000000000001 /* Allo-Regular.ttf in Resources */,
+				ABC123000000000000000002 /* Allo-Medium.ttf in Resources */,
 				2F92E5411A184E878FC99266 /* Baloo2-ExtraBold.ttf in Resources */,
 				AB9A03849C0E4A56824A60E9 /* Geist-Medium.ttf in Resources */,
 				065B936216A043788DFAF0FE /* GeistMono-Regular.ttf in Resources */,

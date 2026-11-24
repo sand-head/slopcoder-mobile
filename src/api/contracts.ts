@@ -92,6 +92,8 @@ export interface SessionSummary {
   clientWorkspace?: ClientWorkspace | null;
   /** Null when there is no machine to be connected. False means it is offline. */
   workspaceConnected?: boolean | null;
+  /** Bounded repository display labels; absent on older servers. */
+  repoNames?: string[] | null;
 }
 
 /** `"auto"`, or a specific model on a specific connection. */
@@ -253,10 +255,7 @@ export interface SessionState {
   subSessionProfile?: string | null;
   /** A sub-session its driving agent has set aside. Reversible: a prompt revives it. */
   closed?: boolean;
-  /**
-   * This session's username in chat rooms (`brisk-comet-42`): what other agents
-   * @mention to reach it. Null on an older session that has never used a room.
-   */
+  /** Agent handle, used by direct session messaging; null on older sessions. */
   chatHandle?: string | null;
   /**
    * When it was archived for going untouched too long, or null. An archived
@@ -284,6 +283,16 @@ export interface AgentEventEnvelope {
   ordinal: number;
   kind: string;
   payloadJson: string;
+}
+
+/** Direct peer message event payload. The sender is always an agent, not the owner. */
+export interface DirectMessageReceivedPayload {
+  messageId: string;
+  senderSessionId: string | null;
+  sender: string;
+  text: string;
+  interjected?: boolean;
+  at?: string;
 }
 
 // ---- requests ----
@@ -1986,75 +1995,6 @@ export interface CodeReviewPublicationPreview {
   items: CodeReviewPublicationPreviewItem[];
   target: CodeReviewElevationTarget;
   repository: string | null;
-}
-
-// ---- chat rooms ----
-
-/** One chat room, as the rooms list shows it. Mirrors `ChatRoomListing`. */
-export interface ChatRoomListing {
-  id: string;
-  name: string;
-  description: string;
-  members: number;
-  messages: number;
-  createdAt: string;
-  lastMessageAt: string | null;
-  /** Handle of whoever posted last; null before any message. */
-  lastSender: string | null;
-  /** The start of the last message, one line; null before any. */
-  lastPreview: string | null;
-}
-
-/** One agent session in a room. */
-export interface ChatRoomPresence {
-  sessionId: string;
-  /** Its chat username, `brisk-comet-42`. */
-  handle: string;
-  sessionTitle: string;
-  /** "running", "idle" or "set aside". */
-  state: string;
-  isSubSession: boolean;
-  joinedAt: string;
-  /** How far it has read; behind the room's end means unread messages. */
-  lastReadSeq: number;
-}
-
-/** One message. */
-export interface ChatRoomEntry {
-  seq: number;
-  /** Null for the human owner, and for an agent session deleted since posting. */
-  senderSessionId: string | null;
-  sender: string;
-  /**
-   * The posting session's title, as recorded when it posted. Absent on servers
-   * before this and when the session is gone — resolve from the room's members
-   * or fall back to `sender` rather than assuming either exists.
-   */
-  senderSessionTitle?: string;
-  /** True for the owner's own words; absent on servers before human posting. */
-  fromUser?: boolean;
-  text: string;
-  /** Handles the message @mentioned, as resolved when it was posted. */
-  mentioned: string[];
-  at: string;
-}
-
-export interface CreateChatRoomRequest {
-  name: string;
-  description: string;
-}
-
-export interface PostChatRoomMessageRequest {
-  text: string;
-}
-
-/** A room with its members and a page of its messages, oldest first. */
-export interface ChatRoomView {
-  room: ChatRoomListing;
-  members: ChatRoomPresence[];
-  messages: ChatRoomEntry[];
-  /** Older messages exist before the first one here. */
-  hasEarlier: boolean;
 }
 
 // ---- git identity ----

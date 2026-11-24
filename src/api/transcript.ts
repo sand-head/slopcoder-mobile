@@ -32,7 +32,8 @@ export type ItemKind =
   | 'subagent-start'
   | 'subsession'
   | 'subsession-reply'
-  | 'chat-mention';
+  | 'chat-mention'
+  | 'direct-message';
 
 export interface PlanStep {
   text: string;
@@ -44,6 +45,8 @@ export interface BaseItem {
   kind: ItemKind;
   key: string;
   ordinal: number;
+  /** Original event time, absent on old or malformed records. */
+  at?: string;
   /** The subagent this belongs to, or null for the main thread. */
   sub: number | null;
 }
@@ -200,7 +203,18 @@ export interface ChatMentionItem extends BaseItem {
   interjected: boolean;
 }
 
+/** Agent-to-agent delivery; not a user instruction and not a room mention. */
+export interface DirectMessageItem extends BaseItem {
+  kind: 'direct-message';
+  messageId: string;
+  senderSessionId: string | null;
+  sender: string;
+  text: string;
+  interjected: boolean;
+}
+
 export type Item =
+  | DirectMessageItem
   | UserItem
   | SubSessionReplyItem
   | ChatMentionItem
@@ -276,6 +290,7 @@ export class TranscriptFolder {
    * when the result lands, so holding it would be holding the stale one.
    */
   private openTools = new Map<string, number>();
+  private directMessages = new Set<string>();
   private version = 0;
 
   get all(): readonly Item[] {
@@ -299,6 +314,7 @@ export class TranscriptFolder {
     this.items = [];
     this.processed = 0;
     this.openTools.clear();
+    this.directMessages.clear();
     this.version++;
   }
 
@@ -340,7 +356,7 @@ export class TranscriptFolder {
     this.items[index] = item;
   }
 
-  private consume(envelope: AgentEventEnvelope, sub: number | null): void {
+  private consume(envelope: AgentEventEnvelope, sub: number | null, parentAt?: string): void {
     let payload: Record<string, unknown>;
     try {
       payload = JSON.parse(envelope.payloadJson) as Record<string, unknown>;
@@ -348,7 +364,9 @@ export class TranscriptFolder {
       return; // A payload we cannot read is not worth a crash.
     }
 
+    const rawAt = typeof payload.at === 'string' && !Number.isNaN(Date.parse(payload.at)) ? payload.at : parentAt;
     const base = {
+      ...(rawAt ? { at: rawAt } : {}),
       ordinal: envelope.ordinal,
       sub,
       key: `${envelope.ordinal}:${sub ?? 'main'}`,
@@ -636,6 +654,18 @@ export class TranscriptFolder {
         });
         break;
 
+      case 'DirectMessageReceived': {
+        const messageId = str('messageId');
+        if (messageId && this.directMessages.has(messageId)) break;
+        if (messageId) this.directMessages.add(messageId);
+        this.add({
+          ...base, kind: 'direct-message', messageId,
+          senderSessionId: typeof payload.senderSessionId === 'string' && payload.senderSessionId ? payload.senderSessionId : null,
+          sender: str('sender'), text: str('text'), interjected: payload.interjected === true,
+        });
+        break;
+      }
+
       // Like a reply: nobody typed it, so it is never drawn as a prompt.
       case 'ChatMentionReceived':
         this.add({
@@ -686,7 +716,7 @@ export class TranscriptFolder {
           kind: (payload.innerKind as string) ?? '',
           payloadJson: (payload.innerPayloadJson as string) ?? '{}',
         };
-        this.consume(inner, (payload.subagentId as number) ?? 0);
+        this.consume(inner, (payload.subagentId as number) ?? 0, rawAt);
         break;
       }
 

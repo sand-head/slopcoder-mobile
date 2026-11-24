@@ -1,13 +1,7 @@
 /**
- * The web cockpit's design tokens, resolved for React Native.
- *
- * `src/SlopCoder.Web/wwwroot/app.css` is the source of truth — a shadcn preset
- * (style rhea, base mist, theme emerald, font geist) written in `oklch()`, with
- * `color-mix()` used ~40 times for tints. React Native has neither, so the
- * values below are that file converted to sRGB and the mixes precomputed by
- * {@link mix}. Light neutrals are cool mist; dark is warm charcoal at hue 72.
- *
- * Regenerate rather than hand-edit if app.css moves.
+ * Shared native palette. Neutral values originate in the web cockpit's sRGB
+ * conversions; app chrome uses the live logo emerald for the two themes.
+ * Semantic status colors remain independent of the primary action color.
  */
 import { useColorScheme } from 'react-native';
 
@@ -21,12 +15,14 @@ export interface Palette {
   primary: string;
   primaryForeground: string;
   secondary: string;
+  userBubble: string;
   secondaryForeground: string;
   muted: string;
   mutedForeground: string;
   accent: string;
   accentForeground: string;
   destructive: string;
+  warning: string;
   border: string;
   input: string;
   ring: string;
@@ -37,49 +33,53 @@ export interface Palette {
 
 const lightPalette: Palette = {
   background: '#ffffff',
-  foreground: '#090b0c',
+  foreground: '#24232d',
   card: '#ffffff',
-  cardForeground: '#090b0c',
+  cardForeground: '#24232d',
   popover: '#ffffff',
-  popoverForeground: '#090b0c',
+  popoverForeground: '#24232d',
   primary: '#007a55',
   primaryForeground: '#ecfdf5',
-  secondary: '#f4f4f5',
-  secondaryForeground: '#18181b',
-  muted: '#f1f3f3',
-  mutedForeground: '#67787c',
-  accent: '#f1f3f3',
-  accentForeground: '#161b1d',
+  secondary: '#f0eef3',
+  userBubble: '#f0eef3',
+  secondaryForeground: '#24232d',
+  muted: '#f0eef3',
+  mutedForeground: '#625e6e',
+  accent: '#f0eef3',
+  accentForeground: '#24232d',
   destructive: '#e7000b',
+  warning: '#a04b00',
   border: '#e3e7e8',
   input: '#e3e7e8',
   ring: '#9ca8ab',
   sidebar: '#f9fbfb',
-  sidebarAccent: '#f1f3f3',
+  sidebarAccent: '#f0eef3',
   sidebarBorder: '#e3e7e8',
 };
 
 const darkPalette: Palette = {
-  background: '#181410',
-  foreground: '#f1eee9',
-  card: '#221d18',
-  cardForeground: '#f1eee9',
-  popover: '#221d18',
-  popoverForeground: '#f1eee9',
-  primary: '#009966',
-  primaryForeground: '#ecfdf5',
-  secondary: '#2f2b25',
-  secondaryForeground: '#f1eee9',
-  muted: '#2d2823',
-  mutedForeground: '#a59d92',
-  accent: '#2d2823',
-  accentForeground: '#f1eee9',
+  background: '#17171d',
+  foreground: '#eeebf3',
+  card: '#222229',
+  cardForeground: '#eeebf3',
+  popover: '#222229',
+  popoverForeground: '#eeebf3',
+  primary: '#00bc7d',
+  primaryForeground: '#061d15',
+  secondary: '#29272e',
+  userBubble: '#29272e',
+  secondaryForeground: '#eeebf3',
+  muted: '#29272e',
+  mutedForeground: '#b9b3c5',
+  accent: '#29272e',
+  accentForeground: '#eeebf3',
   destructive: '#ff6467',
+  warning: '#ffb900',
   border: 'rgba(255, 255, 255, 0.1)',
   input: 'rgba(255, 255, 255, 0.12)',
   ring: '#a69d91',
-  sidebar: '#0f0c08',
-  sidebarAccent: '#231e19',
+  sidebar: '#111116',
+  sidebarAccent: '#29272e',
   sidebarBorder: 'rgba(255, 255, 255, 0.1)',
 };
 
@@ -172,7 +172,7 @@ export function mix(color: string, percent: number): string {
 export const radius = { sm: 6, md: 8, lg: 10, xl: 14, xxl: 18 } as const;
 
 /**
- * Geist for names and prose, Geist Mono for everything else — meta lines,
+ * Allo for names and prose, Geist Mono for meta lines,
  * labels, counts, timestamps, tool rows. That split is the strongest visual
  * signature of this UI, so it is a token rather than a per-screen choice.
  *
@@ -184,10 +184,11 @@ export const radius = { sm: 6, md: 8, lg: 10, xl: 14, xxl: 18 } as const;
  * does nothing — pick the family instead.
  */
 export const font = {
-  sans: 'Geist-Regular',
-  sansMedium: 'Geist-Medium',
+  sans: 'Allo-Regular',
+  sansMedium: 'Allo-Medium',
   mono: 'GeistMono-Regular',
   monoSemiBold: 'GeistMono-SemiBold',
+  // Retained during the transition; native brand now uses the optical image.
   display: 'Baloo2-ExtraBold',
 } as const;
 
@@ -199,12 +200,16 @@ export const meta = {
   textTransform: 'uppercase',
 } as const;
 
+export function paletteFor(dark: boolean): Palette {
+  return dark ? darkPalette : lightPalette;
+}
+
 export function useTheme() {
   const scheme = useColorScheme();
   const isDark = scheme === 'dark';
   return {
     isDark,
-    c: isDark ? darkPalette : lightPalette,
+    c: paletteFor(isDark),
     status: statusColors(isDark),
   };
 }

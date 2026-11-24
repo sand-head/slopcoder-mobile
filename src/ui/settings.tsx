@@ -139,11 +139,20 @@ export function Note({ children, ok }: { children: string; ok: boolean }) {
       {ok ? <Check color={theme.status.ok} size={12} /> : null}
       <Body
         accessibilityLiveRegion="polite"
-        style={{ flex: 1, fontFamily: font.mono, fontSize: 11.5, color: ok ? theme.status.ok : theme.c.destructive }}>
+        style={{ flex: 1, fontFamily: font.sans, fontSize: 12, color: ok ? theme.status.ok : theme.c.destructive }}>
         {children}
       </Body>
     </View>
   );
+}
+
+/** Keep literal endpoints and file identifiers technical inside otherwise human copy. */
+function Subtitle({ text }: { text: string }) {
+  const { c } = useTheme();
+  const parts = text.split(/(https?:\/\/[^\s·]+|(?:[\w-]+\/)+[\w./-]+|[\w-]+\.(?:json|yaml|yml|toml|md|tsx?|js|sh)\b)/gi);
+  return <Body numberOfLines={2} style={{ color: c.mutedForeground, fontSize: 12.5 }}>
+    {parts.map((part, index) => index % 2 ? <Mono key={index}>{part}</Mono> : part)}
+  </Body>;
 }
 
 /** A labelled section with hairline rows under it. */
@@ -258,11 +267,11 @@ export function ListRow({
           </Body>
           {tag ? <Tag tone={tagTone}>{tag}</Tag> : null}
         </View>
-        {subtitle ? <Mono numberOfLines={2}>{subtitle}</Mono> : null}
+        {subtitle ? <Subtitle text={subtitle} /> : null}
         {warn ? (
-          <Mono numberOfLines={2} style={{ color: c.destructive }}>
+          <Body numberOfLines={2} style={{ color: c.destructive, fontSize: 12.5 }}>
             {warn}
-          </Mono>
+          </Body>
         ) : null}
         {children}
       </View>
@@ -539,7 +548,7 @@ export function SwitchRow({
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 44 }}>
       <View style={{ flex: 1, gap: 2 }}>
         <Body style={{ fontSize: 14 }}>{label}</Body>
-        {detail ? <Mono>{detail}</Mono> : null}
+        {detail ? <Body style={{ color: c.mutedForeground, fontSize: 12.5 }}>{detail}</Body> : null}
       </View>
       <Switch
         value={value}

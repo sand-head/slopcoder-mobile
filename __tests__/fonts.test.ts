@@ -12,6 +12,7 @@ import { font } from '../src/theme';
 
 const FONT_DIR = path.join(__dirname, '..', 'assets', 'fonts');
 const ANDROID_DIR = path.join(__dirname, '..', 'android', 'app', 'src', 'main', 'assets', 'fonts');
+const PBXPROJ = path.join(__dirname, '..', 'ios', 'slopcoder_mobile.xcodeproj', 'project.pbxproj');
 const INFO_PLIST = path.join(__dirname, '..', 'ios', 'slopcoder_mobile', 'Info.plist');
 
 const families = Object.values(font);
@@ -29,12 +30,18 @@ describe('fonts', () => {
     expect(fs.readFileSync(INFO_PLIST, 'utf8')).toContain(`<string>${family}.ttf</string>`);
   });
 
-  it('ships nothing the theme does not name', () => {
+  it.each(['Allo-Regular', 'Allo-Medium'])('%s is copied into the iOS target', family => {
+    const project = fs.readFileSync(PBXPROJ, 'utf8');
+    expect(project).toContain(`${family}.ttf in Resources`);
+    expect(project).toContain(`../assets/fonts/${family}.ttf`);
+  });
+
+  it('retains only the known transitional fonts in addition to active families', () => {
     const shipped = fs
       .readdirSync(FONT_DIR)
       .filter((f: string) => f.endsWith('.ttf'))
       .map((f: string) => f.replace(/\.ttf$/, ''));
 
-    expect([...shipped].sort()).toEqual([...families].sort());
+    expect([...shipped].sort()).toEqual([...new Set([...families, 'Geist-Regular', 'Geist-Medium'])].sort());
   });
 });

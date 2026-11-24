@@ -48,8 +48,6 @@ type RootLinks = {
   Session: { id: string };
   Artifact: { id: string };
   Routine: { id: string; run?: string };
-  Rooms: undefined;
-  Room: { name: string };
 };
 
 export const linking: LinkingOptions<RootLinks> = {
@@ -85,8 +83,6 @@ export const linking: LinkingOptions<RootLinks> = {
       Session: 'session/:id',
       Artifact: 'artifacts/:id',
       Routine: 'routines/:id',
-      Rooms: 'rooms',
-      Room: 'rooms/:name',
     },
   },
 };

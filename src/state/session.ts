@@ -20,6 +20,8 @@ const INITIAL_WINDOW = 120;
 /** The sandbox reaper's clock wants bumping while someone is watching. */
 const PRESENCE_INTERVAL_MS = 60_000;
 
+export type EarlierResult = { progress: boolean; hasMore: boolean; items?: readonly Item[]; error?: string };
+
 export interface SessionView {
   state: SessionState | null;
   items: readonly Item[];
@@ -27,7 +29,7 @@ export interface SessionView {
   loading: boolean;
   error: string | null;
   canLoadEarlier: boolean;
-  loadEarlier: () => void;
+  loadEarlier: () => Promise<EarlierResult>;
 }
 
 export function useSession(seam: Seam | null, hub: SessionHub | null, id: string): SessionView {
@@ -35,6 +37,12 @@ export function useSession(seam: Seam | null, hub: SessionHub | null, id: string
   const accumulator = useRef(new LiveAccumulator()).current;
   const folder = useRef(new TranscriptFolder()).current;
   const pulling = useRef(false);
+  const seededId = useRef<string | null>(null);
+  const currentId = useRef(id);
+  currentId.current = id;
+  const earlierFlight = useRef<{ id: string; promise: Promise<EarlierResult> } | null>(null);
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   /** The fold this hook has already handed out; see {@link publishItems}. */
   const published = useRef(-1);
 
@@ -104,6 +112,7 @@ export function useSession(seam: Seam | null, hub: SessionHub | null, id: string
   useEffect(() => {
     if (!seam || !hub) return;
     let cancelled = false;
+    seededId.current = null;
 
     const onDelta: DeltaHandler = (sessionId, next, events, patch) => {
       if (sessionId !== id || cancelled) return;
@@ -137,6 +146,7 @@ export function useSession(seam: Seam | null, hub: SessionHub | null, id: string
         if (cancelled) return;
 
         stream.seed(from, events);
+        seededId.current = id;
         accumulator.seed(seed.live);
         folder.refold(stream.all);
         publish(seed);
@@ -159,6 +169,7 @@ export function useSession(seam: Seam | null, hub: SessionHub | null, id: string
 
     return () => {
       cancelled = true;
+      if (seededId.current === id) seededId.current = null;
       hub.removeListener(id, onDelta);
       void hub.unsubscribe(id);
     };
@@ -176,21 +187,31 @@ export function useSession(seam: Seam | null, hub: SessionHub | null, id: string
     return () => clearInterval(timer);
   }, [seam, id]);
 
-  const loadEarlier = useMemo(
-    () => () => {
-      if (!seam || stream.firstOrdinal === 0) return;
-      const take = Math.min(INITIAL_WINDOW, stream.firstOrdinal);
-      const from = stream.firstOrdinal - take;
-      void seam.scrollback(id, from, take).then(older => {
-        if (stream.prepend(from, older)) {
-          folder.refold(stream.all);
-          publishItems();
-          setCanLoadEarlier(stream.firstOrdinal > 0);
-        }
-      });
-    },
-    [seam, id, stream, folder, publishItems],
-  );
+  const loadEarlier = useMemo(() => () => {
+    if (earlierFlight.current?.id === id) return earlierFlight.current.promise;
+    if (!seam || currentId.current !== id || seededId.current !== id || stream.firstOrdinal === 0)
+      return Promise.resolve({ progress: false, hasMore: false } as EarlierResult);
+    const before = stream.firstOrdinal;
+    const take = Math.min(INITIAL_WINDOW, before);
+    const from = before - take;
+    const promise: Promise<EarlierResult> = (async () => {
+      try {
+        const older = await seam.scrollback(id, from, take);
+        if (!alive.current || currentId.current !== id || seededId.current !== id) return { progress: false, hasMore: false };
+        if (stream.firstOrdinal !== before || !stream.prepend(from, older))
+          return { progress: false, hasMore: stream.firstOrdinal > 0 };
+        folder.refold(stream.all);
+        publishItems();
+        setCanLoadEarlier(stream.firstOrdinal > 0);
+        return { progress: true, hasMore: stream.firstOrdinal > 0, items: [...folder.all] };
+      } catch (failure) {
+        return { progress: false, hasMore: true, error: failure instanceof Error ? failure.message : 'Could not load earlier messages.' };
+      }
+    })();
+    earlierFlight.current = { id, promise };
+    void promise.finally(() => { if (earlierFlight.current?.promise === promise) earlierFlight.current = null; });
+    return promise;
+  }, [seam, id, stream, folder, publishItems]);
 
   return { state, items, live, loading, error, canLoadEarlier, loadEarlier };
 }

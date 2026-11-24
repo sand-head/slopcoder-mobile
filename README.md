@@ -26,9 +26,9 @@ access to the device credential.
 - Read and interact with what the agent published: reports, generated logs, self-contained
   HTML mini apps and dashboards, and full-screen photos with pinch/double-tap zoom and
   panning; give an artifact an unlisted link from the system share sheet
-- Move between sessions with your agents and shared `#channels` from the chat switcher; create a channel,
-  post as the owner, and @mention only the agents you want to wake. Timelines, membership,
-  previews and presence stay live; a session's own handle and incoming @mentions show there too
+- Move between agent sessions with the native session switcher; direct agent messages and
+  historical room mentions retain sender attribution in the transcript. Shared chat rooms
+  are retired; external channel integrations in Settings and routines are separate.
 - See what's left of a ChatGPT (Codex) or Claude (Claude Code) plan's 5-hour and weekly
   windows on Usage — Claude's as of the last turn on that connection, since it can only be
   observed, not polled
@@ -63,9 +63,9 @@ src/api/          the seam client — this is the part to read first
   routineEditor.ts what the editor decides — a port of TriggerEdit.cs and Editor.razor's draft
   settings.ts     what the settings pages decide — the razor @code blocks, function for function
   models.ts       per-model thinking levels and the picker's order — ThinkingLevels and ModelOrdering
-  rooms.ts        what the chat-room pages decide — Rooms.razor's @code block
+  sessionIdentity.ts  handle tint and serialized session-list refresh
 src/state/        auth (keychain), the hub connection, one session's live view
-src/screens/      login (+ scanner), sessions (list + launcher), session detail, routines, routine, routine editor, artifacts (list + one), chat rooms (list + one), usage, settings
+src/screens/      login (+ scanner), sessions (list + launcher), session detail, routines, routine, routine editor, artifacts (list + one), usage, settings
 src/screens/settings/  one list page per web settings page, and the editors they present as sheets
 src/ui/settings.tsx    the grammar those pages share: rows, fields, the focus-reload hook
 src/navigation/   the tab bar and the native-header options every stack shares

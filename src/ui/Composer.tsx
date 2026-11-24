@@ -24,7 +24,7 @@
  * where that popover would go, so it grows upward instead — see `SlashMenu`.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { Image, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, TextInput, View } from 'react-native';
 import {
   ApprovalMode,
   GitServiceKind,
@@ -34,7 +34,7 @@ import {
   type ModelSelection,
   type SlashCommandInfo,
 } from '../api/contracts';
-import { Body, Dot, GlassSurface, GitMark, Meta, Mono, SendButton, Sliders } from './kit';
+import { Body, GlassSurface, GitMark, Meta, Mono, SendButton, Sliders } from './kit';
 import { OverflowMenu, type MenuItem } from './menu';
 import { Sheet, SheetGroup, SheetMultiGroup, SheetSegments } from './Sheet';
 import { MAX_IMAGES, type ImageSource, type PendingImage } from './images';
@@ -145,7 +145,12 @@ export function Composer({
   attachments,
   images,
   commands,
+  sessionStatus,
+  onJumpLatest,
+  onJumpStatus,
+  launcher = false,
 }: {
+  launcher?: boolean;
   value: string;
   onChangeValue: (next: string) => void;
   placeholder: string;
@@ -175,8 +180,12 @@ export function Composer({
   images?: ComposerImages;
   /** Omitted by the launcher: a command needs a session to run against. */
   commands?: ComposerCommands;
+  /** Real live status supplied by the session, absent on the launcher. */
+  sessionStatus?: string;
+  onJumpLatest?: () => void;
+  onJumpStatus?: () => void;
 }) {
-  const { c, status } = useTheme();
+  const { c } = useTheme();
   const reachable = useConnection(s => s.reachable);
   const [sheet, setSheet] = useState<'model' | 'turn' | 'attach' | null>(null);
 
@@ -227,7 +236,7 @@ export function Composer({
     attachments || images ? (
       <IconButton
         onPress={() => (images ? undefined : setSheet('attach'))}
-        accessibilityLabel="Attach">
+        accessibilityLabel="Attach" label={launcher ? "Attach" : undefined}>
         <Body
           style={{
             fontFamily: font.mono,
@@ -252,54 +261,46 @@ export function Composer({
           }}
         />
       ) : null}
-      {attachments ? <AttachChips attachments={attachments} /> : null}
-      {images ? <ImageChips images={images} /> : null}
-
       <GlassSurface
         cornerRadius={radius.xl}
-        style={{ paddingHorizontal: 10, paddingTop: 8, paddingBottom: 8, gap: 8 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
-          {/* The web's ›, which becomes a running dot mid-turn. A fixed box the
-              height of the input's first line, centring whatever sits in it —
-              a glyph and a circle do not share a baseline. */}
-          <View style={{ width: 18, height: 30, alignItems: 'center', justifyContent: 'center' }}>
-            {running ? (
-              <Dot color={status.running} size={9} />
-            ) : (
-              <Body
-                style={{
-                  fontFamily: font.mono,
-                  fontSize: 17,
-                  lineHeight: 17,
-                  color: c.primary,
-                }}>
-                ›
-              </Body>
-            )}
+        style={{ paddingHorizontal: 12, paddingTop: 10, paddingBottom: 8, gap: 8 }}>
+        {sessionStatus ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {onJumpStatus ? (
+              <Pressable onPress={onJumpStatus} accessibilityRole="button"
+                accessibilityLabel={`${sessionStatus}. Jump to current request`} style={{ flex: 1 }}>
+                <Mono style={{ color: c.mutedForeground }}>{sessionStatus}</Mono>
+              </Pressable>
+            ) : <Mono style={{ flex: 1, color: c.mutedForeground }}>{sessionStatus}</Mono>}
+            {onJumpLatest ? (
+              <IconButton onPress={onJumpLatest} accessibilityLabel="Jump to the latest">
+                <Body style={{ color: c.foreground, fontSize: 17 }}>↓</Body>
+              </IconButton>
+            ) : null}
           </View>
-          <TextInput
-            value={value}
-            onChangeText={onChangeValue}
-            placeholder={reachable ? placeholder : 'Offline'}
-            placeholderTextColor={c.mutedForeground}
-            multiline
-            autoCapitalize="sentences"
-            accessibilityLabel={placeholder}
-            style={{
-              flex: 1,
-              minHeight: 30,
-              maxHeight: 192,
-              paddingTop: 4,
-              paddingBottom: 4,
-              fontSize: 16,
-              lineHeight: 22,
-              fontFamily: font.sans,
-              color: c.foreground,
-            }}
-          />
-        </View>
+        ) : null}
+        {(attachments && (attachments.repos.length > 0 || attachments.nodes.length > 0)) || (images && images.pending.length > 0) ? (
+          <ScrollView horizontal keyboardShouldPersistTaps="handled" showsHorizontalScrollIndicator={false}
+            accessibilityLabel="Selected context" contentContainerStyle={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {attachments ? <AttachChips attachments={attachments} /> : null}
+            {images ? <ImageChips images={{ ...images, error: null }} /> : null}
+          </ScrollView>
+        ) : null}
+        {images?.error ? <Body accessibilityLiveRegion="polite" style={{ color: c.destructive, fontSize: 12 }}>{images.error}</Body> : null}
+        <TextInput
+          value={value}
+          onChangeText={onChangeValue}
+          placeholder={reachable ? placeholder : 'Offline'}
+          placeholderTextColor={c.mutedForeground}
+          multiline
+          autoCapitalize="sentences"
+          accessibilityLabel={placeholder}
+          style={{ minHeight: launcher ? 72 : 42, maxHeight: launcher ? undefined : 192, paddingTop: 4, paddingBottom: 4,
+            fontSize: 16, lineHeight: 22, fontFamily: font.sans, color: c.foreground,
+            backgroundColor: 'transparent' }}
+        />
 
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <View testID="composer-toolbar" style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
           {images && addButton ? (
             <OverflowMenu title="Attach" items={addItems}>
               {addButton}
@@ -307,15 +308,16 @@ export function Composer({
           ) : (
             addButton
           )}
-          <IconButton onPress={() => setSheet('turn')} accessibilityLabel="Turn settings">
+          {!launcher ? <Pill label={modelLabel} onPress={() => setSheet('model')} /> : null}
+          <IconButton onPress={() => setSheet('turn')} accessibilityLabel="Turn settings" label={launcher ? "Settings" : undefined}>
             <Sliders color={c.mutedForeground} />
           </IconButton>
-          <Pill label={modelLabel} onPress={() => setSheet('model')} />
+          {launcher && !options.selection.auto ? <Pill label={modelLabel} onPress={() => setSheet('model')} muted /> : null}
           {/* Dials appear only when off default, as on the web. */}
           {options.thinking !== null ? <Pill label={thinkingLabel} muted /> : null}
           {options.approval !== ApprovalMode.Dangerous ? <Pill label={approvalLabel} muted /> : null}
 
-          <View style={{ flex: 1 }} />
+          <View style={{ flexGrow: 1 }} />
           {running && onStop ? (
             <SendButton
               mode="stop"
@@ -325,7 +327,17 @@ export function Composer({
               accessibilityLabel={stopping ? 'Stopping' : 'Stop'}
             />
           ) : null}
-          <SendButton
+          {launcher ? (
+            <Pressable accessibilityRole="button" accessibilityLabel={action} disabled={disabled || !reachable || busy}
+              onPress={onAction} style={({ pressed }) => ({ minHeight: 44, paddingHorizontal: 14, borderRadius: 22,
+                flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.primary,
+                opacity: disabled || !reachable || busy ? 0.4 : pressed ? 0.75 : 1 })}>
+              {busy ? <ActivityIndicator color={c.primaryForeground} size="small" /> : <>
+                <Body style={{ color: c.primaryForeground, fontFamily: font.sansMedium }}>{action}</Body>
+                <Mono style={{ color: c.primaryForeground, fontSize: 17 }}>↑</Mono>
+              </>}
+            </Pressable>
+          ) : <SendButton
             mode="send"
             onPress={onAction}
             busy={busy}
@@ -333,7 +345,7 @@ export function Composer({
             // send that silently fails is worse than a button that says no.
             disabled={disabled || !reachable}
             accessibilityLabel={action}
-          />
+          />}
         </View>
       </GlassSurface>
 
@@ -371,6 +383,10 @@ export function Composer({
       </Sheet>
 
       <Sheet visible={sheet === 'turn'} title="Turn settings" onClose={() => setSheet(null)}>
+        {launcher ? <Pressable accessibilityRole="button" accessibilityLabel={`Model: ${modelLabel}`}
+          onPress={() => setSheet('model')} style={{ minHeight: 44, justifyContent: 'center' }}>
+          <Body>Model: {modelLabel} ›</Body>
+        </Pressable> : null}
         <SheetSegments
           label="thinking"
           options={[
@@ -626,11 +642,13 @@ export function AttachChips({ attachments }: { attachments: Attachments }) {
   if (picked.length === 0) return null;
 
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+    <View style={{ flexDirection: 'row', gap: 6 }}>
       {picked.map(chip => (
         <Pressable
           key={chip.key}
           onPress={chip.drop}
+          accessibilityRole="button"
+          accessibilityLabel={`Remove ${chip.label}`}
           style={{
             height: 28,
             flexDirection: 'row',
@@ -672,7 +690,7 @@ export function ImageChips({ images }: { images: ComposerImages }) {
   return (
     <View style={{ gap: 6 }}>
       {images.pending.length > 0 ? (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+        <View style={{ flexDirection: 'row', gap: 6 }}>
           {images.pending.map((image, index) => (
             <Pressable
               key={image.key}
@@ -737,14 +755,17 @@ function Pill({ label, onPress, muted }: { label: string; onPress?: () => void; 
     <Pressable
       onPress={onPress}
       disabled={!onPress}
+      accessibilityRole={onPress ? 'button' : undefined}
       style={({ pressed }) => ({
-        height: 30,
+        minHeight: 44,
+        flexShrink: 1,
+        maxWidth: muted ? 120 : 160,
         justifyContent: 'center',
         paddingHorizontal: 11,
         borderRadius: 9999,
         backgroundColor: mix(c.mutedForeground, pressed ? 22 : 12),
       })}>
-      <Mono style={{ fontSize: 12, color: muted ? c.mutedForeground : c.foreground }}>{label}</Mono>
+      <Body style={{ fontSize: 12, color: muted ? c.mutedForeground : c.foreground }}>{label}</Body>
     </Pressable>
   );
 }
@@ -753,25 +774,33 @@ function IconButton({
   onPress,
   accessibilityLabel,
   children,
+  label,
 }: {
   onPress: () => void;
   accessibilityLabel: string;
   children: React.ReactNode;
+  label?: string;
 }) {
   const { c } = useTheme();
   return (
     <Pressable
       onPress={onPress}
       accessibilityLabel={accessibilityLabel}
+      accessibilityRole="button"
+      hitSlop={6}
       style={({ pressed }) => ({
-        width: 30,
-        height: 30,
+        minWidth: 44,
+        minHeight: 44,
+        paddingHorizontal: label ? 6 : 0,
+        flexDirection: 'row',
+        gap: 5,
         borderRadius: 15,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: mix(c.mutedForeground, pressed ? 22 : 12),
+        backgroundColor: pressed ? mix(c.mutedForeground, 12) : 'transparent',
       })}>
       {children}
+      {label ? <Body style={{ color: c.mutedForeground, fontSize: 13 }}>{label}</Body> : null}
     </Pressable>
   );
 }

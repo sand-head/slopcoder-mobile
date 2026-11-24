@@ -1,10 +1,8 @@
+import { matchesSession } from '../api/sessionIdentity';
 /**
  * The launcher, and the session list — one screen, as on the web.
  *
- * Sessions are conversations with the user's agents; shared rooms are the
- * channels below them. Both are live, and both open into the same chat
- * switcher. Avatar presence, rather than a separate running section, says what
- * is happening.
+ * Sessions are conversations with the user's agents. Running state is textual.
  *
  * The bar is the platform's: a large title that collapses as you scroll and a
  * search field inside it. The composer under it is the one way to start a
@@ -21,6 +19,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import {
   Alert,
   Keyboard,
+  Image,
   Platform,
   Pressable,
   RefreshControl,
@@ -32,7 +31,6 @@ import {
   ApprovalMode,
   DeleteResult,
   SessionStatus,
-  type ChatRoomListing,
   type FacetOption,
   type ModelCandidate,
   type RecentRepo,
@@ -56,7 +54,6 @@ import {
   Mono,
   SectionLabel,
   Skeleton,
-  StatusDot,
   stamp,
 } from '../ui/kit';
 import { animateNextLayout } from '../ui/motion';
@@ -66,7 +63,6 @@ import { OverflowMenu } from '../ui/menu';
 import { Sheet } from '../ui/Sheet';
 import { useRoutineAlert } from '../state/routines';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
-import { isValidChannelName, normalizeChannelName } from '../ui/ChatSwitcher';
 import { useConnection } from '../state/connection';
 import { tapConfirm, tapError, tapRefuse } from '../ui/haptics';
 import { font, mix, radius, useTheme } from '../theme';
@@ -78,12 +74,10 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
   const setFailed = useRoutineAlert(s => s.setFailed);
 
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
-  const [rooms, setRooms] = useState<ChatRoomListing[] | null>(null);
-  const [roomsError, setRoomsError] = useState<string | null>(null);
-  const [channelOpen, setChannelOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [recentFilter, setRecentFilter] = useState<'all' | 'running'>('all');
   const [renaming, setRenaming] = useState<SessionSummary | null>(null);
   const [routines, setRoutines] = useState<RoutineStatus | null>(null);
   // Recall: the header search filters the list locally, and when nothing in it
@@ -116,7 +110,7 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
     navigation.setOptions({
       title: 'Sessions',
       headerSearchBarOptions: {
-        placeholder: 'Search sessions & channels',
+        placeholder: 'Search sessions',
         autoCapitalize: 'none',
         hideWhenScrolling: true,
         onChangeText: (event: { nativeEvent: { text: string } }) => setQuery(event.nativeEvent.text),
@@ -198,14 +192,6 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
       animateNextLayout();
       setSessions(next);
       setError(null);
-      // Channels are additive: a room failure must not hide the agent sessions.
-      seam
-        .chatRooms()
-        .then(nextRooms => {
-          setRooms(nextRooms);
-          setRoomsError(null);
-        })
-        .catch(e => setRoomsError(e instanceof Error ? e.message : String(e)));
       // The strip's one read, and a cheap one: it says whether anything needs
       // you without the board's aggregation. A failure here is not the session
       // list's problem, so it is caught on its own.
@@ -232,7 +218,6 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
 
   // The registry push carries no payload by design — it means "re-list".
   useEffect(() => hub?.addRegistryListener(() => void load()), [hub, load]);
-  useEffect(() => hub?.addRoomListener(() => void load()), [hub, load]);
 
   // And once the server is answering again, refresh without being asked: the
   // list is the first thing anyone looks at after a reconnect.
@@ -291,41 +276,33 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
   };
 
   const needle = query.trim().toLowerCase();
-  const visible = (sessions ?? []).filter(
-    s => needle === '' || s.title.toLowerCase().includes(needle) || s.model.toLowerCase().includes(needle),
-  );
-  const visibleRooms = (rooms ?? []).filter(
-    room =>
-      needle === '' ||
-      room.name.toLowerCase().includes(needle) ||
-      room.description.toLowerCase().includes(needle),
-  );
-
+  const searched = (sessions ?? []).filter(s => matchesSession(s, needle));
+  const visible = searched.filter(s => recentFilter === 'all' || s.status === SessionStatus.Running);
   // Debounced recall, mirroring the web's 300ms: a keystroke invalidates
   // whatever was in flight, so a slow answer to an old query never overwrites
   // the answer to the current one. Only asked once the local filter has come up
   // empty — that is the state in which scrollback hits add anything.
   useEffect(() => {
     let cancelled = false;
-    const searched = query.trim();
+    const term = query.trim();
     setRecall(null);
-    if (!seam || searched.length < 2 || visible.length > 0) {
+    if (!seam || term.length < 2 || searched.length > 0) {
       setRecallBusy(false);
       return;
     }
     const timer = setTimeout(() => {
       setRecallBusy(true);
       seam
-        .sessionSearch(searched, 10)
-        .then(hits => !cancelled && setRecall({ query: searched, hits }))
-        .catch(() => !cancelled && setRecall({ query: searched, hits: [] }))
+        .sessionSearch(term, 10)
+        .then(hits => !cancelled && setRecall({ query: term, hits }))
+        .catch(() => !cancelled && setRecall({ query: term, hits: [] }))
         .finally(() => !cancelled && setRecallBusy(false));
     }, 300);
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [seam, query, visible.length]);
+  }, [seam, query, searched.length]);
 
   // Leaving with the keyboard up lands on a page with a composer of its own
   // and a keyboard already open for something else, which reads as the tap
@@ -336,13 +313,6 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
   };
 
   const open = (session: SessionSummary) => leaveFor('Session', { id: session.id });
-
-  const createRoom = async (name: string, description: string) => {
-    if (!seam) throw new Error('Sign in before creating a channel.');
-    const view = await seam.createChatRoom({ name, description });
-    await load();
-    return view.room.name;
-  };
 
   return (
     // A fragment, not a view: UIKit finds the scroll view that drives the large
@@ -390,6 +360,7 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
         <Body style={{ fontFamily: font.sansMedium, fontSize: 22 }}>Start a new chat</Body>
 
         <Composer
+          launcher
           value={prompt}
           onChangeValue={setPrompt}
           placeholder="Message a new agent…"
@@ -432,7 +403,7 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
             availableNodes: allNodes
               .filter(n => n.enabled)
               .map(n => ({ key: n.id, label: n.name, description: n.host })),
-            searchRepos: async query => ((await seam?.searchRepos(query)) ?? []).map(rowToChoice),
+            searchRepos: async term => ((await seam?.searchRepos(term)) ?? []).map(rowToChoice),
             onChange: next => {
               setRepos(next.repos);
               setNodes(next.nodes);
@@ -470,7 +441,7 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
           // Archived sessions are off the list but not gone, so an empty list
           // is not proof there is no history — search still reaches them.
           <Hint>No sessions yet. Start one above, or ask Siri. Archived ones are off this list; search still finds them.</Hint>
-        ) : sessions !== null && visible.length === 0 && needle !== '' ? (
+        ) : sessions !== null && searched.length === 0 && needle !== '' ? (
           // Deliberately not an error: the local list came up empty, and the
           // server is being asked whether anything was ever *said* that
           // matches. "Nothing matches" would be premature until it answers.
@@ -482,7 +453,7 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
         {/* Recall hits: what was said in past sessions, not their titles. Only
             shown when the local filter found nothing — with matches in the
             list, scrollback rows would be noise under them. */}
-        {recall !== null && needle !== '' && recall.query === query.trim() && visible.length === 0 ? (
+        {recall !== null && needle !== '' && recall.query === query.trim() && searched.length === 0 ? (
           <View>
             <SectionLabel label="said in past sessions" count={recallBusy ? undefined : recall.hits.length} />
             {recallBusy ? (
@@ -522,15 +493,29 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
           </View>
         ) : null}
 
-        {visible.length > 0 ? (
+        {searched.length > 0 ? (
           <View>
-            <SectionLabel label="sessions" count={visible.length} />
-            <View style={{ borderTopWidth: 1, borderTopColor: c.border }}>
-              {visible.map(session => (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, paddingBottom: 8 }}>
+              <View accessibilityRole="header" style={{ flexGrow: 1 }}><Body style={{ fontFamily: font.sansMedium, fontSize: 17 }}>Recent sessions</Body></View>
+              {(['all', 'running'] as const).map(filter => (
+                <Pressable key={filter} accessibilityRole="button" accessibilityState={{ selected: recentFilter === filter }}
+                  accessibilityLabel={filter === 'all' ? 'All recent sessions' : 'Running sessions'}
+                  onPress={() => setRecentFilter(filter)}
+                  style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 }}>
+                  <Body style={{ color: recentFilter === filter ? c.primary : c.mutedForeground, fontFamily: font.sansMedium, fontSize: 13 }}>
+                    {filter === 'all' ? 'All' : 'Running'}
+                  </Body>
+                </Pressable>
+              ))}
+            </View>
+            <View testID="recent-sessions-pane" style={{ borderWidth: 1, borderColor: c.border, borderRadius: radius.lg, backgroundColor: c.card, paddingHorizontal: 12, overflow: 'hidden' }}>
+              {visible.length === 0 ? <Hint>No running sessions.</Hint> : null}
+              {visible.map((session, index) => (
                 <SessionCard
                   key={session.id}
                   session={session}
                   flush
+                  first={index === 0}
                   onPress={() => open(session)}
                   onRename={() => askRename(session)}
                   onDelete={() => remove(session)}
@@ -539,40 +524,6 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
             </View>
           </View>
         ) : null}
-
-        <View>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <View style={{ flex: 1 }}>
-              <SectionLabel label="channels" count={rooms?.length} />
-            </View>
-            <Pressable
-              onPress={() => setChannelOpen(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Create channel"
-              hitSlop={10}
-              style={({ pressed }) => ({ opacity: pressed ? 0.55 : 1 })}
-            >
-              <Mono style={{ color: c.primary, fontSize: 14 }}>+</Mono>
-            </Pressable>
-          </View>
-          {roomsError ? <Hint>Could not load channels: {roomsError}</Hint> : null}
-          {rooms !== null && visibleRooms.length === 0 ? (
-            <Hint>
-              {needle === ''
-                ? 'No channels yet. Create one so your agents can coordinate.'
-                : 'No channels match that search.'}
-            </Hint>
-          ) : null}
-          <View style={{ borderTopWidth: visibleRooms.length > 0 ? 1 : 0, borderTopColor: c.border }}>
-            {visibleRooms.map(room => (
-              <ChannelRow
-                key={room.id}
-                room={room}
-                onPress={() => leaveFor('Room', { name: room.name })}
-              />
-            ))}
-          </View>
-        </View>
 
         {routines?.anyRoutines && needle === '' ? (
           <RoutineStrip
@@ -600,142 +551,7 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
           }}
         />
       ) : null}
-      <CreateChannelSheet
-        visible={channelOpen}
-        onClose={() => setChannelOpen(false)}
-        onCreate={createRoom}
-        onOpen={name => {
-          setChannelOpen(false);
-          leaveFor('Room', { name });
-        }}
-      />
     </>
-  );
-}
-
-function ChannelRow({ room, onPress }: { room: ChatRoomListing; onPress: () => void }) {
-  const { c } = useTheme();
-  const preview = room.lastPreview
-    ? `${room.lastSender ?? '?'}: ${room.lastPreview}`
-    : room.description || 'No messages yet';
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`#${room.name}, ${preview}`}
-      style={({ pressed }) => ({
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-        minHeight: 64,
-        paddingVertical: 10,
-        borderBottomWidth: 1,
-        borderBottomColor: c.border,
-        backgroundColor: pressed ? mix(c.mutedForeground, 8) : 'transparent',
-      })}
-    >
-      <View
-        style={{
-          width: 38,
-          height: 38,
-          borderRadius: 12,
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: c.secondary,
-        }}
-      >
-        <Body style={{ fontFamily: font.sansMedium, fontSize: 19, color: c.mutedForeground }}>#</Body>
-      </View>
-      <View style={{ flex: 1, gap: 3 }}>
-        <Body numberOfLines={1} style={{ fontFamily: font.sansMedium, fontSize: 15 }}>
-          {room.name}
-        </Body>
-        <Body numberOfLines={1} style={{ fontSize: 13, color: c.mutedForeground }}>
-          {preview}
-        </Body>
-        <Mono numberOfLines={1} style={{ fontSize: 10.5 }}>
-          {room.members} members · {stamp(room.lastMessageAt ?? room.createdAt)}
-        </Mono>
-      </View>
-      <Mono style={{ fontSize: 16 }}>›</Mono>
-    </Pressable>
-  );
-}
-
-function CreateChannelSheet({
-  visible,
-  onClose,
-  onCreate,
-  onOpen,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  onCreate: (name: string, description: string) => Promise<string>;
-  onOpen: (name: string) => void;
-}) {
-  const { c } = useTheme();
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (visible) {
-      setName('');
-      setDescription('');
-      setError(null);
-    }
-  }, [visible]);
-
-  const normalized = normalizeChannelName(name);
-  const valid = isValidChannelName(normalized);
-  const create = async () => {
-    if (!valid || busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      onOpen(await onCreate(normalized, description.trim()));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Sheet visible={visible} title="Create channel" onClose={onClose}>
-      <Hint>Agents can join this shared room. Your messages notify only the agents you @mention.</Hint>
-      <Field
-        value={name}
-        onChangeText={setName}
-        autoCapitalize="none"
-        autoFocus
-        accessibilityLabel="Channel name"
-        placeholder="channel-name"
-      />
-      <Field
-        value={description}
-        onChangeText={setDescription}
-        autoCapitalize="sentences"
-        accessibilityLabel="Channel description (optional)"
-        placeholder="What is this channel for? (optional)"
-        maxLength={500}
-      />
-      {name.trim().length > 0 && !valid ? (
-        <Body style={{ color: c.destructive, fontSize: 13 }}>
-          Use 1–64 lowercase letters, numbers, hyphens or underscores, starting with a letter or number.
-        </Body>
-      ) : null}
-      {error ? (
-        <Body accessibilityLiveRegion="polite" style={{ color: c.destructive, fontSize: 13 }}>
-          {error}
-        </Body>
-      ) : null}
-      <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>
-        <Button label="Cancel" variant="outline" onPress={onClose} />
-        <Button label={busy ? 'Creating…' : 'Create channel'} onPress={() => void create()} disabled={!valid || busy} />
-      </View>
-    </Sheet>
   );
 }
 
@@ -779,12 +595,14 @@ function SessionCard({
   onRename,
   onDelete,
   flush,
+  first,
 }: {
   session: SessionSummary;
   onPress: () => void;
   onRename: () => void;
   onDelete: () => void;
   flush?: boolean;
+  first?: boolean;
 }) {
   const { c } = useTheme();
   const running = session.status === SessionStatus.Running;
@@ -799,7 +617,7 @@ function SessionCard({
     <View
       style={
         flush
-          ? { borderTopWidth: 1, borderTopColor: c.border }
+          ? { borderTopWidth: first ? 0 : 1, borderTopColor: c.border }
           : {
               backgroundColor: c.card,
               borderWidth: 1,
@@ -829,32 +647,15 @@ function SessionCard({
             gap: 10,
             opacity: pressed ? 0.6 : 1,
           })}>
-          <View>
-            <View
-              style={{
-                width: 38,
-                height: 38,
-                borderRadius: 19,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: mix(c.primary, running ? 18 : 10),
-              }}
-            >
-              <Body style={{ fontFamily: font.sansMedium, fontSize: 15, color: c.primary }}>
-                {session.title.trim().charAt(0).toUpperCase() || '?'}
-              </Body>
-            </View>
-            <View style={{ position: 'absolute', right: -2, bottom: -2, padding: 2, borderRadius: 7, backgroundColor: c.background }}>
-              <StatusDot running={running} />
-            </View>
-          </View>
+          <Image source={require('../../assets/icons/sessions.png')} resizeMode="contain"
+            accessibilityIgnoresInvertColors style={{ width: 20, height: 20, marginTop: 2, tintColor: c.mutedForeground }} />
           <View style={{ flex: 1, gap: 3 }}>
             <Body numberOfLines={1}>{session.title}</Body>
             <Mono numberOfLines={1}>
               {/* Last activity, not creation: the list is ordered by it, and a
                   row stamped with a date two weeks old next to one stamped
                   today would say the opposite of what the order says. */}
-              {stamp(session.updatedAt)} · {session.autoRoute ? 'auto' : session.model}
+              {running ? 'running · ' : ''}{stamp(session.updatedAt)} · {session.autoRoute ? 'auto' : session.model}
             </Mono>
             {offline ? <Meta style={{ color: c.destructive }}>workspace offline</Meta> : null}
           </View>

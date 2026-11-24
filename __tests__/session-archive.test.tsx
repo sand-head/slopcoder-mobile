@@ -36,11 +36,16 @@ const base: SessionState = {
 
 let mockState: SessionState = base;
 let mockItems: Item[] = [];
+let mockLive: { thinking: string; text: string } | null = null;
+let mockCanLoadEarlier = false;
+const mockLoadEarlier = jest.fn();
 
 const mockSeam = {
   models: jest.fn(() => Promise.resolve([])),
   facets: jest.fn(() => Promise.resolve([])),
   slashCommands: jest.fn(() => Promise.resolve([])),
+  get: jest.fn(() => Promise.resolve([] as { repo: string; branch?: string; detached?: boolean }[])),
+  addSessionRepository: jest.fn(async (_id: string, _url: string): Promise<string | null> => null),
 };
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -63,15 +68,15 @@ jest.mock('../src/state/session', () => ({
   useSession: () => ({
     state: mockState,
     items: mockItems,
-    live: null,
+    live: mockLive,
     loading: false,
     error: null,
-    canLoadEarlier: false,
-    loadEarlier: () => {},
+    canLoadEarlier: mockCanLoadEarlier,
+    loadEarlier: mockLoadEarlier,
   }),
 }));
 
-import { SessionDetailScreen } from '../src/screens/SessionDetail';
+import { SessionDetailScreen, insertDateMarkers } from '../src/screens/SessionDetail';
 
 let mounted: ReturnType<typeof create> | undefined;
 
@@ -103,6 +108,9 @@ function subtitle(navigation: { setOptions: jest.Mock }): string {
 beforeEach(() => {
   mockState = base;
   mockItems = [];
+  mockLive = null;
+  mockCanLoadEarlier = false;
+  mockLoadEarlier.mockReset();
 });
 
 afterEach(async () => {
@@ -134,47 +142,154 @@ describe('an archived session', () => {
 });
 
 describe('a chat-room mention', () => {
-  it('reads as the sender’s, not the user’s, and opens its room', async () => {
-    mockItems = [
-      {
-        kind: 'chat-mention',
-        key: '0:main',
-        ordinal: 0,
-        sub: null,
-        room: 'relay',
-        seq: 42,
-        sender: 'brisk-comet-42',
-        fromUser: false,
-        text: '@quiet-otter-7 take the relay next?',
-        interjected: true,
-      },
-    ];
+  it('preserves historical sender and text without a dead room link', async () => {
+    mockItems = [{ kind: 'chat-mention', key: '0:main', ordinal: 0, sub: null,
+      room: 'relay', seq: 42, sender: 'brisk-comet-42', fromUser: false,
+      text: 'take the relay next?', interjected: true }];
     const { tree, navigation } = await mount();
-
-    const rendered = text(tree);
-    expect(rendered).toContain('@brisk-comet-42 · #relay · message 42 · mid-turn');
-    expect(rendered).toContain('take the relay next?');
-    // Nobody typed it: no 'you' card.
-    expect(rendered).not.toMatch(/\byou\b/);
-
-    await act(async () =>
-      tree.root
-        .find(n => n.props.accessibilityLabel === 'brisk-comet-42 mentioned this agent in #relay. Open the channel')
-        .props.onPress(),
-    );
-    expect(navigation.navigate).toHaveBeenCalledWith('Room', { name: 'relay' });
+    expect(text(tree)).toContain('@brisk-comet-42 · #relay · message 42 · mid-turn');
+    expect(text(tree)).toContain('take the relay next?');
+    expect(tree.root.findAll(n => n.props.accessibilityRole === 'button' && String(n.props.accessibilityLabel).includes('former room'))).toHaveLength(0);
+    expect(navigation.navigate).not.toHaveBeenCalledWith('Room', expect.anything());
   });
 });
 
-describe('the chat handle', () => {
-  it('is in the session sheet, with the way to the rooms', async () => {
-    mockState = { ...base, chatHandle: 'quiet-otter-7' };
-    const { tree, navigation } = await mount();
+test('keeps the agent handle without a retired room navigation action', async () => {
+  mockState = { ...base, chatHandle: 'quiet-otter-7' };
+  const { tree } = await mount();
+  expect(text(tree)).toContain('@quiet-otter-7');
+  expect(tree.root.findAll(n => n.props.accessibilityLabel === 'Open chat rooms')).toHaveLength(0);
+});
 
-    expect(text(tree)).toContain('@quiet-otter-7');
-    await act(async () =>
-      tree.root.find(n => n.props.accessibilityLabel === 'Open chat rooms' && n.props.onPress).props.onPress(),
-    );
-    expect(navigation.navigate).toHaveBeenCalledWith('Rooms');
+describe('a direct agent message', () => {
+  it.each(['sender-id', null])('attributes text and only links the sender when the session id is %s', async senderSessionId => {
+    mockItems = [{ kind: 'direct-message', key: '1:main', ordinal: 1, sub: null,
+      messageId: 'm-1', senderSessionId, sender: 'amber', text: '<script>unsafe</script>', interjected: true }];
+    const { tree, navigation } = await mount();
+    expect(text(tree)).toContain('@amber · direct agent message · mid-turn');
+    expect(text(tree)).toContain('<script>unsafe</script>');
+    expect(text(tree)).not.toContain('#relay');
+    const links = tree.root.findAll(n => n.props.accessibilityLabel === 'Open agent session for amber' && n.props.onPress);
+    if (senderSessionId) {
+      expect(links).toHaveLength(1);
+      await act(async () => links[0].props.onPress());
+      expect(navigation.push).toHaveBeenCalledWith('Session', { id: senderSessionId });
+    } else expect(links).toHaveLength(0);
   });
+});
+
+
+test('repository context treats absent branch metadata as unknown and labels detached commits', async () => {
+  mockSeam.get.mockResolvedValueOnce([{ repo: 'old' }, { repo: 'second', branch: 'abc123', detached: true }]);
+  const { tree, navigation } = await mount();
+  const options = navigation.setOptions.mock.calls[navigation.setOptions.mock.calls.length - 1][0];
+  await act(async () => { options.headerTitle().props.onPress(); await Promise.resolve(); });
+  expect(mockSeam.get).toHaveBeenCalledWith('api/seam/sessions/s-1/workspace/changes');
+  expect(text(tree)).toContain('Branch unknown');
+  expect(text(tree)).toContain('Detached · abc123');
+});
+
+test('adjacent tool calls and plans are collapsible without inventing evidence', async () => {
+  mockItems = [
+    { kind: 'tool', key: 'a', ordinal: 1, sub: null, name: 'read_file', input: '{}', result: 'one', isError: false, running: false },
+    { kind: 'tool', key: 'b', ordinal: 2, sub: null, name: 'read_file', input: '{}', result: 'two', isError: false, running: false },
+    { kind: 'plan', key: 'c', ordinal: 3, sub: null, steps: [{ text: 'Real step', status: 'pending' }] },
+  ];
+  const { tree } = await mount();
+  expect(text(tree)).toContain('Tool activity');
+  expect(text(tree)).toContain('Read 2');
+  expect(text(tree)).toContain('Plan');
+  expect(text(tree)).not.toContain('Real step');
+  expect(tree.root.findAll(n => n.props.accessibilityState?.expanded === false && n.props.onPress).length).toBeGreaterThanOrEqual(2);
+});
+
+
+test('status search stops after three pages and explains how to continue', async () => {
+  mockState = { ...base, pendingApprovalIds: ['old-request'] };
+  mockCanLoadEarlier = true;
+  mockLoadEarlier.mockResolvedValue({ progress: true, hasMore: true, items: [] });
+  const { tree } = await mount();
+  await act(async () => {
+    tree.root.find(n => n.props.accessibilityLabel === 'Waiting for permission. Jump to current request' && n.props.onPress).props.onPress();
+    await Promise.resolve();
+  });
+  expect(mockLoadEarlier).toHaveBeenCalledTimes(3);
+  expect(text(tree)).toContain('Request not found in three earlier pages');
+});
+
+test('status search explains a paging error rather than pretending to jump', async () => {
+  mockState = { ...base, pendingQuestionIds: ['old-question'] };
+  mockCanLoadEarlier = true;
+  mockLoadEarlier.mockResolvedValue({ progress: false, hasMore: true, error: 'offline' });
+  const { tree } = await mount();
+  await act(async () => {
+    tree.root.find(n => n.props.accessibilityLabel === 'Waiting for an answer. Jump to current request' && n.props.onPress).props.onPress();
+    await Promise.resolve();
+  });
+  expect(text(tree)).toContain('Could not load earlier messages: offline');
+});
+
+
+test('repository add displays the real server rejection without claiming success', async () => {
+  mockSeam.addSessionRepository.mockResolvedValueOnce('Repository URL is invalid.');
+  const { tree, navigation } = await mount();
+  const options = navigation.setOptions.mock.calls[navigation.setOptions.mock.calls.length - 1][0];
+  await act(async () => { options.headerTitle().props.onPress(); await Promise.resolve(); });
+  const field = tree.root.find(n => n.props.accessibilityLabel === 'Repository URL' && n.props.onChangeText);
+  await act(async () => { field.props.onChangeText('invalid'); });
+  const button = tree.root.find(n => n.props.accessibilityLabel === 'Add repository' && n.props.onPress);
+  await act(async () => { await button.props.onPress(); });
+  expect(mockSeam.addSessionRepository).toHaveBeenCalledWith('s-1', 'invalid');
+  expect(text(tree)).toContain('Repository URL is invalid.');
+  expect(text(tree)).not.toContain('Repository added.');
+});
+
+test('status search finds a genuinely pending request in an earlier page', async () => {
+  mockState = { ...base, pendingApprovalIds: ['old-request'] };
+  mockCanLoadEarlier = true;
+  const target: Item = { kind: 'approval', key: 'old', ordinal: 0, sub: null, requestId: 'old-request', toolName: 'read_file', input: '{}', reason: '', refused: false, approved: null, preview: null };
+  mockLoadEarlier.mockImplementationOnce(async () => { mockItems = [target]; return { progress: true, hasMore: false, items: [target] }; });
+  const { tree } = await mount();
+  await act(async () => {
+    tree.root.find(n => n.props.accessibilityLabel === 'Waiting for permission. Jump to current request' && n.props.onPress).props.onPress();
+    await Promise.resolve();
+  });
+  expect(mockLoadEarlier).toHaveBeenCalledTimes(1);
+  expect(text(tree)).not.toContain('Request not found');
+});
+
+
+test('date separators use actual valid local event dates only', () => {
+  const first = new Date(2026, 0, 1, 12).toISOString();
+  const second = new Date(2026, 0, 2, 12).toISOString();
+  const row = (key: string, at?: string): Item => ({ kind: 'text', key, ordinal: 1, sub: null, text: key, at });
+  const rows = insertDateMarkers([row('missing'), row('one', first), row('one-again', first), row('bad', 'invalid'), row('two', second)]);
+  const markers = rows.filter(item => item.kind === 'date-marker');
+  expect(markers).toHaveLength(2);
+  expect(markers.map(item => item.at)).toEqual([first, second]);
+  expect(rows[0].key).toBe('missing');
+});
+
+test('live thinking starts collapsed and exposes its actual text when opened', async () => {
+  mockLive = { thinking: 'actual thinking', text: '' };
+  const { tree } = await mount();
+  expect(text(tree)).not.toContain('actual thinking');
+  const disclosure = tree.root.findAll(n => n.props.accessibilityState?.expanded === false && n.props.onPress)[0];
+  expect(disclosure).toBeDefined();
+  await act(async () => disclosure!.props.onPress());
+  expect(text(tree)).toContain('actual thinking');
+});
+
+
+test('terminal remains in session options only for non-archived sessions', async () => {
+  const { navigation } = await mount();
+  const options = navigation.setOptions.mock.calls[navigation.setOptions.mock.calls.length - 1][0];
+  const items = options.unstable_headerRightItems();
+  expect(items).toHaveLength(1);
+  expect(items[0].type).toBe('menu');
+  expect(items[0].menu.items.map((item: { label: string }) => item.label)).toContain('Open terminal');
+  mockState = { ...base, archivedAt: '2026-11-01T12:00:00Z' };
+  await act(async () => mounted!.update(<SessionDetailScreen route={{ params: { id: 's-1' } }} navigation={navigation} />));
+  const archivedOptions = navigation.setOptions.mock.calls[navigation.setOptions.mock.calls.length - 1][0];
+  expect(archivedOptions.unstable_headerRightItems()[0].menu.items.map((item: { label: string }) => item.label)).not.toContain('Open terminal');
 });

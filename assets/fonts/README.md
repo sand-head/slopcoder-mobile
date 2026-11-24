@@ -27,3 +27,9 @@ what lets one `fontFamily` string resolve on both platforms: iOS looks a font up
 PostScript name, Android by its asset filename.
 
 Baloo 2 was already static; only its names were flattened.
+
+Allo-Regular (400) and Allo-Medium (600) are static instances of AlloVariable
+at opsz 14 / ROND 60. Their family/full/PostScript names match the filenames
+for React Native on both platforms. Allo's separate license and attribution is
+in `Allo-OFL.txt`; the original file is `home/slopcoder-prism/assets/AlloVariable.woff2`.
+The previous font files remain bundled during the transition; mono is unchanged.

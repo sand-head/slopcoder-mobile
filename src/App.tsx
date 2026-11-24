@@ -26,7 +26,6 @@ import { SessionDetailScreen } from './screens/SessionDetail';
 import { ReviewsScreen, ReviewDetailScreen } from './screens/Reviews';
 import { RoutineScreen } from './screens/Routine';
 import { ArtifactScreen } from './screens/Artifact';
-import { RoomScreen, RoomsScreen } from './screens/Rooms';
 import { RoutineEditorScreen } from './screens/RoutineEditor';
 import { DocEditorScreen } from './screens/settings/DocEditor';
 import { ProviderEditorScreen } from './screens/settings/ProviderEditor';
@@ -37,6 +36,7 @@ import { ChannelEditorScreen } from './screens/settings/ChannelEditor';
 import { Tabs } from './navigation/Tabs';
 import { stackOptions } from './navigation/headers';
 import { GlassBar } from './ui/kit';
+import { useReducedMotion } from './ui/motion';
 import { useTheme } from './theme';
 import { artifactRouteId, linking } from './linking';
 
@@ -49,6 +49,7 @@ const Root = createNativeStackNavigator();
 const glassBar = Platform.OS === 'ios' ? { headerBackground: () => <GlassBar /> } : {};
 
 export default function App() {
+  useReducedMotion();
   const scheme = useColorScheme();
   const theme = useTheme();
   const { c } = theme;
@@ -101,11 +102,6 @@ export default function App() {
                   getId={artifactRouteId}
                   options={{ title: '', ...glassBar }}
                 />
-                {/* On the root stack rather than a tab: reached from Settings and
-                    from a session's chat handle alike, and a room's messages
-                    open the sessions that wrote them. */}
-                <Root.Screen name="Rooms" component={RoomsScreen} options={{ title: 'Shared channels', ...glassBar }} />
-                <Root.Screen name="Room" component={RoomScreen} options={{ title: '', ...glassBar }} />
                 <Root.Screen
                   name="RoutineEditor"
                   component={RoutineEditorScreen}

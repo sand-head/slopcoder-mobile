@@ -20,6 +20,14 @@
     {
       "path": "assets/fonts/GeistMono-SemiBold.ttf",
       "sha1": "3a0ccc792339e8b2ba9338c2322b74453c2cbfa5"
+    },
+    {
+      "path": "assets/fonts/Allo-Regular.ttf",
+      "sha1": "4cecb1c84adf9429aebabd3c8b1cc9a8034b3cde"
+    },
+    {
+      "path": "assets/fonts/Allo-Medium.ttf",
+      "sha1": "e0f2813be8d40d755cb0659d13b8cc120c506ca8"
     }
   ]
 }

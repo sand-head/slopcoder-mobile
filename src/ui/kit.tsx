@@ -4,13 +4,15 @@
  * Two rules carried over from the web UI, because between them they are most of
  * what makes it recognisable:
  *
- * - Names and prose in Geist sans; **everything else** — labels, counts,
+ * - Names and prose in Allo; labels, counts,
  *   timestamps, status strips — in Geist Mono at 11-12px, uppercase, tracked.
  * - Anything the web hides until hover is permanently visible here. The web
  *   stylesheet already branches on `@media (hover: hover)`; this is that branch.
  */
 import React, { forwardRef, useEffect, useMemo, useRef } from 'react';
 import {
+  AccessibilityInfo,
+  Platform,
   ActivityIndicator,
   Animated,
   Easing,
@@ -33,6 +35,7 @@ import Markdown, {
   type RenderRules,
 } from '@ronradtke/react-native-markdown-display';
 import { copyText } from './clipboard';
+import { useReducedMotion } from './motion';
 import { mix, radius, font, tintFor, useTheme, type Palette } from '../theme';
 import { splitMentions, type SubSessionMention } from '../api/mentions';
 import { GitServiceKind } from '../api/contracts';
@@ -136,71 +139,34 @@ export function Body({
   );
 }
 
-/**
- * The real mark, not a letter in a box.
- *
- * The web app ships two theme-fixed SVGs — the frame takes the foreground and
- * the slop takes the primary, and in dark the primary is swapped for the
- * brighter sidebar-primary because the button green disappears against a dark
- * ground. Those are rasterized rather than drawn with react-native-svg: the
- * mark is the only vector in the app, and a whole native module to render one
- * image is not a trade worth making.
- */
+/** Brown Fold, with independently lit day/night cutouts. */
 export function LogoMark({ size = 18 }: { size?: number }) {
   const { isDark } = useTheme();
   return (
     <Image
-      source={
-        isDark
-          ? require('../../assets/images/logo-dark.png')
-          : require('../../assets/images/logo-light.png')
-      }
+      source={isDark ? require('../../assets/images/fold-pile-night.png') : require('../../assets/images/fold-pile-day.png')}
       style={{ width: size, height: size }}
       resizeMode="contain"
+      accessible={false}
       accessibilityIgnoresInvertColors
     />
   );
 }
 
-/**
- * The wordmark. "slop" is the one goofy word in the whole product — bigger,
- * heavier, rounder and tilted, against the light mono "coder" beside it.
- *
- * **Neither word may pin a `lineHeight`.** Baloo 2 carries Devanagari vertical
- * metrics — a 1.078em ascent over a 0.524em descent, so its natural line box is
- * 1.6em — and forcing that box down to 1em does not centre the word, it shoves
- * the glyphs up out of the box and leaves "slop" floating above "coder". Left
- * alone, the two natural boxes centre to baselines 0.04em apart, which is half a
- * pixel at this size. `wordmark.test.tsx` computes that from the shipped fonts.
- */
+/** One baked optical lockup keeps the loop-to-c alignment on both platforms. */
 export function Brand({ size = 15 }: { size?: number }) {
-  const { c } = useTheme();
+  const { isDark } = useTheme();
+  const width = size * 7.5;
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-      <LogoMark size={size * 1.2} />
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <Text
-          style={{
-            fontFamily: font.display,
-            fontSize: size * 1.15,
-            color: c.foreground,
-            transform: [{ rotate: '-2deg' }],
-          }}
-        >
-          slop
-        </Text>
-        <Text
-          style={{
-            fontFamily: font.mono,
-            fontSize: size,
-            letterSpacing: -0.375,
-            color: c.foreground,
-          }}
-        >
-          coder
-        </Text>
-      </View>
-    </View>
+    <Image
+      source={isDark ? require('../../assets/images/fold-wordmark-night.png') : require('../../assets/images/fold-wordmark-day.png')}
+      style={{ width, aspectRatio: 1957 / 427 }}
+      resizeMode="contain"
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel="slopcoder"
+      accessibilityIgnoresInvertColors
+    />
   );
 }
 
@@ -459,9 +425,10 @@ export function StatusDot({
 }) {
   const { c, status } = useTheme();
   const pulse = useRef(new Animated.Value(1)).current;
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
-    if (!running) {
+    if (!running || reducedMotion) {
       pulse.setValue(1);
       return;
     }
@@ -485,7 +452,7 @@ export function StatusDot({
     );
     loop.start();
     return () => loop.stop();
-  }, [running, pulse]);
+  }, [running, pulse, reducedMotion]);
 
   return (
     <Animated.View
@@ -517,8 +484,10 @@ export function Skeleton({
 }) {
   const { c } = useTheme();
   const shimmer = useRef(new Animated.Value(0.5)).current;
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
+    if (reducedMotion) { shimmer.setValue(1); return; }
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(shimmer, {
@@ -537,7 +506,7 @@ export function Skeleton({
     );
     loop.start();
     return () => loop.stop();
-  }, [shimmer]);
+  }, [shimmer, reducedMotion]);
 
   return (
     <View accessibilityLabel="Loading" accessibilityRole="progressbar">
@@ -626,8 +595,24 @@ export function GlassSurface({
   tint?: string;
 }) {
   const { c } = useTheme();
+  // Start opaque until the OS accessibility preference is known. A late
+  // promise must not reverse a more recent live settings-change event.
+  const [reduceTransparency, setReduceTransparency] = React.useState(true);
+  useEffect(() => {
+    if (Platform.OS !== 'ios' || !isLiquidGlassSupported) return;
+    let active = true;
+    let changed = false;
+    const sub = AccessibilityInfo.addEventListener('reduceTransparencyChanged', value => {
+      changed = true;
+      if (active) setReduceTransparency(value);
+    });
+    AccessibilityInfo.isReduceTransparencyEnabled().then(value => {
+      if (active && !changed) setReduceTransparency(value);
+    }).catch(() => { /* Keep the safe opaque surface. */ });
+    return () => { active = false; sub.remove(); };
+  }, []);
 
-  if (!isLiquidGlassSupported) {
+  if (!isLiquidGlassSupported || reduceTransparency) {
     return (
       <View
         style={[
@@ -706,7 +691,7 @@ export function Button({
   accessibilityLabel?: string;
   style?: StyleProp<ViewStyle>;
 }) {
-  const { c } = useTheme();
+  const { c, isDark } = useTheme();
   const off = disabled || busy;
 
   const background =
@@ -716,8 +701,10 @@ export function Button({
       ? c.destructive
       : 'transparent';
   const foreground =
-    variant === 'primary' || variant === 'destructive'
+    variant === 'primary'
       ? c.primaryForeground
+      : variant === 'destructive'
+      ? (isDark ? '#201012' : '#ffffff')
       : variant === 'ghost'
       ? c.mutedForeground
       : variant === 'link-destructive'
@@ -805,6 +792,7 @@ export function SendButton({
   return (
     <Pressable
       accessibilityRole="button"
+      hitSlop={5}
       accessibilityLabel={accessibilityLabel}
       disabled={off}
       onPress={onPress}

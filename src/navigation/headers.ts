@@ -46,7 +46,7 @@ export function stackOptions({ c }: Theme): NativeStackNavigationOptions {
       : { headerStyle: { backgroundColor: c.background }, headerLargeStyle: { backgroundColor: c.background } }),
     headerShadowVisible: false,
     contentStyle: { backgroundColor: c.background },
-    // Neither platform's default is "back title in Geist"; the chevron alone
+    // Neither platform's default is "back title in Allo"; the chevron alone
     // reads the same everywhere and is what iOS 26 draws anyway.
     headerBackButtonDisplayMode: 'minimal',
   };

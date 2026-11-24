@@ -15,6 +15,7 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 
 import { Composer } from '../src/ui/Composer';
+import { Sheet } from '../src/ui/Sheet';
 
 const options = {
   selection: { auto: true, connectionId: null, modelId: null },
@@ -25,16 +26,21 @@ const options = {
 
 function mount(props: {
   running: boolean;
+  launcher?: boolean;
   value: string;
   onStop?: () => void;
   onChangeValue?: (next: string) => void;
   images?: React.ComponentProps<typeof Composer>['images'];
   commands?: React.ComponentProps<typeof Composer>['commands'];
+  sessionStatus?: string;
+  onJumpStatus?: () => void;
+  onJumpLatest?: () => void;
 }) {
   let tree: ReturnType<typeof create> | undefined;
   act(() => {
     tree = create(
       <Composer
+        launcher={props.launcher}
         value={props.value}
         onChangeValue={props.onChangeValue ?? (() => {})}
         placeholder="Send a message…"
@@ -48,6 +54,9 @@ function mount(props: {
         facets={[]}
         images={props.images}
         commands={props.commands}
+        sessionStatus={props.sessionStatus}
+        onJumpStatus={props.onJumpStatus}
+        onJumpLatest={props.onJumpLatest}
       />,
     );
   });
@@ -60,6 +69,28 @@ const labels = (tree: ReturnType<typeof create>) =>
     .map(node => node.props.accessibilityLabel as string);
 
 describe('the composer', () => {
+  it('keeps real status and latest navigation inside the composer', () => {
+    const status = jest.fn();
+    const latest = jest.fn();
+    const tree = mount({ running: true, value: '', sessionStatus: 'Waiting for permission', onJumpStatus: status, onJumpLatest: latest });
+    act(() => tree.root.find(node => node.props.accessibilityLabel === 'Waiting for permission. Jump to current request' && node.props.onPress).props.onPress());
+    act(() => tree.root.find(node => node.props.accessibilityLabel === 'Jump to the latest' && node.props.onPress).props.onPress());
+    expect(status).toHaveBeenCalledTimes(1);
+    expect(latest).toHaveBeenCalledTimes(1);
+  });
+
+  it('places selected images in a horizontal strip before the transparent input', () => {
+    const tree = mount({ running: false, value: '', images: {
+      pending: [{ key: 'a', mediaType: 'image/jpeg', base64Data: 'QUJD' }],
+      onPick: () => {}, onRemove: () => {}, error: null,
+    } });
+    const strip = tree.root.findAll(node => node.props.accessibilityLabel === 'Selected context' && node.props.horizontal)[0];
+    expect(strip).toBeDefined();
+    expect(strip.findAll(node => node.props.accessibilityLabel === 'Remove image 1 of 1').length).toBeGreaterThan(0);
+    const input = tree.root.findAll(node => node.props.placeholder === 'Send a message…' && node.props.style?.backgroundColor === 'transparent')[0];
+    expect(input.props.style.backgroundColor).toBe('transparent');
+  });
+
   it('offers Stop beside Send while a turn runs, even with a draft in the box', () => {
     const stop = jest.fn();
     const tree = mount({ running: true, value: 'and also check the tests', onStop: stop });
@@ -183,4 +214,33 @@ describe('the composer', () => {
     expect(labels(tree)).not.toContain('Stop');
     expect(labels(tree)).toContain('Send');
   });
+});
+
+it('wraps the toolbar and gives send and stop expanded touch targets', () => {
+  const tree = mount({ running: true, value: 'draft', onStop: () => {} });
+  const toolbar = tree.root.findByProps({ testID: 'composer-toolbar' });
+  expect(toolbar.props.style.flexWrap).toBe('wrap');
+  for (const label of ['Stop', 'Steer']) {
+    const button = tree.root.find(node => node.props.accessibilityLabel === label && node.props.hitSlop === 5);
+    expect(button.props.hitSlop).toBe(5);
+  }
+});
+
+
+it('uses a labeled launcher toolbar and exposes model through turn settings', () => {
+  const tree = mount({ launcher: true, running: false, value: 'hello', images: {
+    pending: [], onPick: () => {}, onRemove: () => {}, error: null,
+  } });
+  const input = tree.root.find(node => node.props.placeholder === 'Send a message…' && node.props.style?.minHeight === 72);
+  expect(input.props.style.maxHeight).toBeUndefined();
+  const toolbar = tree.root.findByProps({ testID: 'composer-toolbar' });
+  expect(toolbar.findAll(node => node.props.children === 'Attach').length).toBeGreaterThan(0);
+  expect(toolbar.findAll(node => node.props.children === 'Settings').length).toBeGreaterThan(0);
+  expect(toolbar.findAll(node => node.props.children === 'Send').length).toBeGreaterThan(0);
+  expect(toolbar.findAll(node => node.props.children === 'Auto')).toHaveLength(0);
+  act(() => tree.root.find(node => node.props.accessibilityLabel === 'Turn settings' && node.props.onPress).props.onPress());
+  expect(tree.root.findAllByType(Sheet).find(sheet => sheet.props.title === 'Turn settings')?.props.visible).toBe(true);
+  act(() => tree.root.find(node => node.props.accessibilityLabel === 'Model: Auto' && node.props.onPress).props.onPress());
+  expect(tree.root.findAllByType(Sheet).find(sheet => sheet.props.title === 'Select model')?.props.visible).toBe(true);
+  act(() => tree.unmount());
 });
