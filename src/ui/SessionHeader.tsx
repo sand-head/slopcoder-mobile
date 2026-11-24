@@ -60,8 +60,14 @@ export function ringRotations(percent: number): { right: number; left: number } 
   };
 }
 
-export function ContextRing({ percent, size = 28, stroke = 3 }: { percent: number; size?: number; stroke?: number }) {
+/**
+ * `percent` is null until the session has reported usage: the ring is still
+ * drawn, as its empty track with a dash, so the header does not change shape
+ * between sessions and never claims a 0% it does not know.
+ */
+export function ContextRing({ percent: reported, size = 28, stroke = 3 }: { percent: number | null; size?: number; stroke?: number }) {
   const { c, isDark } = useTheme();
+  const percent = reported ?? 0;
   const tone = ringTone(percent);
   const color =
     tone === 'hot' ? c.destructive : tone === 'warn' ? (isDark ? accent.colorAmber400 : accent.colorAmber500) : c.primary;
@@ -103,9 +109,9 @@ export function ContextRing({ percent, size = 28, stroke = 3 }: { percent: numbe
       <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
         <Text
           maxFontSizeMultiplier={RING_TEXT_SCALE_CAP}
-          style={{ fontFamily: font.sansMedium, fontSize: 10, lineHeight: 12, color: c.foreground }}
+          style={{ fontFamily: font.sansMedium, fontSize: 10, lineHeight: 12, color: reported === null ? c.mutedForeground : c.foreground }}
         >
-          {Math.round(Math.max(0, Math.min(100, percent)))}
+          {reported === null ? '–' : Math.round(Math.max(0, Math.min(100, percent)))}
         </Text>
       </View>
     </View>
@@ -145,7 +151,7 @@ export interface SessionHeaderProps {
   subtitle: string;
   /** Spoken after the title and subtitle, e.g. "archived · read-only". */
   accessibilityNote?: string;
-  /** Null hides the ring: no usage reported yet. */
+  /** Null means no usage reported yet: the ring shows its empty track and a dash. */
   contextPercent: number | null;
   onBack: () => void;
   onOpenContext: () => void;
@@ -242,23 +248,21 @@ export function SessionHeader({
       </GlassSurface>
 
       <GlassSurface cornerRadius={HEADER_CONTROL / 2} style={[capsule, { flexDirection: 'row', alignItems: 'center' }]}>
-        {contextPercent !== null ? (
-          <Pressable
-            testID="session-header-ring"
-            onPress={onOpenUsage}
-            accessibilityRole="button"
-            accessibilityLabel={`${contextPercent}% of context used. Session usage`}
-            style={({ pressed }) => ({
-              height: HEADER_CONTROL,
-              paddingLeft: 10,
-              paddingRight: 2,
-              justifyContent: 'center',
-              opacity: pressed ? 0.6 : 1,
-            })}
-          >
-            <ContextRing percent={contextPercent} />
-          </Pressable>
-        ) : null}
+        <Pressable
+          testID="session-header-ring"
+          onPress={onOpenUsage}
+          accessibilityRole="button"
+          accessibilityLabel={contextPercent === null ? 'Context usage not reported yet. Session usage' : `${contextPercent}% of context used. Session usage`}
+          style={({ pressed }) => ({
+            height: HEADER_CONTROL,
+            paddingLeft: 10,
+            paddingRight: 2,
+            justifyContent: 'center',
+            opacity: pressed ? 0.6 : 1,
+          })}
+        >
+          <ContextRing percent={contextPercent} />
+        </Pressable>
         <OverflowMenu title="Session options" items={menuItems}>
           <View
             testID="session-header-more"

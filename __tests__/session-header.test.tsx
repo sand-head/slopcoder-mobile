@@ -108,10 +108,16 @@ describe('session header layout', () => {
     expect(menu.props.actions.map((action: { title: string }) => action.title)).toEqual(['Open terminal']);
   });
 
-  it('hides the ring when no usage has been reported', async () => {
-    const { tree } = await render({ contextPercent: null });
-    expect(tree.root.findAll(node => node.props.testID === 'session-header-ring')).toHaveLength(0);
-    expect(tree.root.findAll(node => node.props.testID === 'context-ring')).toHaveLength(0);
+  it('keeps the ring when no usage has been reported, empty and saying so', async () => {
+    const { tree, handlers } = await render({ contextPercent: null });
+    const ring = byTestId(tree, 'session-header-ring');
+    expect(ring.props.accessibilityLabel).toBe('Context usage not reported yet. Session usage');
+    expect(tree.root.findAll(node => node.props.testID === 'context-ring' && typeof node.type === 'string')).toHaveLength(1);
+    // A dash, never a 0 it does not know.
+    const texts = ring.findAll(node => (node.type as unknown) === 'Text').map(node => node.children.join(''));
+    expect(texts).toEqual(['–']);
+    await act(async () => ring.props.onPress());
+    expect(handlers.onOpenUsage).toHaveBeenCalledTimes(1);
   });
 
   it('says what the centre opens', async () => {
