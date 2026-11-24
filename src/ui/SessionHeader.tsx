@@ -19,7 +19,7 @@ import { Platform, Pressable, StyleSheet, Text, View, type StyleProp, type ViewS
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassSurface } from './kit';
 import { OverflowMenu, type MenuItem } from './menu';
-import { accent, font, useTheme } from '../theme';
+import { accent, font, mix, useTheme } from '../theme';
 
 /** Height of each glass element: the platform's 44pt touch target. */
 export const HEADER_CONTROL = 44;
@@ -87,7 +87,9 @@ export function ContextRing({ percent, size = 28, stroke = 3 }: { percent: numbe
           height: size,
           borderRadius: size / 2,
           borderWidth: stroke,
-          borderColor: c.muted,
+          // The web's track is --muted, which on a dark card all but vanishes;
+          // a faint foreground keeps the ring's whole circle readable.
+          borderColor: mix(c.mutedForeground, 30),
         }}
       />
       {/* Right half of the ring: the first 180° of the sweep. */}
