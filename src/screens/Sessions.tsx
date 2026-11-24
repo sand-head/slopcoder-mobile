@@ -663,7 +663,7 @@ function SessionCard({
             </Body>
             {offline ? <Meta style={{ color: c.destructive }}>workspace offline</Meta> : null}
           </View>
-          <Body style={{ fontSize: 11, lineHeight: 15, marginTop: 1, color: running ? status.running : c.mutedForeground }}>
+          <Body style={{ alignSelf: 'center', fontSize: 11, lineHeight: 15, color: running ? status.running : c.mutedForeground }}>
             {running ? 'Running' : 'Idle'}
           </Body>
         </Pressable>
