@@ -1586,7 +1586,7 @@ const TranscriptRow = React.memo(function Transcript({
 
           {/* Never truncated: this is the evidence the decision rests on. */}
           {item.reason ? (
-            <Body style={{ fontSize: 12.5, color: c.mutedForeground }}>
+            <Body style={{ fontSize: 12, lineHeight: 20, color: c.mutedForeground }}>
               {item.reason}
             </Body>
           ) : null}
@@ -1616,7 +1616,7 @@ const TranscriptRow = React.memo(function Transcript({
               <Meta style={{ fontSize: 10 }}>
                 What will be posted — read it before approving
               </Meta>
-              <Body selectable style={{ fontFamily: font.mono, fontSize: 12, lineHeight: 17 }}>
+              <Body selectable style={{ fontFamily: font.mono, fontSize: 11.5, lineHeight: 20 }}>
                 {item.preview}
               </Body>
             </View>
