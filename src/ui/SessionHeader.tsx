@@ -17,7 +17,8 @@
 import React from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { GlassSurface } from './kit';
+import { GlassSurface, useGlassAvailable } from './kit';
+import { EdgeBlurBackdrop, edgeBlurEnabled } from './EdgeBlur';
 import { OverflowMenu, type MenuItem } from './menu';
 import { accent, font, mix, useTheme } from '../theme';
 
@@ -176,6 +177,7 @@ export function SessionHeader({
 }: SessionHeaderProps) {
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
+  const blur = edgeBlurEnabled({ os: Platform.OS, glassAvailable: useGlassAvailable() });
   const capsule: StyleProp<ViewStyle> = { minHeight: HEADER_CONTROL, borderRadius: HEADER_CONTROL / 2 };
 
   return (
@@ -189,14 +191,19 @@ export function SessionHeader({
         flexDirection: 'row',
         alignItems: 'center',
         gap: HEADER_GAP,
-        // iOS: the header floats over the transcript, which shows through the
-        // glass; a fade keeps the gaps between the elements quiet without a
-        // bar. Android: the header is in the layout above the page, painted.
-        ...(Platform.OS === 'ios'
+        // iOS: the header floats over the transcript. With glass available the
+        // transcript blurs behind it (EdgeBlurBackdrop, soft lower edge); with
+        // Reduce Transparency or before iOS 26 a painted fade keeps the gaps
+        // between the elements quiet instead. Android: the header is in the
+        // layout above the page, painted.
+        ...(blur
+          ? null
+          : Platform.OS === 'ios'
           ? { backgroundImage: `linear-gradient(to bottom, ${c.background} 55%, transparent)` }
           : { backgroundColor: c.background }),
       }}
     >
+      {blur ? <EdgeBlurBackdrop /> : null}
       <GlassSurface cornerRadius={HEADER_CONTROL / 2} style={{ width: HEADER_CONTROL, height: HEADER_CONTROL }}>
         <Pressable
           testID="session-header-back"

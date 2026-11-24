@@ -39,6 +39,8 @@
 		54A9E5D59FC2491CB7D94008 /* ShakeWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE1544FAA9314FA79DC8E1C5 /* ShakeWindow.swift */; };
 		9B3742F1F9A740DE9E149E99 /* ShakeDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2724BD144760451596B01A9D /* ShakeDetector.swift */; };
 		A01469C1579541AA9A9183E9 /* ShakeDetector.m in Sources */ = {isa = PBXBuildFile; fileRef = F63D489E01BE4A05A12D6828 /* ShakeDetector.m */; };
+		D727FF5F548E15536E57F869 /* EdgeBlurView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 182B65537C9DD8D917727C32 /* EdgeBlurView.swift */; };
+		3EAD42B56EFEB2497784562C /* EdgeBlurView.m in Sources */ = {isa = PBXBuildFile; fileRef = A49BC4F8FE925B35B894731B /* EdgeBlurView.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -105,6 +107,8 @@
 		EE1544FAA9314FA79DC8E1C5 /* ShakeWindow.swift */ = {isa = PBXFileReference; name = "ShakeWindow.swift"; path = "slopcoder_mobile/Shake/ShakeWindow.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 		2724BD144760451596B01A9D /* ShakeDetector.swift */ = {isa = PBXFileReference; name = "ShakeDetector.swift"; path = "slopcoder_mobile/Shake/ShakeDetector.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 		F63D489E01BE4A05A12D6828 /* ShakeDetector.m */ = {isa = PBXFileReference; name = "ShakeDetector.m"; path = "slopcoder_mobile/Shake/ShakeDetector.m"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; explicitFileType = undefined; includeInIndex = 0; };
+		182B65537C9DD8D917727C32 /* EdgeBlurView.swift */ = {isa = PBXFileReference; name = "EdgeBlurView.swift"; path = "slopcoder_mobile/EdgeBlur/EdgeBlurView.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		A49BC4F8FE925B35B894731B /* EdgeBlurView.m */ = {isa = PBXFileReference; name = "EdgeBlurView.m"; path = "slopcoder_mobile/EdgeBlur/EdgeBlurView.m"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -169,6 +173,7 @@
 				F093878925BC48F29552A887 /* AppInfo */,
 				C1B2C3D4E5F60718293A4B67 /* NotificationService */,
 				2D80E3CA93AC48D79B734D69 /* Shake */,
+				A503A1EEEE4B28BA0AE02425 /* EdgeBlur */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -261,6 +266,15 @@
 				F63D489E01BE4A05A12D6828 /* ShakeDetector.m */,
 			);
 			name = Shake;
+			sourceTree = "<group>";
+		};
+		A503A1EEEE4B28BA0AE02425 /* EdgeBlur */ = {
+			isa = PBXGroup;
+			children = (
+				182B65537C9DD8D917727C32 /* EdgeBlurView.swift */,
+				A49BC4F8FE925B35B894731B /* EdgeBlurView.m */,
+			);
+			name = EdgeBlur;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -466,6 +480,8 @@
 				54A9E5D59FC2491CB7D94008 /* ShakeWindow.swift in Sources */,
 				9B3742F1F9A740DE9E149E99 /* ShakeDetector.swift in Sources */,
 				A01469C1579541AA9A9183E9 /* ShakeDetector.m in Sources */,
+				D727FF5F548E15536E57F869 /* EdgeBlurView.swift in Sources */,
+				3EAD42B56EFEB2497784562C /* EdgeBlurView.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

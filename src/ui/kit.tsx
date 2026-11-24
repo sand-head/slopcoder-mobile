@@ -617,6 +617,32 @@ export function GlassBar() {
 }
 
 /**
+ * Whether translucent materials may be drawn now: iOS 26+ (where the glass API
+ * exists) with Reduce Transparency off. Starts false until the accessibility
+ * preference is known, and follows it live; a late promise must not reverse a
+ * more recent settings-change event. Shared by the glass surfaces and the
+ * session header's backdrop blur, so they switch to their opaque or faded
+ * fallbacks together.
+ */
+export function useGlassAvailable(): boolean {
+  const [reduceTransparency, setReduceTransparency] = React.useState(true);
+  useEffect(() => {
+    if (Platform.OS !== 'ios' || !isLiquidGlassSupported) return;
+    let active = true;
+    let changed = false;
+    const sub = AccessibilityInfo.addEventListener('reduceTransparencyChanged', value => {
+      changed = true;
+      if (active) setReduceTransparency(value);
+    });
+    AccessibilityInfo.isReduceTransparencyEnabled().then(value => {
+      if (active && !changed) setReduceTransparency(value);
+    }).catch(() => { /* Keep the safe opaque surface. */ });
+    return () => { active = false; sub.remove(); };
+  }, []);
+  return Platform.OS === 'ios' && isLiquidGlassSupported && !reduceTransparency;
+}
+
+/**
  * A surface that is glass where the OS has it, and the card we already had
  * everywhere else.
  *
@@ -640,24 +666,9 @@ export function GlassSurface({
   tint?: string;
 }) {
   const { c } = useTheme();
-  // Start opaque until the OS accessibility preference is known. A late
-  // promise must not reverse a more recent live settings-change event.
-  const [reduceTransparency, setReduceTransparency] = React.useState(true);
-  useEffect(() => {
-    if (Platform.OS !== 'ios' || !isLiquidGlassSupported) return;
-    let active = true;
-    let changed = false;
-    const sub = AccessibilityInfo.addEventListener('reduceTransparencyChanged', value => {
-      changed = true;
-      if (active) setReduceTransparency(value);
-    });
-    AccessibilityInfo.isReduceTransparencyEnabled().then(value => {
-      if (active && !changed) setReduceTransparency(value);
-    }).catch(() => { /* Keep the safe opaque surface. */ });
-    return () => { active = false; sub.remove(); };
-  }, []);
+  const glass = useGlassAvailable();
 
-  if (!isLiquidGlassSupported || reduceTransparency) {
+  if (!glass) {
     return (
       <View
         style={[
