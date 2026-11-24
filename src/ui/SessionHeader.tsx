@@ -98,10 +98,15 @@ export function ContextRing({ percent: reported, size = 28, stroke = 3 }: { perc
           borderColor: mix(c.mutedForeground, 30),
         }}
       />
-      {/* Right half of the ring: the first 180° of the sweep. */}
-      <View style={{ position: 'absolute', left: size / 2, width: size / 2, height: size, overflow: 'hidden' }}>
-        <View style={[half(right), { left: -size / 2 }]} />
-      </View>
+      {/* Right half of the ring: the first 180° of the sweep. Not drawn at
+          all with nothing to show: at 0° the coloured half's edge lies exactly
+          on the clip's edge at six o'clock, and its anti-aliasing showed there
+          as a sliver of arc under an empty or "0" ring. */}
+      {percent > 0 ? (
+        <View style={{ position: 'absolute', left: size / 2, width: size / 2, height: size, overflow: 'hidden' }}>
+          <View style={[half(right), { left: -size / 2 }]} />
+        </View>
+      ) : null}
       {/* Left half: the rest. */}
       <View style={{ position: 'absolute', left: 0, width: size / 2, height: size, overflow: 'hidden' }}>
         {percent > 50 ? <View style={[half(left), { left: 0 }]} /> : null}

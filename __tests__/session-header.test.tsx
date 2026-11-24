@@ -163,3 +163,26 @@ describe('subtitle', () => {
     expect(sessionSubtitle(['slopcoder'], [{ repo: 'other', branch: 'main' }])).toBe('slopcoder');
   });
 });
+
+describe('an empty ring', () => {
+  // Each drawn half of the arc is a view rotated inside a clip; with nothing to
+  // show, none may be drawn, or its anti-aliased edge shows at six o'clock.
+  const arcs = (tree: ReturnType<typeof create>) =>
+    tree.root.findAll(node => typeof node.type === 'string' && JSON.stringify(StyleSheet.flatten(node.props.style)?.transform ?? '').includes('rotate'));
+
+  it.each([null, 0])('draws no arc for %p', async percent => {
+    let tree: ReturnType<typeof create> | undefined;
+    await act(async () => {
+      tree = create(<ContextRing percent={percent} />);
+    });
+    expect(arcs(tree!)).toHaveLength(0);
+  });
+
+  it('draws the arc once there is usage', async () => {
+    let tree: ReturnType<typeof create> | undefined;
+    await act(async () => {
+      tree = create(<ContextRing percent={1} />);
+    });
+    expect(arcs(tree!).length).toBeGreaterThan(0);
+  });
+});
