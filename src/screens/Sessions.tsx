@@ -632,7 +632,8 @@ function SessionCard({
           alignItems: 'flex-start',
           gap: 10,
           paddingHorizontal: flush ? 0 : 12,
-          paddingVertical: 12,
+          // The web's recent rows stand 68 apart; 16 above and below gets there.
+          paddingVertical: flush ? 16 : 12,
           minHeight: 44,
         }}>
         {/* The whole row is the link, as on the web. */}
