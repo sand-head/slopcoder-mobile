@@ -60,9 +60,12 @@ describe('prose', () => {
   it('draws links medium and without the underline the web only shows on hover', () => {
     const link = markdownStyles(paletteFor(false)).link;
     expect(link.textDecorationLine).toBe('none');
-    expect(link.marginBottom).toBe(0);
     expect(link.fontFamily).toBe('Allo-Medium');
-    expect(link.lineHeight).toBe(reading.prose.lineHeight);
+    expect(link.fontSize).toBe(reading.prose.fontSize);
+    // An inline view's bottom sits on the baseline: no leading of its own, and
+    // dropped by the descent so the two baselines meet.
+    expect('lineHeight' in link).toBe(false);
+    expect(link.marginBottom).toBeCloseTo(-3.4, 1);
   });
 
   it('steps down inside a card', () => {

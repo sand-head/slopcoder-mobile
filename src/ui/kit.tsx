@@ -1184,8 +1184,12 @@ function mentionRules(
  */
 export type ProseSize = 'body' | 'small' | 'document';
 
+/** Allo's descender, as a fraction of the em (hhea descent 242 / 1000). */
+const ALLO_DESCENT = 0.242;
+
 export function markdownStyles(c: Palette, size: ProseSize = 'body') {
   const half = reading.paragraphGap / 2;
+  const linkSize = (size === 'small' ? reading.proseSmall : reading.prose).fontSize;
   const base = {
     body: {
       color: c.foreground,
@@ -1310,15 +1314,18 @@ export function markdownStyles(c: Palette, size: ProseSize = 'body') {
     // its hover state, which a phone has none of). The library's default also
     // pulls the line up 4 with a negative margin, which nudged linked words
     // off the baseline of the text around them.
-    // A link is its own Text inside a Pressable, so it inherits nothing from
-    // the paragraph: without the body's size and leading it was drawn in a
-    // shorter line box and rode above the words around it.
+    // A link is its own Text inside a Pressable, which the paragraph lays out
+    // as an inline view: its bottom edge sits on the paragraph's baseline. So
+    // it takes the body's size but not its leading (a 24 line box would lift
+    // it 7 above the line), and drops by Allo's descent (0.242 em) so its own
+    // baseline meets the paragraph's. The library's -4 was the same idea, for
+    // a 14-ish default.
     link: {
-      ...(size === 'small' ? reading.proseSmall : reading.prose),
+      fontSize: linkSize,
       color: c.primary,
       fontFamily: font.sansMedium,
       textDecorationLine: 'none' as const,
-      marginBottom: 0,
+      marginBottom: -Math.round(linkSize * ALLO_DESCENT * 10) / 10,
     },
     blockquote: {
       backgroundColor: 'transparent',
