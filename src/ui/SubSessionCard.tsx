@@ -16,7 +16,7 @@ import { useSessionHub } from '../state/hub';
 import { useSession } from '../state/session';
 import { Body, Dot, Fork, GLYPHS, Meta, Mono, Prose } from './kit';
 import { ToolCard } from './ToolCard';
-import { font, mix, radius, tintFor, useTheme } from '../theme';
+import { font, mix, radius, reading, tintFor, useTheme } from '../theme';
 
 /** How many of the sub-session's latest items the card shows. */
 const TAIL_LENGTH = 5;
@@ -149,10 +149,10 @@ export function SubSessionCard({
         </View>
         <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: 6 }}>
-            <Body style={{ fontFamily: font.sansMedium, fontSize: 13.5, color: tint }}>{who}</Body>
-            {beat ? <Body style={{ flexShrink: 1, fontSize: 13.5 }}>{beat}</Body> : null}
+            <Body style={{ fontFamily: font.sansMedium, fontSize: 13, lineHeight: 19, color: tint }}>{who}</Body>
+            {beat ? <Body style={{ flexShrink: 1, fontSize: 13, lineHeight: 19 }}>{beat}</Body> : null}
           </View>
-          <Meta>{item.profile} · {item.model}{spent > 0 ? ` · ${spend(spent, cost)}` : ''}</Meta>
+          <Body style={{ ...reading.summary, color: c.mutedForeground }}>{item.profile} · {item.model}{spent > 0 ? ` · ${spend(spent, cost)}` : ''}</Body>
         </View>
         <View
           style={{
@@ -172,7 +172,7 @@ export function SubSessionCard({
 
       {expanded && prompt ? (
         <View style={{ borderTopWidth: 1, borderTopColor: mix(c.border, 70), paddingHorizontal: 10, paddingTop: 8, gap: 3 }}>
-          <Meta>{prompt.steering ? 'Steer' : 'Prompt'} to {who}</Meta>
+          <Body style={{ ...reading.summary, color: c.mutedForeground }}>{prompt.steering ? 'Steer' : 'Prompt'} to {who}</Body>
           <Body selectable style={{ color: c.foreground, fontSize: 13 }}>{prompt.text}</Body>
         </View>
       ) : null}
@@ -232,14 +232,14 @@ function TailRow({ item, recipient }: { item: Item; recipient: string }) {
     case 'user':
       return (
         <View style={{ gap: 3 }}>
-          <Meta>{item.steering ? 'Steer' : 'Prompt'} to {recipient}</Meta>
+          <Body style={{ ...reading.summary, color: c.mutedForeground }}>{item.steering ? 'Steer' : 'Prompt'} to {recipient}</Body>
           <Body selectable style={{ fontSize: 13, color: c.foreground }}>{item.text}</Body>
         </View>
       );
 
     case 'text':
       return (
-        <Prose>
+        <Prose size="small">
           {item.text.length > REPLY_LIMIT
             ? `${item.text.slice(0, REPLY_LIMIT)}…`
             : item.text}
