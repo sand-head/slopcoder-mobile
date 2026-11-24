@@ -81,10 +81,10 @@ import { ConnectionBanner } from '../ui/ConnectionBanner';
 import { ToolCard } from '../ui/ToolCard';
 import { useTranscriptServices } from '../ui/transcriptServices';
 import { createRowVisibility, RowVisibilityScope } from '../ui/visibility';
+import { SessionHeader } from '../ui/SessionHeader';
 import { SubSessionCard } from '../ui/SubSessionCard';
 import { useAtBottom } from '../ui/atBottom';
 import { ChatSwitcher } from '../ui/ChatSwitcher';
-import { OverflowMenu } from '../ui/menu';
 import { useChatDirectory } from '../state/chatDirectory';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useKeyboardOffset } from '../ui/keyboard';
@@ -92,7 +92,7 @@ import { useHeaderInset } from '../navigation/headers';
 import { tapConfirm, tapError, tapRefuse } from '../ui/haptics';
 import { newTokens } from '../api/contracts';
 import { font, mix, radius, reading, tintFor, useTheme } from '../theme';
-import { approvalVerdict, planProgress, thoughtFor, toolRunPhrase, turnCompleteLabel } from '../api/captions';
+import { approvalVerdict, sessionSubtitle, planProgress, thoughtFor, toolRunPhrase, turnCompleteLabel } from '../api/captions';
 
 type WorkspaceRepo = { repo: string; branch?: string | null; detached?: boolean; sandboxDown?: boolean; notARepository?: boolean; error?: string | null };
 
@@ -377,43 +377,37 @@ export function SessionDetailScreen({
     );
   }, [state?.lastUsage]);
 
-  // Native stack keeps its back control and platform chrome; the title area
-  // follows the approved repository-context-over-session hierarchy.
+  // The header is the app's own (src/ui/SessionHeader.tsx), not UIKit's title
+  // view between native bar items: that title view was sized by Yoga against
+  // the whole screen and placed by UIKit, so it was never truncated and slid
+  // under whichever bar button its last layout pass put it beside.
   const title = state?.title ?? 'Session';
   const repoCount = state?.repoNames.length ?? 0;
   const contextLabel = repoCount === 0 ? 'No repositories' : `${repoCount} ${repoCount === 1 ? 'repository' : 'repositories'}`;
+  const subtitle = sessionSubtitle(state?.repoNames ?? [], repoDetails);
   useLayoutEffect(() => {
+    const menuItems = [
+      ...(!archived ? [{ key: 'terminal', title: 'Open terminal', symbol: 'terminal', onPress: () => setTerminalOpen(true) }] : []),
+      { key: 'context', title: 'Session context', symbol: 'folder', onPress: () => setContextOpen(true) },
+      { key: 'sessions', title: 'Switch session', symbol: 'bubble.left.and.bubble.right', onPress: () => setChatsOpen(true) },
+      { key: 'usage', title: 'Session usage', symbol: 'chart.bar', onPress: () => setUsageOpen(true) },
+    ];
     navigation.setOptions({
       title,
-      headerTitle: () => (
-        <Pressable onPress={() => setContextOpen(true)} accessibilityRole="button"
-          accessibilityLabel={`${contextLabel}. ${title}. ${archived ? 'archived · read-only. ' : ''}Session context`} style={{ flexShrink: 1, maxWidth: '100%' }}>
-          <Mono numberOfLines={1} style={{ color: c.mutedForeground }}>{contextLabel} ›</Mono>
-          <Body numberOfLines={1} style={{ fontFamily: font.sansMedium, fontSize: 17 }}>{title}</Body>
-        </Pressable>
+      header: () => (
+        <SessionHeader
+          title={title}
+          subtitle={subtitle}
+          accessibilityNote={archived ? 'archived · read-only' : undefined}
+          contextPercent={contextPercent}
+          onBack={() => navigation.goBack()}
+          onOpenContext={() => setContextOpen(true)}
+          onOpenUsage={() => setUsageOpen(true)}
+          menuItems={menuItems}
+        />
       ),
-      headerRight: () => (
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <OverflowMenu title="Session options" items={[
-            ...(!archived ? [{ key: 'terminal', title: 'Open terminal', symbol: 'terminal', onPress: () => setTerminalOpen(true) }] : []),
-            { key: 'sessions', title: 'Switch session', symbol: 'bubble.left.and.bubble.right', onPress: () => setChatsOpen(true) },
-            { key: 'usage', title: 'Session usage', symbol: 'chart.bar', onPress: () => setUsageOpen(true) },
-          ]}>
-            <View accessibilityRole="button" accessibilityLabel="Session options" style={{ width: 36, height: 40, alignItems: 'center', justifyContent: 'center' }}>
-              <Body style={{ color: c.foreground, fontSize: 22 }}>…</Body>
-            </View>
-          </OverflowMenu>
-        </View>
-      ),
-      unstable_headerRightItems: () => [
-        { type: 'menu', label: 'Session options', icon: { type: 'sfSymbol', name: 'ellipsis' }, menu: { items: [
-          ...(!archived ? [{ type: 'action', label: 'Open terminal', icon: { type: 'sfSymbol', name: 'terminal' }, onPress: () => setTerminalOpen(true) }] : []),
-          { type: 'action', label: 'Switch session', icon: { type: 'sfSymbol', name: 'bubble.left.and.bubble.right' }, onPress: () => setChatsOpen(true) },
-          { type: 'action', label: 'Session usage', icon: { type: 'sfSymbol', name: 'chart.bar' }, onPress: () => setUsageOpen(true) },
-        ] } },
-      ],
     });
-  }, [navigation, title, contextLabel, c.mutedForeground, c.foreground, archived]);
+  }, [navigation, title, subtitle, contextPercent, archived]);
 
   // A gate opening or closing, a question answered: the card changes shape,
   // and the lines below it move rather than jump.

@@ -99,10 +99,22 @@ function text(tree: ReturnType<typeof create>): string {
   return parts.join('');
 }
 
-/** The header title is a component the screen hands the navigator; it says its own subtitle. */
-function subtitle(navigation: { setOptions: jest.Mock }): string {
+/** The screen hands the navigator its own header; these are the props it draws from. */
+function header(navigation: { setOptions: jest.Mock }) {
   const options = navigation.setOptions.mock.calls[navigation.setOptions.mock.calls.length - 1][0];
-  return options.headerTitle().props.accessibilityLabel as string;
+  return options.header().props as {
+    title: string;
+    subtitle: string;
+    accessibilityNote?: string;
+    onOpenContext: () => void;
+    menuItems: { key: string; title: string }[];
+  };
+}
+
+/** What the header says after the title: its subtitle and any note, as a reader hears it. */
+function subtitle(navigation: { setOptions: jest.Mock }): string {
+  const props = header(navigation);
+  return `${props.subtitle}. ${props.accessibilityNote ?? ''}`;
 }
 
 beforeEach(() => {
@@ -182,8 +194,7 @@ describe('a direct agent message', () => {
 test('repository context treats absent branch metadata as unknown and labels detached commits', async () => {
   mockSeam.get.mockResolvedValueOnce([{ repo: 'old' }, { repo: 'second', branch: 'abc123', detached: true }]);
   const { tree, navigation } = await mount();
-  const options = navigation.setOptions.mock.calls[navigation.setOptions.mock.calls.length - 1][0];
-  await act(async () => { options.headerTitle().props.onPress(); await Promise.resolve(); });
+  await act(async () => { header(navigation).onOpenContext(); await Promise.resolve(); });
   expect(mockSeam.get).toHaveBeenCalledWith('api/seam/sessions/s-1/workspace/changes');
   expect(text(tree)).toContain('Branch unknown');
   expect(text(tree)).toContain('Detached · abc123');
@@ -233,8 +244,7 @@ test('status search explains a paging error rather than pretending to jump', asy
 test('repository add displays the real server rejection without claiming success', async () => {
   mockSeam.addSessionRepository.mockResolvedValueOnce('Repository URL is invalid.');
   const { tree, navigation } = await mount();
-  const options = navigation.setOptions.mock.calls[navigation.setOptions.mock.calls.length - 1][0];
-  await act(async () => { options.headerTitle().props.onPress(); await Promise.resolve(); });
+  await act(async () => { header(navigation).onOpenContext(); await Promise.resolve(); });
   const field = tree.root.find(n => n.props.accessibilityLabel === 'Repository URL' && n.props.onChangeText);
   await act(async () => { field.props.onChangeText('invalid'); });
   const button = tree.root.find(n => n.props.accessibilityLabel === 'Add repository' && n.props.onPress);
@@ -283,13 +293,9 @@ test('live thinking starts collapsed and exposes its actual text when opened', a
 
 test('terminal remains in session options only for non-archived sessions', async () => {
   const { navigation } = await mount();
-  const options = navigation.setOptions.mock.calls[navigation.setOptions.mock.calls.length - 1][0];
-  const items = options.unstable_headerRightItems();
-  expect(items).toHaveLength(1);
-  expect(items[0].type).toBe('menu');
-  expect(items[0].menu.items.map((item: { label: string }) => item.label)).toContain('Open terminal');
+  expect(header(navigation).menuItems.map(item => item.title)).toContain('Open terminal');
+  expect(header(navigation).menuItems.map(item => item.title)).toEqual(expect.arrayContaining(['Session context', 'Switch session', 'Session usage']));
   mockState = { ...base, archivedAt: '2026-11-01T12:00:00Z' };
   await act(async () => mounted!.update(<SessionDetailScreen route={{ params: { id: 's-1' } }} navigation={navigation} />));
-  const archivedOptions = navigation.setOptions.mock.calls[navigation.setOptions.mock.calls.length - 1][0];
-  expect(archivedOptions.unstable_headerRightItems()[0].menu.items.map((item: { label: string }) => item.label)).not.toContain('Open terminal');
+  expect(header(navigation).menuItems.map(item => item.title)).not.toContain('Open terminal');
 });

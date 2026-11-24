@@ -108,3 +108,20 @@ export function approvalVerdict(approved: boolean | null | undefined, pending: b
   if (refused) return 'refused';
   return null;
 }
+
+/**
+ * The session header's subtitle: what the session works on. One repository is
+ * named, with its branch once the workspace has been asked (the context sheet
+ * asks); several are counted; none says so. The repository list is the
+ * session state's, so the subtitle never waits on the workspace.
+ */
+export function sessionSubtitle(
+  repoNames: readonly string[],
+  repoDetails?: readonly { repo: string; branch?: string | null }[] | null,
+): string {
+  if (repoNames.length === 0) return 'No repositories';
+  if (repoNames.length > 1) return `${repoNames.length} repositories`;
+  const name = repoNames[0];
+  const branch = repoDetails?.find(detail => detail.repo === name)?.branch;
+  return branch ? `${name} · ${branch}` : name;
+}

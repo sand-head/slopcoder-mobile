@@ -94,7 +94,10 @@ export default function App() {
             {credential ? (
               <>
                 <Root.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
-                <Root.Screen name="Session" component={SessionDetailScreen} options={{ title: '', ...glassBar }} />
+                {/* The session draws its own header (SessionHeader, set by the screen):
+                    glass elements over the page, laid out by React Native so
+                    the title is held between the buttons. No bar behind it. */}
+                <Root.Screen name="Session" component={SessionDetailScreen} options={{ title: '' }} />
                 <Root.Screen name="Reviews" component={ReviewsScreen} options={{ title: 'Reviews', ...glassBar }} />
                 <Root.Screen name="ReviewDetail" component={ReviewDetailScreen} options={{ title: '', ...glassBar }} />
                 <Root.Screen name="Routine" component={RoutineScreen} options={{ title: '', ...glassBar }} />
