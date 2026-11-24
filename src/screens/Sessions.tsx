@@ -496,7 +496,7 @@ export function SessionsScreen({ navigation }: { navigation: any }) {
         {searched.length > 0 ? (
           <View>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, paddingBottom: 8 }}>
-              <View accessibilityRole="header" style={{ flexGrow: 1 }}><Body style={{ fontFamily: font.sansMedium, fontSize: 17 }}>Recent sessions</Body></View>
+              <View accessibilityRole="header" style={{ flexGrow: 1 }}><Body style={{ fontFamily: font.sansMedium, fontSize: 18, lineHeight: 23 }}>Recent sessions</Body></View>
               {(['all', 'running'] as const).map(filter => (
                 <Pressable key={filter} accessibilityRole="button" accessibilityState={{ selected: recentFilter === filter }}
                   accessibilityLabel={filter === 'all' ? 'All recent sessions' : 'Running sessions'}
@@ -650,13 +650,15 @@ function SessionCard({
           <Image source={require('../../assets/icons/sessions.png')} resizeMode="contain"
             accessibilityIgnoresInvertColors style={{ width: 20, height: 20, marginTop: 2, tintColor: c.mutedForeground }} />
           <View style={{ flex: 1, gap: 3 }}>
-            <Body numberOfLines={1}>{session.title}</Body>
-            <Mono numberOfLines={1}>
+            {/* The web's recent list: a 13 title at medium weight over an 11 sans
+                meta line, so the list reads as names first and dates second. */}
+            <Body numberOfLines={1} style={{ fontFamily: font.sansMedium, fontSize: 13, lineHeight: 17 }}>{session.title}</Body>
+            <Body numberOfLines={1} style={{ fontSize: 11, lineHeight: 15, color: c.mutedForeground }}>
               {/* Last activity, not creation: the list is ordered by it, and a
                   row stamped with a date two weeks old next to one stamped
                   today would say the opposite of what the order says. */}
               {running ? 'running · ' : ''}{stamp(session.updatedAt)} · {session.autoRoute ? 'auto' : session.model}
-            </Mono>
+            </Body>
             {offline ? <Meta style={{ color: c.destructive }}>workspace offline</Meta> : null}
           </View>
         </Pressable>
