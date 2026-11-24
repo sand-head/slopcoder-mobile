@@ -36,7 +36,7 @@ import Markdown, {
 } from '@ronradtke/react-native-markdown-display';
 import { copyText } from './clipboard';
 import { useReducedMotion } from './motion';
-import { mix, radius, font, tintFor, useTheme, type Palette } from '../theme';
+import { mix, radius, font, reading, tintFor, useTheme, type Palette } from '../theme';
 import { splitMentions, type SubSessionMention } from '../api/mentions';
 import { GitServiceKind } from '../api/contracts';
 import { useTranscriptServices } from './transcriptServices';
@@ -1072,8 +1072,11 @@ function SelectableText(props: React.ComponentProps<typeof Text>) {
 export function Prose({
   children,
   mentions,
+  size = 'body',
 }: {
   children: string;
+  /** `small` for prose quoted inside a card — a sub-session's tail. */
+  size?: 'body' | 'small';
   /**
    * The session's partners. Their names are tinted wherever they appear in
    * this prose, so one of them can be followed down a transcript by eye.
@@ -1095,7 +1098,7 @@ export function Prose({
   const onLinkPress = services.useOpenLink();
   return (
     <Markdown
-      style={markdownStyles(c)}
+      style={markdownStyles(c, size)}
       onLinkPress={onLinkPress}
       // Every text node selectable, so a reader can take one line out of a
       // reply rather than the whole thing. This is the platform's own
@@ -1175,14 +1178,22 @@ function mentionRules(
  * the same paragraph should not read differently depending on which screen it
  * is on.
  */
-export function markdownStyles(c: Palette) {
+export function markdownStyles(c: Palette, size: 'body' | 'small' = 'body') {
+  const half = reading.paragraphGap / 2;
   return {
     body: {
       color: c.foreground,
       fontFamily: font.sans,
-      fontSize: 15,
-      lineHeight: 23,
+      ...(size === 'small' ? reading.proseSmall : reading.prose),
     },
+    // The library's own paragraph is 10 above and 10 below, so two paragraphs
+    // stood 20 apart where the web has 8. Half the gap on each side gives the
+    // web's collapsed margin between them; the row around the prose accounts
+    // for the half left at either end.
+    paragraph: { marginTop: half, marginBottom: half },
+    bullet_list: { marginVertical: half },
+    ordered_list: { marginVertical: half },
+    list_item: { marginVertical: 1 },
     // Headings size themselves, because the library's do not finish the job.
     // Its own are a web page's — a 32px h1 — and none of them names a line
     // height, so `body`'s 23 came down the inheritance chain and a 32px line
@@ -1236,7 +1247,7 @@ export function markdownStyles(c: Palette) {
     },
     code_inline: {
       fontFamily: font.mono,
-      fontSize: 12.5,
+      fontSize: 12,
       backgroundColor: mix(c.muted, 60),
       color: c.foreground,
     },
@@ -1282,8 +1293,17 @@ export function markdownStyles(c: Palette) {
     fence_copy_button: { paddingHorizontal: 6, paddingVertical: 2 },
     fence_copy_text: { fontFamily: font.mono, fontSize: 11, color: c.primary },
     fence_code: { backgroundColor: mix(c.muted, 40), padding: 10 },
-    fence_token: { fontFamily: font.mono, fontSize: 12, lineHeight: 18 },
-    link: { color: c.primary },
+    fence_token: { fontFamily: font.mono, fontSize: 12.5, lineHeight: 20 },
+    // The web's link: primary, medium, no underline at rest (the underline is
+    // its hover state, which a phone has none of). The library's default also
+    // pulls the line up 4 with a negative margin, which nudged linked words
+    // off the baseline of the text around them.
+    link: {
+      color: c.primary,
+      fontFamily: font.sansMedium,
+      textDecorationLine: 'none' as const,
+      marginBottom: 0,
+    },
     blockquote: {
       backgroundColor: 'transparent',
       borderLeftWidth: 2,

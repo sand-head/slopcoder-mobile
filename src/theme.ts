@@ -192,6 +192,34 @@ export const font = {
   display: 'Baloo2-ExtraBold',
 } as const;
 
+/**
+ * How a session reads, measured off the web cockpit at phone width (390px):
+ * its computed styles, not its stylesheet's intent. One place, so the transcript,
+ * a routine's answer and a sub-session's tail cannot drift apart.
+ *
+ * Sizes are dp and scale with the system text size like any other `fontSize`;
+ * line heights are rounded to whole dp, the web's being fractional (14 × 1.7).
+ */
+export const reading = {
+  /** Space either side of the transcript column (web: 21px at 390). */
+  column: 21,
+  /** Assistant prose: Allo 14 on 23.8 at the web's phone width. */
+  prose: { fontSize: 14, lineHeight: 24 },
+  /** Prose quoted inside a sub-session card, a step down (web: 13 on 19.5). */
+  proseSmall: { fontSize: 13, lineHeight: 20 },
+  /** Between two paragraphs (web: `p` margin-block .5rem, collapsed). */
+  paragraphGap: 8,
+  /** What the user typed: the web draws it a step below prose on a phone. */
+  user: { fontSize: 12, lineHeight: 19 },
+  /** Disclosure rows — thinking, plan, tool activity — and their meta. */
+  summary: { fontSize: 12, lineHeight: 18 },
+  /** Turn notes ("done", "stopped") and attributed-row captions. */
+  note: { fontSize: 12, lineHeight: 19 },
+  caption: { fontSize: 13, lineHeight: 21 },
+  /** The date between turns. */
+  date: { fontSize: 10, lineHeight: 16 },
+} as const;
+
 /** The mono-meta grammar: 11-12px, uppercase, generously tracked. */
 export const meta = {
   fontFamily: font.mono,
