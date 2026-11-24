@@ -91,7 +91,7 @@ import { useKeyboardOffset } from '../ui/keyboard';
 import { useHeaderInset } from '../navigation/headers';
 import { tapConfirm, tapError, tapRefuse } from '../ui/haptics';
 import { newTokens } from '../api/contracts';
-import { font, mix, radius, tintFor, useTheme } from '../theme';
+import { font, mix, radius, reading, tintFor, useTheme } from '../theme';
 
 type WorkspaceRepo = { repo: string; branch?: string | null; detached?: boolean; sandboxDown?: boolean; notARepository?: boolean; error?: string | null };
 
@@ -573,7 +573,7 @@ export function SessionDetailScreen({
 
   const transcriptStyle = useMemo(
     () => ({
-      paddingHorizontal: 16,
+      paddingHorizontal: reading.column,
       // The composer floats on top, so the transcript scrolls under it rather
       // than stopping short — which is the whole point of a material that
       // refracts what is behind it. Inverted, so the container's top is the
@@ -1061,7 +1061,7 @@ function useStableIds(ids: readonly string[] | undefined): readonly string[] {
 const RowView = React.memo(
   ({ row, handlers }: { row: DisplayRow; handlers: RowHandlers }) =>
     row.kind === 'date-marker' ? (
-      <View style={{ alignItems: 'center', paddingVertical: 10 }}><Mono>{new Date(row.at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })} · {new Date(row.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</Mono></View>
+      <DateMarker at={row.at} />
     ) : row.kind === 'tool-run' ? (
       <ToolRunBlock group={row} handlers={handlers} />
     ) : row.kind === 'subagent' ? (
@@ -1071,6 +1071,29 @@ const RowView = React.memo(
     ),
 );
 RowView.displayName = 'RowView';
+
+/**
+ * A message someone else wrote into this transcript — a partner's reply, a
+ * direct agent message, a room mention: the web's hairline-topped row with the
+ * name on it, not a tinted card. The tint stays on the glyph and the name.
+ */
+function attributedRow(border: string) {
+  return { borderTopWidth: 1, borderTopColor: border, paddingTop: 8, marginTop: 12, marginBottom: 4, gap: 4 } as const;
+}
+
+/** The date between turns, in the web's quiet sans and its numeric form. */
+function DateMarker({ at }: { at: string }) {
+  const { c } = useTheme();
+  const when = new Date(at);
+  return (
+    <View style={{ alignItems: 'center', paddingVertical: 10 }}>
+      <Body style={{ ...reading.date, color: c.mutedForeground }}>
+        {when.toLocaleDateString(undefined, { year: 'numeric', month: 'numeric', day: 'numeric' })}{' '}
+        {when.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+      </Body>
+    </View>
+  );
+}
 
 function LiveThinking({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
@@ -1323,12 +1346,12 @@ const TranscriptRow = React.memo(function Transcript({
         <View style={{ alignItems: 'flex-end', marginVertical: 12 }}>
           <View
             style={{
-              maxWidth: '88%',
+              maxWidth: '93%',
               borderRadius: 18,
-              borderBottomRightRadius: 5,
+              borderBottomRightRadius: 4,
               backgroundColor: c.userBubble,
-              paddingHorizontal: 14,
-              paddingVertical: 10,
+              paddingHorizontal: 15,
+              paddingVertical: 13,
               gap: 6,
             }}
           >
@@ -1336,7 +1359,7 @@ const TranscriptRow = React.memo(function Transcript({
               <PromptImages images={item.images} />
             ) : null}
             {item.text ? (
-              <Body selectable style={{ fontSize: 15, lineHeight: 22 }}>
+              <Body selectable style={reading.user}>
                 {item.text}
               </Body>
             ) : null}
@@ -1362,30 +1385,22 @@ const TranscriptRow = React.memo(function Transcript({
       const tint = tintFor(item.color, isDark) ?? status.subagent;
       const who = item.persona || item.name;
       return (
-        <View
-          style={{
-            marginVertical: 8,
-            borderRadius: radius.lg,
-            borderWidth: 1,
-            borderColor: mix(tint, 25),
-            backgroundColor: mix(tint, isDark ? 8 : 4),
-            padding: 12,
-            gap: 4,
-          }}
-        >
+        <View style={attributedRow(c.border)}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Fork color={tint} />
-            <Meta style={{ color: tint, fontSize: 10.5 }}>
-              {who}
+            <Body style={{ ...reading.summary, flexShrink: 1, color: c.mutedForeground }}>
+              <Body style={{ ...reading.summary, fontFamily: font.sansMedium, color: c.foreground }}>{who}</Body>
+              {' replied'}
               {item.name && item.name !== who ? ` · ${item.name}` : ''}
               {item.isError ? ' · hit an error' : ''}
               {item.interjected ? ' · mid-turn' : ''}
-            </Meta>
+            </Body>
           </View>
           <Body
             selectable
             style={{
-              fontSize: 14,
+              ...reading.proseSmall,
+              paddingLeft: 18,
               color: item.isError ? c.destructive : c.foreground,
             }}
           >
@@ -1398,17 +1413,16 @@ const TranscriptRow = React.memo(function Transcript({
     case 'direct-message': {
       const tint = tintFor(handleTint(item.sender), isDark) ?? status.subagent;
       return (
-        <View style={{ marginVertical: 8, borderRadius: radius.lg, borderWidth: 1,
-          borderColor: mix(tint, 25), backgroundColor: mix(tint, isDark ? 8 : 4), padding: 12, gap: 4 }}>
+        <View style={attributedRow(c.border)}>
           {item.senderSessionId ? (
             <Pressable accessibilityRole="link" accessibilityLabel={`Open agent session for ${item.sender}`}
               onPress={() => onOpenSubSession(item.senderSessionId!)}>
-              <Meta style={{ color: tint, fontSize: 10.5 }}>@{item.sender} · direct agent message{item.interjected ? ' · mid-turn' : ''}</Meta>
+              <Body style={{ ...reading.caption, color: c.mutedForeground }}><Body style={{ ...reading.caption, fontFamily: font.sansMedium, color: tint }}>@ </Body><Body style={{ ...reading.caption, fontFamily: font.sansMedium, color: c.foreground }}>{item.sender}</Body> · direct agent message{item.interjected ? ' · mid-turn' : ''}</Body>
             </Pressable>
           ) : (
-            <Meta style={{ color: tint, fontSize: 10.5 }}>@{item.sender} · direct agent message{item.interjected ? ' · mid-turn' : ''}</Meta>
+            <Body style={{ ...reading.caption, color: c.mutedForeground }}><Body style={{ ...reading.caption, fontFamily: font.sansMedium, color: tint }}>@ </Body><Body style={{ ...reading.caption, fontFamily: font.sansMedium, color: c.foreground }}>{item.sender}</Body> · direct agent message{item.interjected ? ' · mid-turn' : ''}</Body>
           )}
-          <Body selectable style={{ fontSize: 14 }}>{item.text}</Body>
+          <Body selectable style={{ ...reading.caption, paddingLeft: 18 }}>{item.text}</Body>
         </View>
       );
     }
@@ -1422,21 +1436,17 @@ const TranscriptRow = React.memo(function Transcript({
       return (
         <View
           accessibilityLabel={`${item.sender} mentioned this agent in former room #${item.room}`}
-          style={{
-            marginVertical: 8,
-            borderRadius: radius.lg,
-            borderWidth: 1,
-            borderColor: mix(tint, 25),
-            backgroundColor: mix(tint, isDark ? 8 : 4),
-            padding: 12,
-            gap: 4,
-          }}
+          style={attributedRow(c.border)}
         >
-          <Meta style={{ color: tint, fontSize: 10.5 }}>
-            {item.fromUser ? `${item.sender} · owner` : `@${item.sender}`} · #{item.room} · message {item.seq}
+          <Body style={{ ...reading.caption, color: c.mutedForeground }}>
+            <Body style={{ ...reading.caption, fontFamily: font.sansMedium, color: tint }}>@ </Body>
+            <Body style={{ ...reading.caption, fontFamily: font.sansMedium, color: c.foreground }}>
+              {item.fromUser ? `${item.sender} · owner` : item.sender}
+            </Body>
+            {` · #${item.room} · message ${item.seq}`}
             {item.interjected ? ' · mid-turn' : ''}
-          </Meta>
-          <Body selectable style={{ fontSize: 14 }}>
+          </Body>
+          <Body selectable style={{ ...reading.caption, paddingLeft: 18 }}>
             {item.text}
           </Body>
         </View>
@@ -1447,7 +1457,9 @@ const TranscriptRow = React.memo(function Transcript({
       // Claude-like calm: the answer is prose, not another avatar/name row or
       // a bubble. Structured work around it keeps its own rendering.
       return (
-        <View style={{ marginVertical: 14 }}>
+        // The web's prose sits 18 under a group and 26 above a note; the
+        // paragraphs inside already carry half the paragraph gap at each end.
+        <View style={{ marginTop: 6, marginBottom: 10 }}>
           <Prose mentions={mentions}>{item.text}</Prose>
         </View>
       );
@@ -1730,6 +1742,8 @@ const TranscriptRow = React.memo(function Transcript({
             flexDirection: 'row',
             gap: 8,
             paddingVertical: 3,
+            // The web leaves 26 between a reply and the note that closes it.
+            marginTop: 5,
             alignItems: 'center',
           }}
         >
@@ -1746,7 +1760,7 @@ const TranscriptRow = React.memo(function Transcript({
               size={7}
             />
           </View>
-          <Mono style={{ fontSize: 12 }}>{item.text}</Mono>
+          <Body style={{ ...reading.note, color: c.mutedForeground }}>{item.text}</Body>
         </View>
       );
 
@@ -1910,12 +1924,14 @@ function Collapsible({
         })}
       >
         <View style={{ width: 12, alignItems: 'center' }}>{mark}</View>
-        <Body style={{ fontFamily: font.sansMedium, fontSize: 13 }}>
+        {/* The web's disclosure rows are quiet sans at 12, name over meta in
+            weight only, so a run of them reads as one muted band. */}
+        <Body style={{ ...reading.summary, fontFamily: font.sansMedium, color: c.mutedForeground }}>
           {name}
         </Body>
-        <Mono numberOfLines={1} style={{ flex: 1 }}>
+        <Body numberOfLines={1} style={{ ...reading.summary, flex: 1, color: c.mutedForeground }}>
           {meta}
-        </Mono>
+        </Body>
       </Pressable>
       {open ? (
         <View style={{ paddingLeft: 24, paddingRight: 4, paddingBottom: 6 }}>
