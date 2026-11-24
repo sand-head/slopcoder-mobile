@@ -1417,10 +1417,10 @@ const TranscriptRow = React.memo(function Transcript({
           {item.senderSessionId ? (
             <Pressable accessibilityRole="link" accessibilityLabel={`Open agent session for ${item.sender}`}
               onPress={() => onOpenSubSession(item.senderSessionId!)}>
-              <Body style={{ ...reading.caption, color: c.mutedForeground }}><Body style={{ ...reading.caption, fontFamily: font.sansMedium, color: tint }}>@ </Body><Body style={{ ...reading.caption, fontFamily: font.sansMedium, color: c.foreground }}>{item.sender}</Body> · direct agent message{item.interjected ? ' · mid-turn' : ''}</Body>
+              <Body style={{ ...reading.caption, color: c.mutedForeground }}><Body style={{ ...reading.caption, fontFamily: font.sansMedium, color: tint }}>@</Body><Body style={{ ...reading.caption, fontFamily: font.sansMedium, color: c.foreground }}>{item.sender}</Body> · direct agent message{item.interjected ? ' · mid-turn' : ''}</Body>
             </Pressable>
           ) : (
-            <Body style={{ ...reading.caption, color: c.mutedForeground }}><Body style={{ ...reading.caption, fontFamily: font.sansMedium, color: tint }}>@ </Body><Body style={{ ...reading.caption, fontFamily: font.sansMedium, color: c.foreground }}>{item.sender}</Body> · direct agent message{item.interjected ? ' · mid-turn' : ''}</Body>
+            <Body style={{ ...reading.caption, color: c.mutedForeground }}><Body style={{ ...reading.caption, fontFamily: font.sansMedium, color: tint }}>@</Body><Body style={{ ...reading.caption, fontFamily: font.sansMedium, color: c.foreground }}>{item.sender}</Body> · direct agent message{item.interjected ? ' · mid-turn' : ''}</Body>
           )}
           <Body selectable style={{ ...reading.caption, paddingLeft: 18 }}>{item.text}</Body>
         </View>
@@ -1439,7 +1439,7 @@ const TranscriptRow = React.memo(function Transcript({
           style={attributedRow(c.border)}
         >
           <Body style={{ ...reading.caption, color: c.mutedForeground }}>
-            <Body style={{ ...reading.caption, fontFamily: font.sansMedium, color: tint }}>@ </Body>
+            {item.fromUser ? null : <Body style={{ ...reading.caption, fontFamily: font.sansMedium, color: tint }}>@</Body>}
             <Body style={{ ...reading.caption, fontFamily: font.sansMedium, color: c.foreground }}>
               {item.fromUser ? `${item.sender} · owner` : item.sender}
             </Body>
