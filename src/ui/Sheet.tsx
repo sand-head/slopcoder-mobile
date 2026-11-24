@@ -36,6 +36,7 @@ import { TrueSheet } from '@lodev09/react-native-true-sheet';
 import { Body, Check, GitMark, Meta, Mono } from './kit';
 import type { GitServiceKind } from '../api/contracts';
 import { mix, radius, useTheme } from '../theme';
+import { presentAfterSettled, trackDismissal } from './sheetOrder';
 
 export interface SheetOption {
   key: string;
@@ -64,12 +65,43 @@ export function Sheet({
   const sheet = useRef<TrueSheet>(null);
   const scrollable = useRef<ScrollViewInstance>(null);
 
+  // What the parent wants right now, read by the native callbacks below, which
+  // arrive after the render that changed it.
+  const wanted = useRef(visible);
+  wanted.current = visible;
+  // Whether this sheet is (or is about to be) on screen natively.
+  const shown = useRef(false);
+
   // The sheet stays mounted and the native presentation follows `visible`,
-  // which keeps every call site the plain boolean it already was.
+  // which keeps every call site the plain boolean it already was. Presenting
+  // waits for any sheet still going away (see `sheetOrder`): a sheet opened
+  // from inside another must not be stacked on the one being dismissed.
   useEffect(() => {
-    if (visible) void sheet.current?.present().catch(() => {});
-    else void sheet.current?.dismiss().catch(() => {});
+    if (visible) {
+      let cancelled = false;
+      void presentAfterSettled(() => {
+        if (cancelled || !wanted.current || !sheet.current) return undefined;
+        shown.current = true;
+        return sheet.current.present();
+      }).catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (shown.current) {
+      shown.current = false;
+      trackDismissal(sheet.current?.dismiss());
+    }
+    return undefined;
   }, [visible]);
+
+  // A dismissal the parent did not ask for (a swipe, the system) is reported
+  // as a close. One it did ask for is not: the parent has already moved on,
+  // perhaps to another sheet, and a late close would close that one instead.
+  const onDidDismiss = () => {
+    shown.current = false;
+    if (wanted.current) onClose();
+  };
 
   return (
     <TrueSheet
@@ -78,9 +110,9 @@ export function Sheet({
       // scrollable is connected by ref: it pins the list below the header and
       // makes a pull anywhere in the body expand the sheet rather than scroll.
       scrollableRef={scrollable}
-      // Fires for a swipe down as well as for `dismiss()`, so the parent's
-      // state clears however the sheet went away.
-      onDidDismiss={onClose}>
+      // Fires for a swipe down as well as for `dismiss()`; only the first is
+      // the parent's news (see `onDidDismiss` above).
+      onDidDismiss={onDidDismiss}>
       <View
         style={{
           flexDirection: 'row',

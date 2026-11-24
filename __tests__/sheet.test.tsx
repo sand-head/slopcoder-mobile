@@ -85,13 +85,16 @@ describe('the sheet', () => {
     expect(closed).toHaveBeenCalled();
   });
 
-  it('presents and dismisses as `visible` changes', () => {
+  // Presenting waits a microtask, for any sheet the same commit dismissed (see sheetOrder).
+  it('presents and dismisses as `visible` changes', async () => {
     const tree = mount(false);
     const instance: any = sheetOf(tree).instance;
 
     expect(instance.present).not.toHaveBeenCalled();
+    // Never shown, so nothing to dismiss: no "already dismissed" warning on mount.
+    expect(instance.dismiss).not.toHaveBeenCalled();
 
-    act(() => {
+    await act(async () => {
       tree.update(
         <Sheet visible title="Attach" onClose={() => {}}>
           <Text>a repository</Text>
@@ -100,7 +103,7 @@ describe('the sheet', () => {
     });
     expect(instance.present).toHaveBeenCalled();
 
-    act(() => {
+    await act(async () => {
       tree.update(
         <Sheet visible={false} title="Attach" onClose={() => {}}>
           <Text>a repository</Text>

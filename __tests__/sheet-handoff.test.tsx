@@ -217,3 +217,75 @@ describe('settings → model picker on the new-session composer', () => {
     act(() => tree.unmount());
   });
 });
+
+describe('any sheet that hands over to another', () => {
+  const { Sheet } = require('../src/ui/Sheet');
+  const { Text } = require('react-native');
+
+  // Both tree orders: the bug depended on the new sheet's effect running first.
+  for (const order of ['next sheet first in the tree', 'next sheet last in the tree']) {
+    it(`opens the next one only after the first has gone (${order})`, async () => {
+      const closes: string[] = [];
+      let set!: (s: 'a' | 'b' | null) => void;
+      function Two() {
+        const [open, setOpen] = React.useState<'a' | 'b' | null>('a');
+        set = setOpen;
+        const a = (
+          <Sheet key="a" visible={open === 'a'} title="First" onClose={() => { closes.push('a'); setOpen(null); }}>
+            <Text>first</Text>
+          </Sheet>
+        );
+        const b = (
+          <Sheet key="b" visible={open === 'b'} title="Second" onClose={() => { closes.push('b'); setOpen(null); }}>
+            <Text>second</Text>
+          </Sheet>
+        );
+        return <View>{order.includes('first') ? [b, a] : [a, b]}</View>;
+      }
+      let tree!: ReactTestRenderer;
+      await act(async () => {
+        tree = create(<Two />);
+      });
+      await settle();
+      expect(presented()).toEqual(['First']);
+      await act(async () => set('b'));
+      await settle();
+      expect(presented()).toEqual(['Second']);
+      // The first sheet's late didDismiss is not a close: nothing asked the parent to close anything.
+      expect(closes).toEqual([]);
+      act(() => tree.unmount());
+    });
+  }
+
+  it('reports a swipe as one close, and the close button as one close', async () => {
+    const onClose = jest.fn();
+    let set!: (v: boolean) => void;
+    function One() {
+      const [open, setOpen] = React.useState(true);
+      set = setOpen;
+      return (
+        <Sheet visible={open} title="Only" onClose={() => { onClose(); setOpen(false); }}>
+          <Text>x</Text>
+        </Sheet>
+      );
+    }
+    let tree!: ReactTestRenderer;
+    await act(async () => {
+      tree = create(<One />);
+    });
+    await settle();
+    // Swipe: native goes first.
+    const top = mockNative.stack.pop()!;
+    await act(async () => top.onDidDismiss?.());
+    await settle();
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    await act(async () => set(true));
+    await settle();
+    await act(async () => tree.root.find(n => n.props.accessibilityLabel === 'Close' && n.props.onPress).props.onPress());
+    await settle();
+    expect(onClose).toHaveBeenCalledTimes(2);
+    expect(presented()).toEqual([]);
+    act(() => tree.unmount());
+  });
+});
