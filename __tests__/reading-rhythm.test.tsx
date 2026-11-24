@@ -61,11 +61,17 @@ describe('prose', () => {
     const link = markdownStyles(paletteFor(false)).link;
     expect(link.textDecorationLine).toBe('none');
     expect(link.fontFamily).toBe('Allo-Medium');
-    expect(link.fontSize).toBe(reading.prose.fontSize);
-    // An inline view's bottom sits on the baseline: no leading of its own, and
-    // dropped by the descent so the two baselines meet.
-    expect('lineHeight' in link).toBe(false);
-    expect(link.marginBottom).toBeCloseTo(-3.4, 1);
+  });
+
+  it('draws a link as a span of the paragraph, so it shares the baseline', async () => {
+    const tree = await render('See [the notes](https://example.org/notes) here.\n');
+    const link = tree.root.findAll(node => node.props?.accessibilityRole === 'link');
+    expect(link.length).toBeGreaterThan(0);
+    // A Text, not a Pressable view laid inline: no view between it and the words around it.
+    expect(link[0].type).toBe(Text);
+    const style = StyleSheet.flatten(link[0].props.style) as TextStyle;
+    expect(style.color).toBe(paletteFor(false).primary);
+    await act(async () => tree.unmount());
   });
 
   it('steps down inside a card', () => {
