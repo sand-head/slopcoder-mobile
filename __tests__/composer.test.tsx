@@ -216,27 +216,34 @@ describe('the composer', () => {
   });
 });
 
-it('wraps the toolbar and gives send and stop expanded touch targets', () => {
+/**
+ * The toolbar is one line. It used to wrap, and with a model, two dials and a
+ * labelled Start it ran to two rows and spilled off the card.
+ */
+it('keeps the toolbar on one line and gives send and stop expanded touch targets', () => {
   const tree = mount({ running: true, value: 'draft', onStop: () => {} });
   const toolbar = tree.root.findByProps({ testID: 'composer-toolbar' });
-  expect(toolbar.props.style.flexWrap).toBe('wrap');
+  expect(toolbar.props.style.flexWrap).toBeUndefined();
+  // The dials scroll sideways inside the line instead.
+  const dials = tree.root.findByProps({ testID: 'composer-dials' });
+  expect(dials.props.horizontal).toBe(true);
   for (const label of ['Stop', 'Steer']) {
     const button = tree.root.find(node => node.props.accessibilityLabel === label && node.props.hitSlop === 5);
     expect(button.props.hitSlop).toBe(5);
   }
 });
 
-
-it('uses a labeled launcher toolbar and exposes model through turn settings', () => {
+it('draws the launcher toolbar as icons, and exposes model through turn settings', () => {
   const tree = mount({ launcher: true, running: false, value: 'hello', images: {
     pending: [], onPick: () => {}, onRemove: () => {}, error: null,
   } });
   const input = tree.root.find(node => node.props.placeholder === 'Send a message…' && node.props.style?.minHeight === 72);
   expect(input.props.style.maxHeight).toBeUndefined();
   const toolbar = tree.root.findByProps({ testID: 'composer-toolbar' });
-  expect(toolbar.findAll(node => node.props.children === 'Attach').length).toBeGreaterThan(0);
-  expect(toolbar.findAll(node => node.props.children === 'Settings').length).toBeGreaterThan(0);
-  expect(toolbar.findAll(node => node.props.children === 'Send').length).toBeGreaterThan(0);
+  // Named for a screen reader, not written on the card.
+  for (const word of ['Attach', 'Settings', 'Send'])
+    expect(toolbar.findAll(node => node.props.children === word)).toHaveLength(0);
+  expect(labels(tree)).toEqual(expect.arrayContaining(['Attach', 'Turn settings', 'Send']));
   expect(toolbar.findAll(node => node.props.children === 'Auto')).toHaveLength(0);
   act(() => tree.root.find(node => node.props.accessibilityLabel === 'Turn settings' && node.props.onPress).props.onPress());
   expect(tree.root.findAllByType(Sheet).find(sheet => sheet.props.title === 'Turn settings')?.props.visible).toBe(true);
