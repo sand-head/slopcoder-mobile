@@ -38,6 +38,7 @@ import type {
   McpServerRequest,
   McpServerSummary,
   ArtifactDetail,
+  ArtifactVersionDetail,
   ArtifactSummary,
   ArtifactAppStatus,
   GitIdentityPrefs,
@@ -1074,6 +1075,11 @@ export class Seam {
     return this.get<ArtifactDetail>(`api/seam/artifacts/${id}`, signal);
   }
 
+  /** One kept edition; null when it is no longer kept (or never existed). */
+  artifactVersion(id: string, version: number, signal?: AbortSignal): Promise<ArtifactVersionDetail | null> {
+    return this.get<ArtifactVersionDetail>(`api/seam/artifacts/${id}/versions/${version}`, signal);
+  }
+
   /** Mints or revokes the unlisted link; the summary comes back with the new token. */
   shareArtifact(id: string, shared: boolean): Promise<ArtifactSummary | null> {
     return this.send<ArtifactSummary>('POST', `api/seam/artifacts/${id}/share`, { shared });
@@ -1097,6 +1103,16 @@ export class Seam {
    */
   artifactRawUrl(id: string): string {
     return `${this.baseUrl}/artifacts/${id}/raw`;
+  }
+
+  /** One edition's bytes; owner-only, like the latest's. */
+  artifactVersionRawUrl(id: string, version: number): string {
+    return `${this.baseUrl}/artifacts/${id}/versions/${version}/raw`;
+  }
+
+  /** One edition's page, under the same sandbox CSP as the latest's. */
+  artifactVersionViewUrl(id: string, version: number): string {
+    return `${this.baseUrl}/artifacts/${id}/versions/${version}/view`;
   }
 
   /** The owner-authenticated HTML page, including its opaque-origin sandbox CSP. */

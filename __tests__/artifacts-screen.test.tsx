@@ -212,6 +212,16 @@ function headerActions(navigation: ReturnType<typeof navigator>): HeaderAction[]
 }
 
 describe('one artifact', () => {
+  // A link to a deleted artifact used to leave the loading skeleton up for good:
+  // the seam answers a 404 as null, which read as "not loaded yet".
+  it('says so when the artifact is gone, instead of loading forever', async () => {
+    mockSeam.artifact.mockResolvedValueOnce(null as never);
+    const { tree } = await mount(navigation => (
+      <ArtifactScreen navigation={navigation} route={{ params: { id: 'gone' } }} />
+    ));
+    expect(text(tree)).toContain('This artifact no longer exists, or is not yours.');
+  });
+
   it('opens the document itself, with metadata and actions out of the body', async () => {
     const { tree, navigation } = await mount(nav => (
       <ArtifactScreen navigation={nav} route={{ params: { id: 'a-1' } }} />

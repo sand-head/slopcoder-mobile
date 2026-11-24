@@ -22,6 +22,8 @@ import type { DiffLine, ToolBlock, ToolCard as Card } from '../api/toolcard';
 import { useNavigation } from '@react-navigation/native';
 import { Body, Diamond, Dot, GLYPHS, Meta, Mono } from './kit';
 import { animateNextLayout } from './motion';
+import { FilePeekPreview } from './FilePeek';
+import { LinkedText, useTranscriptServices } from './transcriptServices';
 import { font, mix, radius, useTheme } from '../theme';
 
 /**
@@ -90,9 +92,15 @@ export function ToolCard({
 
       {shown.length > 0 ? (
         <View style={{ gap: 6, paddingHorizontal: 8 }}>
-          {shown.map((block, index) => (
-            <Block key={index} block={block} />
-          ))}
+          {shown.map((block, index) =>
+            // A read's text is previewed, capped, with the whole of it a tap
+            // away in a sheet; nothing else about the card changes.
+            card.peek && block.type === 'code' ? (
+              <FilePeekPreview key={index} peek={card.peek} />
+            ) : (
+              <Block key={index} block={block} />
+            ),
+          )}
         </View>
       ) : null}
     </View>
@@ -241,7 +249,7 @@ function Block({ block }: { block: ToolBlock }) {
                 ...mono(block.tone === 'error' ? c.destructive : c.foreground),
                 ...(block.tone === 'muted' ? { color: c.mutedForeground } : null),
               }}>
-              {block.text}
+              <LinkedText text={block.text} />
             </Body>
           </Surface>
         </View>
@@ -254,10 +262,11 @@ function Block({ block }: { block: ToolBlock }) {
           <View style={{ gap: 1 }}>
             {block.entries.map((entry, index) => (
               <View key={index} style={{ flexDirection: 'row', gap: 8 }}>
-                <Mono style={{ color: c.foreground, flexShrink: 0 }}>{entry.text}</Mono>
+                <Mono style={{ color: c.foreground, flexShrink: 0 }}><LinkedText text={entry.text} /></Mono>
                 {entry.detail ? (
                   <Mono numberOfLines={1} style={{ flexShrink: 1 }}>
-                    {entry.detail}
+                    {/* A search hit's matched line is where a link usually is. */}
+                    <LinkedText text={entry.detail} />
                   </Mono>
                 ) : null}
               </View>
@@ -305,11 +314,12 @@ function ArtifactCard({
 }) {
   const { c } = useTheme();
   const navigation = useNavigation<any>();
+  const { ArtifactMedia } = useTranscriptServices();
   const open = block.artifactId
     ? () => navigation.navigate('Artifact', { id: block.artifactId, title: block.name })
     : undefined;
 
-  return (
+  const card = (
     <Pressable
       onPress={open}
       disabled={!open}
@@ -352,6 +362,17 @@ function ArtifactCard({
       {/* The same › every row that opens something wears. */}
       {open ? <Mono style={{ fontSize: 15 }}>›</Mono> : null}
     </Pressable>
+  );
+
+  // An image, audio or video artifact shows itself under its card; anything
+  // else is the card alone, as before.
+  return block.artifactId && ArtifactMedia ? (
+    <View style={{ gap: 6 }}>
+      {card}
+      <ArtifactMedia artifactId={block.artifactId} name={block.name} kind={block.kind} />
+    </View>
+  ) : (
+    card
   );
 }
 

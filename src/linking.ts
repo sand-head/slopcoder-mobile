@@ -17,7 +17,10 @@ import type { LinkingOptions, NavigatorScreenParams } from '@react-navigation/na
 
 /** A different artifact is a different route, even during warm-link navigation. */
 export function artifactRouteId({ params }: { params?: object }): string | undefined {
-  return (params as { id?: string } | undefined)?.id;
+  const { id, version: given, v } = (params ?? {}) as { id?: string; version?: number | string; v?: string };
+  const version = given ?? v;
+  // An edition is a route of its own, so a link to v2 does not replace the latest's screen.
+  return id && version !== undefined && version !== null && version !== '' ? `${id}@${version}` : id;
 }
 
 type SettingsLinks = {
@@ -46,7 +49,7 @@ type TabLinks = {
 type RootLinks = {
   Tabs: NavigatorScreenParams<TabLinks>;
   Session: { id: string };
-  Artifact: { id: string };
+  Artifact: { id: string; version?: number; v?: string };
   Routine: { id: string; run?: string };
 };
 
@@ -81,6 +84,8 @@ export const linking: LinkingOptions<RootLinks> = {
         },
       },
       Session: 'session/:id',
+      // `?v=N`, the web's spelling of an edition, arrives as `params.v`; the
+      // screen reads it alongside the `version` an in-app tap passes.
       Artifact: 'artifacts/:id',
       Routine: 'routines/:id',
     },

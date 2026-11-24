@@ -39,6 +39,24 @@ import { useReducedMotion } from './motion';
 import { mix, radius, font, tintFor, useTheme, type Palette } from '../theme';
 import { splitMentions, type SubSessionMention } from '../api/mentions';
 import { GitServiceKind } from '../api/contracts';
+import { useTranscriptServices } from './transcriptServices';
+
+/**
+ * Markdown images, drawn by the transcript's own media view: bounded, loaded
+ * with the bearer key when they live on this server, and opened full screen
+ * on a tap. The library's default would fetch unauthenticated and at any size.
+ */
+function imageRules(ProseImage: React.ComponentType<{ src: string; alt: string }>): RenderRules {
+  return {
+    image: node => (
+      <ProseImage
+        key={node.key}
+        src={String(node.attributes?.src ?? '')}
+        alt={String(node.attributes?.alt ?? '')}
+      />
+    ),
+  };
+}
 
 /**
  * How far the mono grammar may grow under Dynamic Type. Body text scales
@@ -1063,16 +1081,22 @@ export function Prose({
   mentions?: readonly SubSessionMention[];
 }) {
   const { c, isDark } = useTheme();
-  const rules = useMemo(
-    () =>
-      mentions && mentions.length > 0
-        ? mentionRules(mentions, isDark)
-        : undefined,
-    [mentions, isDark],
-  );
+  const services = useTranscriptServices();
+  const ProseImage = services.ProseImage;
+  const rules = useMemo(() => {
+    const merged = {
+      ...(mentions && mentions.length > 0 ? mentionRules(mentions, isDark) : null),
+      ...(ProseImage ? imageRules(ProseImage) : null),
+    };
+    return Object.keys(merged).length > 0 ? merged : undefined;
+  }, [mentions, isDark, ProseImage]);
+  // Links open the app's own screens, the browser, or say why they cannot;
+  // without this, `/artifacts/…` went to `Linking` and silently nowhere.
+  const onLinkPress = services.useOpenLink();
   return (
     <Markdown
       style={markdownStyles(c)}
+      onLinkPress={onLinkPress}
       // Every text node selectable, so a reader can take one line out of a
       // reply rather than the whole thing. This is the platform's own
       // selection UI; it costs no view and no gesture handler.

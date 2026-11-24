@@ -1234,6 +1234,29 @@ export interface ArtifactDetail {
   text: string | null;
 }
 
+/** One kept edition of an artifact (`ArtifactVersionSummary`). */
+export interface ArtifactVersionSummary {
+  version: number;
+  publishedAt: string;
+  title: string;
+  format: ArtifactFormat;
+  contentType: string;
+  size: number;
+  sessionId: string | null;
+  sessionTitle: string | null;
+  routineId: string | null;
+  routineName: string | null;
+  isLatest: boolean;
+  shareToken: string | null;
+}
+
+/** One edition with its body when text; binary bodies are at `/artifacts/{id}/versions/{n}/raw`. */
+export interface ArtifactVersionDetail {
+  version: ArtifactVersionSummary;
+  description: string;
+  text: string | null;
+}
+
 export interface MemorySummary {
   id: string;
   repoKey: string;

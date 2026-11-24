@@ -85,6 +85,19 @@ export interface ToolCard {
    * bare: then there is an account to give, and it needs its mark and its verb.
    */
   bare?: boolean;
+  /**
+   * What a file read returned, for the peek sheet: the path it came from and
+   * the text exactly as the model saw it. Present only on a successful text
+   * read; the card's code block carries the same text for the inline preview.
+   */
+  peek?: FilePeek;
+}
+
+export interface FilePeek {
+  path: string;
+  text: string;
+  /** "182 lines", "from 40", "limit 20" — the header's chips, repeated in the sheet. */
+  facets: string[];
 }
 
 /** Short scalars promoted to header chips before the rest fall to a pairs block. */
@@ -482,6 +495,10 @@ function compose(
       return writeFile(input, result, isError);
     case 'read_file':
       return readFile(input, result, isError);
+    // Claude Code's own read: `file_path` rather than `path`, otherwise the
+    // same act, so the same card and the same peek.
+    case 'Read':
+      return readFile(input, result, isError, 'file_path');
     case 'list_dir':
       return listDir(input, result, isError);
 
@@ -826,19 +843,36 @@ function readFile(
   input: Json | undefined,
   result: string | null,
   isError: boolean,
+  pathKey = 'path',
 ): ToolCard {
-  const path = str(input, 'path');
+  const path = str(input, pathKey);
+  const image = !isError && result ? imageRead(result) : null;
   const facets: string[] = [];
-  if (result && result.length > 0) facets.push(lineCount(result));
+  if (image) facets.push(image.mediaType);
+  else if (result && result.length > 0) facets.push(lineCount(result));
   const offset = int(input, 'offset');
   if (offset !== null) facets.push(`from ${offset}`);
   const limit = int(input, 'limit');
   if (limit !== null) facets.push(`limit ${limit}`);
 
   const blocks: ToolBlock[] = [];
+  if (image) {
+    // The bytes went to the model and nowhere else: the server keeps only this
+    // sentence. Saying so is better than a code block holding a placeholder.
+    blocks.push({
+      type: 'text',
+      label: null,
+      open: false,
+      tone: 'muted',
+      text: `The agent looked at this image (${image.mediaType}${image.size ? `, ${image.size}` : ''}). Images a tool reads are not kept, so it cannot be shown here.`,
+    });
+    return { verb: 'Read', subject: path, subjectStyle: 'path', facets, blocks };
+  }
+
+  let peek: FilePeek | undefined;
   if (!isError && result) {
     const body = result.replace(/\n+$/, '');
-    if (body.length > 0)
+    if (body.length > 0) {
       blocks.push({
         type: 'code',
         label: null,
@@ -846,9 +880,20 @@ function readFile(
         language: languageOf(path),
         text: body,
       });
+      peek = { path: path ?? 'file', text: body, facets };
+    }
   }
 
-  return { verb: 'Read', subject: path, subjectStyle: 'path', facets, blocks };
+  return { verb: 'Read', subject: path, subjectStyle: 'path', facets, blocks, ...(peek ? { peek } : null) };
+}
+
+/**
+ * `read_file`'s line for an image it handed to the model:
+ * `[read_file: shot.png — image/png, 12 KB]`. Null for anything else.
+ */
+export function imageRead(result: string): { mediaType: string; size: string | null } | null {
+  const match = /^\[read_file: .+ — (image\/[a-z0-9.+-]+)(?:, ([^\]]+))?\]$/i.exec(result.trim());
+  return match ? { mediaType: match[1].toLowerCase(), size: match[2] ?? null } : null;
 }
 
 function listDir(

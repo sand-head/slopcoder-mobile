@@ -23,6 +23,14 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
+        <!-- slopcoder://session/{id}, slopcoder://artifacts/{id}?v=N, … — the scheme
+             src/linking.ts routes and iOS already registers. -->
+        <intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="slopcoder" />
+        </intent-filter>
       </activity>
       <!-- Asks Play services to install the backported Photo Picker on devices
            below Android 11, so choosing an image needs no storage permission

@@ -30,15 +30,68 @@ import { barMenu, useHeaderInset } from '../navigation/headers';
 import { font, mix, radius, useTheme } from '../theme';
 import { artifactMeta, bytes } from './Artifacts';
 import { ZoomableImage } from '../ui/ZoomableImage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AudioPlayerView, isAudioContentType, loadAudioDocument } from '../ui/audio';
+
+/**
+ * An artifact as loaded for this screen: the latest, or — when a link named
+ * one with `?v=N` — that kept edition laid over the latest's identity, so
+ * sharing and deleting still act on the artifact itself.
+ */
+export interface LoadedArtifact extends ArtifactDetail {
+  /** The edition shown, when it is not the latest. */
+  pinned?: number;
+  /** A requested edition that is no longer kept; the latest is shown instead. */
+  missingVersion?: number;
+}
+
+/** `version` arrives as a number from a tap and as a string from a deep link. */
+export function routeVersion(value: unknown): number | null {
+  const n = typeof value === 'number' ? value : typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : NaN;
+  return Number.isInteger(n) && n >= 1 ? n : null;
+}
+
+export async function loadArtifact(seam: Seam, id: string, version: number | null): Promise<LoadedArtifact | null> {
+  const latest = await seam.artifact(id);
+  if (!latest || version === null || version === latest.artifact.version) return latest;
+  const edition = await seam.artifactVersion(id, version);
+  if (!edition) return { ...latest, missingVersion: version };
+  return {
+    artifact: {
+      ...latest.artifact,
+      title: edition.version.title,
+      format: edition.version.format,
+      contentType: edition.version.contentType,
+      size: edition.version.size,
+      version: edition.version.version,
+      description: edition.description,
+    },
+    text: edition.text,
+    pinned: edition.version.version,
+  };
+}
 
 export function ArtifactScreen({ route, navigation }: { route: any; navigation: any }) {
   const { c } = useTheme();
   const seam = useAuth(s => s.seam);
   const id: string = route.params.id;
+  const version = routeVersion(route.params.version ?? route.params.v);
   const [busy, setBusy] = useState(false);
-  const detail = useFocusLoad<ArtifactDetail | null>(navigation, seam ? () => seam.artifact(id) : null);
+  // Whether a load has answered at all: a gone artifact answers null, which is
+  // otherwise indistinguishable from "not loaded yet" and left a skeleton up forever.
+  const [answered, setAnswered] = useState(false);
+  const insets = useSafeAreaInsets();
+  const detail = useFocusLoad<LoadedArtifact | null>(
+    navigation,
+    seam
+      ? () =>
+          loadArtifact(seam, id, version).finally(() => setAnswered(true))
+      : null,
+  );
   const headerInset = useHeaderInset();
   const artifact = detail.data?.artifact;
+  const pinned = detail.data?.pinned ?? null;
+  const missingVersion = detail.data?.missingVersion ?? null;
   const detailText = detail.data?.text ?? null;
   const setDetail = detail.set;
   const shareLink = artifact?.sharePath && seam ? seam.shareUrl(artifact.sharePath) : null;
@@ -54,7 +107,13 @@ export function ArtifactScreen({ route, navigation }: { route: any; navigation: 
           tapError();
           return;
         }
-        setDetail({ artifact: updated, text: detailText });
+        // Only the link changed. Merging just that keeps a pinned edition's
+        // own title and body in place of the latest's.
+        setDetail(
+          detail.data
+            ? { ...detail.data, artifact: { ...detail.data.artifact, shareToken: updated.shareToken, shared: updated.shared, sharePath: updated.sharePath } }
+            : { artifact: updated, text: detailText },
+        );
         tapConfirm();
         if (presentSheet && updated.sharePath) {
           const url = seam.shareUrl(updated.sharePath);
@@ -66,7 +125,7 @@ export function ArtifactScreen({ route, navigation }: { route: any; navigation: 
         setBusy(false);
       }
     },
-    [seam, artifact, busy, setDetail, detailText],
+    [seam, artifact, busy, setDetail, detailText, detail.data],
   );
 
   const share = useCallback(async () => {
@@ -162,8 +221,10 @@ export function ArtifactScreen({ route, navigation }: { route: any; navigation: 
         refreshing={detail.refreshing}
         onRefresh={detail.refresh}
         error={detail.error}
-        loading={detail.data === null && !detail.error}>
-        {detail.data === null && !detail.error ? <Problem>No such artifact.</Problem> : null}
+        loading={!answered && !detail.error}>
+        {answered && detail.data === null && !detail.error ? (
+          <Problem>This artifact no longer exists, or is not yours.</Problem>
+        ) : null}
       </SettingsPage>
     );
   }
@@ -171,15 +232,41 @@ export function ArtifactScreen({ route, navigation }: { route: any; navigation: 
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
       <ArtifactBody
-        key={`${artifact.id}:${artifact.version}`}
+        key={`${artifact.id}:${artifact.version}:${pinned ?? 'latest'}`}
         detail={detail.data!}
-        rawUrl={seam ? seam.artifactRawUrl(artifact.id) : null}
-        viewUrl={seam ? seam.artifactViewUrl(artifact.id) : null}
+        rawUrl={seam ? (pinned ? seam.artifactVersionRawUrl(artifact.id, pinned) : seam.artifactRawUrl(artifact.id)) : null}
+        viewUrl={seam ? (pinned ? seam.artifactVersionViewUrl(artifact.id, pinned) : seam.artifactViewUrl(artifact.id)) : null}
         apiKey={seam?.apiKey ?? null}
         seam={seam}
         refreshing={detail.refreshing}
         onRefresh={detail.refresh}
       />
+      {pinned || missingVersion ? (
+        <View
+          accessibilityLiveRegion="polite"
+          style={{
+            position: 'absolute',
+            // Above the system navigation bar, not under it.
+            bottom: insets.bottom + 16,
+            right: 16,
+            left: 16,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+            borderWidth: 1,
+            borderColor: c.border,
+            borderRadius: radius.md,
+            backgroundColor: c.card,
+            padding: 12,
+          }}>
+          <Mono style={{ flex: 1 }}>
+            {pinned
+              ? `Version ${pinned}, an earlier edition.`
+              : `Version ${missingVersion} is no longer kept; this is the latest (v${artifact.version}).`}
+          </Mono>
+          {pinned ? <Button label="Latest" onPress={() => navigation.replace('Artifact', { id, title: artifact.title })} /> : null}
+        </View>
+      ) : null}
       {detail.error ? (
         <View
           style={{
@@ -282,26 +369,8 @@ function ArtifactBody({
   );
 }
 
-export function isAudioContentType(contentType: string): boolean {
-  return /^audio\/[a-z0-9.+-]+$/i.test(contentType.split(';', 1)[0].trim());
-}
-
-/**
- * Fetch privately, then give WebView a bounded in-memory data URL. This avoids
- * platform-specific range requests losing the bearer, while keeping the key
- * out of the generated player document and any agent-authored HTML.
- */
-const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
-
-function blobAsDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Invalid audio data'));
-    reader.onerror = () => reject(reader.error ?? new Error('Could not read audio'));
-    reader.onabort = () => reject(new Error('Audio read aborted'));
-    reader.readAsDataURL(blob);
-  });
-}
+/** Kept as an export of this screen for its existing callers; the rule lives in `ui/audio`. */
+export { isAudioContentType };
 
 function AudioArtifact({ artifact, url, apiKey }: {
   artifact: ArtifactSummary; url: string; apiKey: string | null;
@@ -309,36 +378,17 @@ function AudioArtifact({ artifact, url, apiKey }: {
   const { c } = useTheme();
   const [document, setDocument] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
-  const mime = artifact.contentType.split(';', 1)[0].trim().toLowerCase();
   React.useEffect(() => {
     let active = true;
     const controller = new AbortController();
     setDocument(null);
     setFailed(false);
-    const load = async () => {
-      try {
-        const response = await fetch(url, {
-          headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
-          signal: controller.signal,
-        });
-        if (!response.ok) throw new Error(`Audio request failed (${response.status})`);
-        const length = Number(response.headers.get('content-length'));
-        if (Number.isFinite(length) && length > MAX_AUDIO_BYTES) throw new Error('Audio is too large');
-        const blob = await response.blob();
-        if (blob.size > MAX_AUDIO_BYTES) throw new Error('Audio is too large');
-        const dataUrl = await blobAsDataUrl(blob);
-        const comma = dataUrl.indexOf(',');
-        const payload = comma >= 0 ? dataUrl.slice(comma + 1) : '';
-        if (!/^[A-Za-z0-9+/]*={0,2}$/.test(payload)) throw new Error('Invalid audio data');
-        const safeDataUrl = `data:${mime};base64,${payload}`;
-        if (active) setDocument(`<!doctype html><meta name="viewport" content="width=device-width"><audio controls preload="metadata" src="${safeDataUrl}"></audio>`);
-      } catch {
-        if (active) setFailed(true);
-      }
-    };
-    void load();
+    loadAudioDocument(url, apiKey, artifact.contentType, controller.signal).then(
+      html => { if (active) setDocument(html); },
+      () => { if (active) setFailed(true); },
+    );
     return () => { active = false; controller.abort(); };
-  }, [url, apiKey, mime]);
+  }, [url, apiKey, artifact.contentType]);
 
   if (failed) {
     return (
@@ -352,26 +402,12 @@ function AudioArtifact({ artifact, url, apiKey }: {
   }
 
   return (
-    <WebView
-      testID="artifact-audio"
-      accessibilityLabel={`Audio artifact: ${artifact.title}`}
-      source={{ html: document, baseUrl: 'about:blank' }}
+    <AudioPlayerView
+      playerID="artifact-audio"
+      label={`Audio artifact: ${artifact.title}`}
+      document={document}
       style={{ flex: 1, backgroundColor: c.background }}
-      originWhitelist={['about:blank', 'data:*']}
-      javaScriptEnabled={false}
-      allowFileAccess={false}
-      allowFileAccessFromFileURLs={false}
-      allowUniversalAccessFromFileURLs={false}
-      mixedContentMode="never"
-      cacheEnabled={false}
-      incognito
-      sharedCookiesEnabled={false}
-      thirdPartyCookiesEnabled={false}
-      setSupportMultipleWindows={false}
-      mediaPlaybackRequiresUserAction
-      webviewDebuggingEnabled={false}
       onError={() => setFailed(true)}
-      onShouldStartLoadWithRequest={request => request.url === 'about:blank'}
     />
   );
 }

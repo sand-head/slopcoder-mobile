@@ -39,6 +39,8 @@ import { GlassBar } from './ui/kit';
 import { useReducedMotion } from './ui/motion';
 import { useTheme } from './theme';
 import { artifactRouteId, linking } from './linking';
+import { TranscriptServicesProvider } from './ui/transcriptServices';
+import { transcriptMedia } from './ui/transcriptMedia';
 
 const Root = createNativeStackNavigator();
 
@@ -85,6 +87,8 @@ export default function App() {
           see ui/keyboard.ts. */}
       <KeyboardProvider>
         <StatusBar barStyle={scheme === 'dark' ? 'light-content' : 'dark-content'} />
+        {/* Transcript media and links, provided once; see ui/transcriptServices. */}
+        <TranscriptServicesProvider value={transcriptMedia}>
         <NavigationContainer theme={navTheme} linking={linking}>
           <Root.Navigator screenOptions={stackOptions(theme)}>
             {credential ? (
@@ -128,6 +132,7 @@ export default function App() {
             )}
           </Root.Navigator>
         </NavigationContainer>
+        </TranscriptServicesProvider>
       </KeyboardProvider>
     </SafeAreaProvider>
   );

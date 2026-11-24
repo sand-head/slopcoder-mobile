@@ -79,6 +79,8 @@ import { TerminalSheet } from '../ui/TerminalSheet';
 import { useShake } from '../ui/shake';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 import { ToolCard } from '../ui/ToolCard';
+import { useTranscriptServices } from '../ui/transcriptServices';
+import { createRowVisibility, RowVisibilityScope } from '../ui/visibility';
 import { SubSessionCard } from '../ui/SubSessionCard';
 import { useAtBottom } from '../ui/atBottom';
 import { ChatSwitcher } from '../ui/ChatSwitcher';
@@ -551,9 +553,22 @@ export function SessionDetailScreen({
     ],
   );
 
+  // Which rows have been on screen, so media in them loads when seen rather
+  // than when mounted (the list mounts four screens either side).
+  const visibility = useMemo(() => createRowVisibility(), []);
+  const onViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: { key: string }[] }) =>
+      visibility.show(viewableItems.map(v => v.key)),
+  ).current;
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 1, minimumViewTime: 250 }).current;
+
   const renderRow = useCallback(
-    ({ item }: { item: DisplayRow }) => <RowView row={item} handlers={handlers} />,
-    [handlers],
+    ({ item }: { item: DisplayRow }) => (
+      <RowVisibilityScope store={visibility} rowKey={keyOf(item)}>
+        <RowView row={item} handlers={handlers} />
+      </RowVisibilityScope>
+    ),
+    [handlers, visibility],
   );
 
   const transcriptStyle = useMemo(
@@ -621,6 +636,8 @@ export function SessionDetailScreen({
                 ) : undefined
               }
               renderItem={renderRow}
+              onViewableItemsChanged={onViewableItemsChanged}
+              viewabilityConfig={viewabilityConfig}
               onScrollToIndexFailed={({ index, averageItemLength }) => {
                 // Variable-height transcript rows cannot use getItemLayout.
                 listRef.current?.scrollToOffset({ offset: index * averageItemLength, animated: false });
@@ -1225,7 +1242,7 @@ function strip({ mediaType, base64Data }: PendingImage) {
 
 /**
  * The images a prompt carried, in the scrollback. Thumbnails in a row; a tap
- * opens one at the width of the bubble, and another tap folds it back.
+ * opens one full screen, with pinch and double-tap zoom.
  */
 function PromptImages({
   images,
@@ -1233,7 +1250,9 @@ function PromptImages({
   images: readonly { mediaType: string; base64Data: string }[];
 }) {
   const { c } = useTheme();
+  const { ImageViewer } = useTranscriptServices();
   const [open, setOpen] = useState<number | null>(null);
+  const viewing = open !== null ? images[open] : undefined;
 
   return (
     <View style={{ gap: 6 }}>
@@ -1241,18 +1260,16 @@ function PromptImages({
         {images.map((image, index) => (
           <Pressable
             key={index}
-            onPress={() => {
-              animateNextLayout();
-              setOpen(open === index ? null : index);
-            }}
+            testID="prompt-image"
+            onPress={ImageViewer ? () => setOpen(index) : undefined}
             accessibilityRole="imagebutton"
             accessibilityLabel={`Attached image ${index + 1} of ${
               images.length
             }`}
+            accessibilityHint="Opens full screen"
             style={{
-              width: open === index ? '100%' : 72,
-              aspectRatio: open === index ? undefined : 1,
-              height: open === index ? 240 : undefined,
+              width: 72,
+              aspectRatio: 1,
               borderRadius: radius.md,
               borderWidth: 1,
               borderColor: mix(c.primary, 25),
@@ -1263,12 +1280,20 @@ function PromptImages({
               source={{
                 uri: `data:${image.mediaType};base64,${image.base64Data}`,
               }}
-              resizeMode={open === index ? 'contain' : 'cover'}
+              resizeMode="cover"
+              resizeMethod="resize"
               style={{ width: '100%', height: '100%' }}
             />
           </Pressable>
         ))}
       </View>
+      {ImageViewer && viewing && open !== null ? (
+        <ImageViewer
+          source={{ uri: `data:${viewing.mediaType};base64,${viewing.base64Data}` }}
+          label={`Attached image ${open + 1} of ${images.length}`}
+          onClose={() => setOpen(null)}
+        />
+      ) : null}
     </View>
   );
 }
