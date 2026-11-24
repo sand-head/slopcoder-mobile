@@ -200,12 +200,20 @@ export function InlineImage({
   label,
   onPress,
   testID,
+  bare = false,
 }: {
   source: ImageSourcePropType;
   label: string;
   /** Defaults to opening the full-screen viewer. */
   onPress?: () => void;
   testID?: string;
+  /**
+   * An image in prose, as the web draws one: the column's full width at the
+   * image's own proportions, with no frame once it has loaded. The frame and
+   * fixed height stay for the wait and for a failure, so there is something to
+   * see and to tap.
+   */
+  bare?: boolean;
 }) {
   const { c } = useTheme();
   const seen = useRowSeen();
@@ -213,8 +221,9 @@ export function InlineImage({
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [viewing, setViewing] = useState(false);
+  const [aspect, setAspect] = useState<number | null>(null);
 
-  const box = {
+  const framed = {
     width: '100%' as const,
     height: INLINE_IMAGE_HEIGHT,
     borderRadius: radius.md,
@@ -225,6 +234,10 @@ export function InlineImage({
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   };
+  const box =
+    bare && aspect
+      ? { width: '100%' as const, aspectRatio: aspect, overflow: 'hidden' as const }
+      : framed;
 
   if (failed) {
     return (
@@ -236,7 +249,7 @@ export function InlineImage({
         }}
         accessibilityRole="button"
         accessibilityLabel={`${label}. Could not load. Tap to try again.`}
-        style={box}>
+        style={framed}>
         <Text style={{ fontFamily: font.mono, fontSize: 11.5, color: c.mutedForeground, textAlign: 'center', padding: 12 }}>
           {'Could not load this image.\nTap to try again.'}
         </Text>
@@ -261,6 +274,10 @@ export function InlineImage({
             resizeMode="contain"
             // Android decodes to the box rather than the file's own size.
             resizeMethod="resize"
+            onLoad={bare ? event => {
+              const { width, height } = event.nativeEvent.source;
+              if (width > 0 && height > 0) setAspect(width / height);
+            } : undefined}
             onLoadEnd={done}
             onError={() => {
               done();
@@ -295,7 +312,7 @@ export function ProseImage({ src, alt }: { src: string; alt: string }) {
   }
   return (
     <View style={{ width: '100%', marginVertical: 6 }}>
-      <InlineImage testID="prose-image" source={imageSource(source, apiKey)} label={label} />
+      <InlineImage testID="prose-image" bare source={imageSource(source, apiKey)} label={label} />
     </View>
   );
 }
