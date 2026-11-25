@@ -25,6 +25,11 @@ export interface TranscriptServices {
   ProseImage: React.ComponentType<{ src: string; alt: string }> | null;
   ArtifactMedia: React.ComponentType<{ artifactId: string; name: string; kind: string }> | null;
   ImageViewer: React.ComponentType<{ source: ImageSourcePropType | null; label: string; onClose: () => void }> | null;
+  /**
+   * A picture the server kept for a tool card — what a tool returned, or a 3D
+   * scene's render — inline, opening full screen on a tap.
+   */
+  KeptImage: React.ComponentType<{ kind: 'tool' | 'scene'; id: string; label: string }> | null;
 }
 
 const none: TranscriptServices = {
@@ -32,6 +37,7 @@ const none: TranscriptServices = {
   ProseImage: null,
   ArtifactMedia: null,
   ImageViewer: null,
+  KeptImage: null,
 };
 
 const Context = createContext<TranscriptServices>(none);

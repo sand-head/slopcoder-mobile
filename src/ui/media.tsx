@@ -9,6 +9,8 @@
  *   is the alt text.
  * - **Published artifacts** of an image, audio or video type, under their card.
  * - **Images a prompt carried**, which the scrollback already holds inline.
+ * - **Images a tool returned**, which the server keeps beside the transcript,
+ *   and 3D scene renders — both under their tool card.
  *
  * Every image sits in a fixed-height box, so a 4000px screenshot costs the
  * same row as a 40px one, and opens full screen with pinch zoom on a tap.
@@ -314,6 +316,26 @@ export function ProseImage({ src, alt }: { src: string; alt: string }) {
     <View style={{ width: '100%', marginVertical: 6 }}>
       <InlineImage testID="prose-image" bare source={imageSource(source, apiKey)} label={label} />
     </View>
+  );
+}
+
+// ------------------------------------------------------------ kept images
+
+/**
+ * A picture the server kept for a tool card: an image a tool returned, or the
+ * render a 3D scene tool handed the agent. Loads with the device key, like an
+ * artifact, and opens full screen with pinch zoom on a tap.
+ */
+export function KeptImage({ kind, id, label }: { kind: 'tool' | 'scene'; id: string; label: string }) {
+  const seam = useAuth(s => s.seam);
+  if (!seam) return null;
+  const uri = kind === 'tool' ? seam.toolImageUrl(id) : seam.sceneRenderUrl(id);
+  return (
+    <InlineImage
+      testID={kind === 'tool' ? 'tool-image' : 'scene-render'}
+      source={{ uri, headers: { Authorization: `Bearer ${seam.apiKey}` } }}
+      label={label}
+    />
   );
 }
 

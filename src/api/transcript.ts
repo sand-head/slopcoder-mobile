@@ -17,6 +17,7 @@ import type {
   UserQuestion,
   UserQuestionAnswer,
 } from './contracts';
+import type { ToolResultImage } from './toolcard';
 
 export type ItemKind =
   | 'user'
@@ -78,6 +79,8 @@ export interface ToolItem extends BaseItem {
   result: string | null;
   isError: boolean;
   running: boolean;
+  /** Pictures the result carried that the server kept; absent for none. */
+  images?: ToolResultImage[];
 }
 
 export interface NoteItem extends BaseItem {
@@ -429,11 +432,13 @@ export class TranscriptFolder {
 
         if (open !== undefined) {
           const started = this.items[open] as ToolItem;
+          const images = toolImages(payload.images);
           this.replace(open, {
             ...started,
             result: str('result'),
             isError,
             running: false,
+            ...(images ? { images } : null),
           });
           this.openTools.delete(`${sub ?? 'main'}:${name}`);
           break;
@@ -865,4 +870,24 @@ export function subagentDetail(items: readonly Item[]): string {
     if (item.kind === 'tool') return item.running ? `${item.name}…` : item.name;
   }
   return items.some(item => item.kind === 'think') ? 'thinking…' : 'working…';
+}
+
+/**
+ * `ToolCallFinished.images`, as far as it is well formed: a server older than
+ * kept images sends nothing, and an entry missing a part is skipped rather
+ * than drawn as a broken picture.
+ */
+function toolImages(value: unknown): ToolResultImage[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const images = value.filter(
+    (v): v is ToolResultImage =>
+      typeof v === 'object' &&
+      v !== null &&
+      typeof (v as ToolResultImage).id === 'string' &&
+      typeof (v as ToolResultImage).mediaType === 'string' &&
+      typeof (v as ToolResultImage).size === 'number',
+  );
+  return images.length > 0
+    ? images.map(({ id, mediaType, size }) => ({ id, mediaType, size }))
+    : undefined;
 }

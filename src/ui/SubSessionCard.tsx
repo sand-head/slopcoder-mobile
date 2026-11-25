@@ -258,7 +258,7 @@ function TailRow({ item, recipient }: { item: Item; recipient: string }) {
     case 'tool':
       return (
         <ToolCard
-          card={buildToolCard(item.name, item.input, item.result, item.isError)}
+          card={buildToolCard(item.name, item.input, item.result, item.isError, item.images)}
           state={item.running ? 'running' : item.isError ? 'failed' : 'ok'}
         />
       );

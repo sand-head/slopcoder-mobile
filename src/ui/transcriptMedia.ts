@@ -4,11 +4,12 @@
  */
 import type { TranscriptServices } from './transcriptServices';
 import { useOpenLink } from './links';
-import { ArtifactMedia, ImageViewer, ProseImage } from './media';
+import { ArtifactMedia, ImageViewer, KeptImage, ProseImage } from './media';
 
 export const transcriptMedia: TranscriptServices = {
   useOpenLink,
   ProseImage,
   ArtifactMedia,
   ImageViewer,
+  KeptImage,
 };

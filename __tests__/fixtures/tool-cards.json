@@ -342,6 +342,153 @@
     }
   },
   {
+    "name": "read an image the server kept",
+    "tool": "read_file",
+    "input": {
+      "path": "docs/shot.png"
+    },
+    "result": "[read_file: docs/shot.png \u2014 image/png, 182 KB]",
+    "images": [
+      {
+        "id": "0199c0de-0000-7000-8000-00000000cafe",
+        "mediaType": "image/png",
+        "size": 186412
+      }
+    ],
+    "expected": {
+      "verb": "Read",
+      "subject": "docs/shot.png",
+      "subjectStyle": "path",
+      "facets": [
+        "image/png"
+      ],
+      "blocks": [
+        {
+          "type": "image",
+          "label": null,
+          "open": true,
+          "imageId": "0199c0de-0000-7000-8000-00000000cafe",
+          "mediaType": "image/png",
+          "size": "182 KB"
+        }
+      ]
+    }
+  },
+  {
+    "name": "claude code reads an image",
+    "tool": "Read",
+    "input": {
+      "file_path": "/tmp/shot.png"
+    },
+    "result": "[image: image/png, 182 KB]",
+    "images": [
+      {
+        "id": "0199c0de-0000-7000-8000-00000000cafe",
+        "mediaType": "image/png",
+        "size": 186412
+      }
+    ],
+    "expected": {
+      "verb": "Read",
+      "subject": "/tmp/shot.png",
+      "subjectStyle": "path",
+      "facets": [
+        "image/png"
+      ],
+      "blocks": [
+        {
+          "type": "image",
+          "label": null,
+          "open": true,
+          "imageId": "0199c0de-0000-7000-8000-00000000cafe",
+          "mediaType": "image/png",
+          "size": "182 KB"
+        }
+      ]
+    }
+  },
+  {
+    "name": "an image read from before images were kept",
+    "tool": "read_file",
+    "input": {
+      "path": "docs/shot.png"
+    },
+    "result": "[read_file: docs/shot.png \u2014 image/png, 182 KB]",
+    "expected": {
+      "verb": "Read",
+      "subject": "docs/shot.png",
+      "subjectStyle": "path",
+      "facets": [
+        "image/png"
+      ],
+      "blocks": [
+        {
+          "type": "text",
+          "label": null,
+          "open": false,
+          "tone": "muted",
+          "text": "The agent looked at this image (image/png, 182 KB). It was not kept, so it cannot be shown here."
+        }
+      ]
+    }
+  },
+  {
+    "name": "a claude code image read from before images were kept",
+    "tool": "Read",
+    "input": {
+      "file_path": "/tmp/shot.png"
+    },
+    "result": "[image]",
+    "expected": {
+      "verb": "Read",
+      "subject": "/tmp/shot.png",
+      "subjectStyle": "path",
+      "facets": [],
+      "blocks": [
+        {
+          "type": "text",
+          "label": null,
+          "open": false,
+          "tone": "muted",
+          "text": "The agent looked at this image. It was not kept, so it cannot be shown here."
+        }
+      ]
+    }
+  },
+  {
+    "name": "a tiny image",
+    "tool": "read_file",
+    "input": {
+      "path": "icon.gif"
+    },
+    "result": "[read_file: icon.gif \u2014 image/gif, 0 KB]",
+    "images": [
+      {
+        "id": "0199c0de-0000-7000-8000-00000000cafe",
+        "mediaType": "image/gif",
+        "size": 812
+      }
+    ],
+    "expected": {
+      "verb": "Read",
+      "subject": "icon.gif",
+      "subjectStyle": "path",
+      "facets": [
+        "image/gif"
+      ],
+      "blocks": [
+        {
+          "type": "image",
+          "label": null,
+          "open": true,
+          "imageId": "0199c0de-0000-7000-8000-00000000cafe",
+          "mediaType": "image/gif",
+          "size": "812 B"
+        }
+      ]
+    }
+  },
+  {
     "name": "list a directory",
     "tool": "list_dir",
     "input": {
@@ -563,6 +710,123 @@
           "text": "Mode LastWriteTime Name"
         }
       ]
+    }
+  },
+  {
+    "name": "claude code bash with a description",
+    "tool": "Bash",
+    "input": {
+      "command": "cd /repo \u0026\u0026 sed -n 1,130p src/Harness.cs",
+      "description": "Check StartProcessAsync signatures",
+      "timeout": 120000
+    },
+    "result": "namespace Harness;\n",
+    "expected": {
+      "verb": "Bash",
+      "subject": "cd /repo \u0026\u0026 sed -n 1,130p src/Harness.cs",
+      "subjectStyle": "command",
+      "facets": [],
+      "blocks": [
+        {
+          "type": "code",
+          "label": "command",
+          "open": false,
+          "language": null,
+          "text": "cd /repo \u0026\u0026 sed -n 1,130p src/Harness.cs"
+        },
+        {
+          "type": "code",
+          "label": "output",
+          "open": false,
+          "language": null,
+          "text": "namespace Harness;"
+        }
+      ],
+      "title": "Check StartProcessAsync signatures"
+    }
+  },
+  {
+    "name": "claude code bash in the background",
+    "tool": "Bash",
+    "input": {
+      "command": "npm run dev",
+      "run_in_background": true
+    },
+    "result": "Command running in background with ID: bash_1",
+    "expected": {
+      "verb": "Bash",
+      "subject": "npm run dev",
+      "subjectStyle": "command",
+      "facets": [
+        "background"
+      ],
+      "blocks": [
+        {
+          "type": "code",
+          "label": "output",
+          "open": false,
+          "language": null,
+          "text": "Command running in background with ID: bash_1"
+        }
+      ]
+    }
+  },
+  {
+    "name": "claude code bash still running",
+    "tool": "Bash",
+    "input": {
+      "command": "dotnet test",
+      "description": "Run the tests"
+    },
+    "result": null,
+    "expected": {
+      "verb": "Bash",
+      "subject": "dotnet test",
+      "subjectStyle": "command",
+      "facets": [],
+      "blocks": [
+        {
+          "type": "code",
+          "label": "command",
+          "open": false,
+          "language": null,
+          "text": "dotnet test"
+        }
+      ],
+      "title": "Run the tests"
+    }
+  },
+  {
+    "name": "claude code powershell that failed",
+    "tool": "PowerShell",
+    "input": {
+      "command": "Get-Item missing.txt",
+      "description": "Look for the file"
+    },
+    "result": "Get-Item: Cannot find path \u0027missing.txt\u0027 because it does not exist.",
+    "isError": true,
+    "expected": {
+      "verb": "PowerShell",
+      "subject": "Get-Item missing.txt",
+      "subjectStyle": "command",
+      "facets": [],
+      "blocks": [
+        {
+          "type": "code",
+          "label": "command",
+          "open": false,
+          "language": null,
+          "text": "Get-Item missing.txt"
+        },
+        {
+          "type": "text",
+          "label": "error",
+          "open": true,
+          "tone": "error",
+          "text": "Get-Item: Cannot find path \u0027missing.txt\u0027 because it does not exist."
+        }
+      ],
+      "title": "Look for the file"
     }
   },
   {
@@ -1131,6 +1395,115 @@
     }
   },
   {
+    "name": "a browser screenshot",
+    "tool": "browser_screenshot",
+    "input": {},
+    "result": "[screenshot attached]",
+    "images": [
+      {
+        "id": "0199c0de-0000-7000-8000-00000000f00d",
+        "mediaType": "image/webp",
+        "size": 48213
+      }
+    ],
+    "expected": {
+      "verb": "Screenshot",
+      "subject": null,
+      "subjectStyle": "plain",
+      "facets": [],
+      "blocks": [
+        {
+          "type": "image",
+          "label": null,
+          "open": true,
+          "imageId": "0199c0de-0000-7000-8000-00000000f00d",
+          "mediaType": "image/webp",
+          "size": "47 KB"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a browser click and the screenshot it took",
+    "tool": "browser_click",
+    "input": {
+      "x": 120,
+      "y": 300
+    },
+    "result": "Clicked (120, 300).\n[screenshot attached]",
+    "images": [
+      {
+        "id": "0199c0de-0000-7000-8000-00000000f00d",
+        "mediaType": "image/webp",
+        "size": 48213
+      }
+    ],
+    "expected": {
+      "verb": "Click",
+      "subject": "120, 300",
+      "subjectStyle": "plain",
+      "facets": [],
+      "blocks": [
+        {
+          "type": "text",
+          "label": "result",
+          "open": false,
+          "tone": "plain",
+          "text": "Clicked (120, 300)."
+        },
+        {
+          "type": "image",
+          "label": null,
+          "open": false,
+          "imageId": "0199c0de-0000-7000-8000-00000000f00d",
+          "mediaType": "image/webp",
+          "size": "47 KB"
+        }
+      ]
+    }
+  },
+  {
+    "name": "an mcp tool that answered with words and a picture",
+    "tool": "mcp__charts__render",
+    "input": {
+      "spec": "bar"
+    },
+    "result": "Rendered 3 bars.\n[image: image/png, 2343 KB]",
+    "images": [
+      {
+        "id": "0199c0de-0000-7000-8000-00000000cafe",
+        "mediaType": "image/png",
+        "size": 2400000
+      }
+    ],
+    "expected": {
+      "verb": "Render",
+      "subject": null,
+      "subjectStyle": "plain",
+      "facets": [
+        "charts",
+        "spec bar"
+      ],
+      "blocks": [
+        {
+          "type": "text",
+          "label": "result",
+          "open": false,
+          "tone": "plain",
+          "text": "Rendered 3 bars."
+        },
+        {
+          "type": "image",
+          "label": null,
+          "open": true,
+          "imageId": "0199c0de-0000-7000-8000-00000000cafe",
+          "mediaType": "image/png",
+          "size": "2.3 MB"
+        }
+      ]
+    }
+  },
+  {
     "name": "app output",
     "tool": "app_output",
     "input": {
@@ -1570,12 +1943,12 @@
     }
   },
   {
-    "name": "stop a sub-session's current turn",
+    "name": "stop a sub-session\u0027s current turn",
     "tool": "stop_subsession",
     "input": {
       "subsession": "brisk-comet-42"
     },
-    "result": "brisk-comet-42's turn was cancelled mid-flight; the work is unfinished and no reply will be sent. It keeps its context; prompt brisk-comet-42 with what to do next.",
+    "result": "brisk-comet-42\u0027s turn was cancelled mid-flight; the work is unfinished and no reply will be sent. It keeps its context; prompt brisk-comet-42 with what to do next.",
     "expected": {
       "verb": "Stop",
       "subject": "brisk-comet-42",
@@ -1587,7 +1960,7 @@
           "label": "result",
           "open": false,
           "tone": "plain",
-          "text": "brisk-comet-42's turn was cancelled mid-flight; the work is unfinished and no reply will be sent. It keeps its context; prompt brisk-comet-42 with what to do next."
+          "text": "brisk-comet-42\u0027s turn was cancelled mid-flight; the work is unfinished and no reply will be sent. It keeps its context; prompt brisk-comet-42 with what to do next."
         }
       ]
     }
@@ -1807,6 +2180,356 @@
           "open": false,
           "tone": "plain",
           "text": "Deleted artifact \u0060overnight-build-log\u0060."
+        }
+      ]
+    }
+  },
+  {
+    "name": "open a scene",
+    "tool": "scene_open",
+    "input": {
+      "path": "models/table"
+    },
+    "result": "Created models/table.slopmodel at revision 0. Use \u0022models/table.slopmodel\u0022 as \u0060scene\u0060 in the other scene tools.\n\nScene \u0022table\u0022: 0 object(s), 0 triangles.\nThe scene is empty.",
+    "expected": {
+      "verb": "Open scene",
+      "subject": "models/table",
+      "subjectStyle": "path",
+      "facets": [],
+      "blocks": [
+        {
+          "type": "text",
+          "label": "result",
+          "open": false,
+          "tone": "plain",
+          "text": "Created models/table.slopmodel at revision 0. Use \u0022models/table.slopmodel\u0022 as \u0060scene\u0060 in the other scene tools.\n\nScene \u0022table\u0022: 0 object(s), 0 triangles.\nThe scene is empty."
+        }
+      ]
+    }
+  },
+  {
+    "name": "a modelling script with its render",
+    "tool": "scene_exec",
+    "input": {
+      "scene": "models/table",
+      "code": "Scene.Add(Mesh.Box(1.2, 0.7, 0.04), \u0022top\u0022).MoveTo(0, 0, 0.73);"
+    },
+    "result": "Revision 1 of models/table.\n  \u002B top: 1.2 x 0.7 x 0.04 m, 12 tris\nScene now: 1 object(s), 12 tris, 1.2 x 0.7 x 0.04 m.\n\n[render attached: front, right, top and perspective views]\nRender id: 0199c0de-0000-7000-8000-00000000beef",
+    "expected": {
+      "verb": "Model",
+      "subject": "models/table",
+      "subjectStyle": "path",
+      "facets": [
+        "rev 1"
+      ],
+      "blocks": [
+        {
+          "type": "code",
+          "label": "script",
+          "open": false,
+          "language": "csharp",
+          "text": "Scene.Add(Mesh.Box(1.2, 0.7, 0.04), \u0022top\u0022).MoveTo(0, 0, 0.73);"
+        },
+        {
+          "type": "scene",
+          "label": null,
+          "open": true,
+          "scene": "models/table",
+          "revision": 1,
+          "renderId": "0199c0de-0000-7000-8000-00000000beef"
+        },
+        {
+          "type": "text",
+          "label": "result",
+          "open": false,
+          "tone": "plain",
+          "text": "Revision 1 of models/table.\n  \u002B top: 1.2 x 0.7 x 0.04 m, 12 tris\nScene now: 1 object(s), 12 tris, 1.2 x 0.7 x 0.04 m.\n\n[render attached: front, right, top and perspective views]"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a modelling script that changed nothing",
+    "tool": "scene_exec",
+    "input": {
+      "scene": "models/table",
+      "script_path": "scripts/table.csx",
+      "render": false
+    },
+    "result": "No revision made (models/table is still at revision 1).\nThe script ran and changed nothing; no revision was made.",
+    "expected": {
+      "verb": "Model",
+      "subject": "models/table",
+      "subjectStyle": "path",
+      "facets": [],
+      "blocks": [
+        {
+          "type": "text",
+          "label": "script file",
+          "open": false,
+          "tone": "plain",
+          "text": "scripts/table.csx"
+        },
+        {
+          "type": "text",
+          "label": "result",
+          "open": false,
+          "tone": "plain",
+          "text": "No revision made (models/table is still at revision 1).\nThe script ran and changed nothing; no revision was made."
+        }
+      ]
+    }
+  },
+  {
+    "name": "a modelling script after someone else changed the scene",
+    "tool": "scene_exec",
+    "input": {
+      "scene": "models/table",
+      "code": "Scene.Add(Mesh.Box(1.2, 0.7, 0.04), \u0022top\u0022).MoveTo(0, 0, 0.73);",
+      "render": false
+    },
+    "result": "Note: revision 2 was made by someone else since your last call (scene_history shows it).\nRevision 3 of models/table.\n  \u002B top: 1.2 x 0.7 x 0.04 m, 12 tris\nScene now: 1 object(s), 12 tris, 1.2 x 0.7 x 0.04 m.",
+    "expected": {
+      "verb": "Model",
+      "subject": "models/table",
+      "subjectStyle": "path",
+      "facets": [
+        "rev 3"
+      ],
+      "blocks": [
+        {
+          "type": "code",
+          "label": "script",
+          "open": false,
+          "language": "csharp",
+          "text": "Scene.Add(Mesh.Box(1.2, 0.7, 0.04), \u0022top\u0022).MoveTo(0, 0, 0.73);"
+        },
+        {
+          "type": "text",
+          "label": "result",
+          "open": false,
+          "tone": "plain",
+          "text": "Note: revision 2 was made by someone else since your last call (scene_history shows it).\nRevision 3 of models/table.\n  \u002B top: 1.2 x 0.7 x 0.04 m, 12 tris\nScene now: 1 object(s), 12 tris, 1.2 x 0.7 x 0.04 m."
+        }
+      ]
+    }
+  },
+  {
+    "name": "a modelling script that did not compile",
+    "tool": "scene_exec",
+    "input": {
+      "scene": "models/table",
+      "code": "Scene.Add(Mesh.Bx(1, 1, 1), \u0022x\u0022);"
+    },
+    "isError": true,
+    "result": "Error: The script did not compile (nothing was run):\n  line 1, col 16: \u0027Mesh\u0027 does not contain a definition for \u0027Bx\u0027. Did you mean Box?\nUse scene_api to look up the exact names and signatures.\n\nThe scene is still at revision 1.",
+    "expected": {
+      "verb": "Model",
+      "subject": "models/table",
+      "subjectStyle": "path",
+      "facets": [],
+      "blocks": [
+        {
+          "type": "code",
+          "label": "script",
+          "open": false,
+          "language": "csharp",
+          "text": "Scene.Add(Mesh.Bx(1, 1, 1), \u0022x\u0022);"
+        },
+        {
+          "type": "text",
+          "label": "error",
+          "open": true,
+          "tone": "error",
+          "text": "Error: The script did not compile (nothing was run):\n  line 1, col 16: \u0027Mesh\u0027 does not contain a definition for \u0027Bx\u0027. Did you mean Box?\nUse scene_api to look up the exact names and signatures.\n\nThe scene is still at revision 1."
+        }
+      ]
+    }
+  },
+  {
+    "name": "a modelling script still running",
+    "tool": "scene_exec",
+    "input": {
+      "scene": "models/table",
+      "code": "Scene.Add(Mesh.Box(1.2, 0.7, 0.04), \u0022top\u0022).MoveTo(0, 0, 0.73);"
+    },
+    "expected": {
+      "verb": "Model",
+      "subject": "models/table",
+      "subjectStyle": "path",
+      "facets": [],
+      "blocks": [
+        {
+          "type": "code",
+          "label": "script",
+          "open": false,
+          "language": "csharp",
+          "text": "Scene.Add(Mesh.Box(1.2, 0.7, 0.04), \u0022top\u0022).MoveTo(0, 0, 0.73);"
+        }
+      ]
+    }
+  },
+  {
+    "name": "look at a scene",
+    "tool": "scene_render",
+    "input": {
+      "scene": "models/table",
+      "mode": "id",
+      "views": [
+        "front",
+        "iso"
+      ]
+    },
+    "result": "Revision 1: 1.2 x 0.7 x 0.04 m  |  1 object, 12 tris  |  id  |  grid 20 cm.\nViews, left to right then top to bottom: front, iso.\nColours:\n  top = red (#e6194b)\n[render attached]\nRender id: 0199c0de-0000-7000-8000-00000000beef",
+    "expected": {
+      "verb": "Look at scene",
+      "subject": "models/table",
+      "subjectStyle": "path",
+      "facets": [
+        "id",
+        "front iso"
+      ],
+      "blocks": [
+        {
+          "type": "scene",
+          "label": null,
+          "open": true,
+          "scene": "models/table",
+          "revision": 1,
+          "renderId": "0199c0de-0000-7000-8000-00000000beef"
+        },
+        {
+          "type": "text",
+          "label": "result",
+          "open": false,
+          "tone": "plain",
+          "text": "Revision 1: 1.2 x 0.7 x 0.04 m  |  1 object, 12 tris  |  id  |  grid 20 cm.\nViews, left to right then top to bottom: front, iso.\nColours:\n  top = red (#e6194b)\n[render attached]"
+        }
+      ]
+    }
+  },
+  {
+    "name": "inspect one object",
+    "tool": "scene_inspect",
+    "input": {
+      "scene": "models/table",
+      "object": "top"
+    },
+    "result": "Revision 1.\nObject \u0022top\u0022\n  parent: (none)\n  world size: 1.2 x 0.7 x 0.04 m",
+    "expected": {
+      "verb": "Inspect scene",
+      "subject": "models/table \u00B7 top",
+      "subjectStyle": "path",
+      "facets": [],
+      "blocks": [
+        {
+          "type": "text",
+          "label": "result",
+          "open": false,
+          "tone": "plain",
+          "text": "Revision 1.\nObject \u0022top\u0022\n  parent: (none)\n  world size: 1.2 x 0.7 x 0.04 m"
+        }
+      ]
+    }
+  },
+  {
+    "name": "compare two revisions of a scene",
+    "tool": "scene_history",
+    "input": {
+      "scene": "models/table",
+      "action": "diff",
+      "revision": 2
+    },
+    "result": "Revision 1 -\u003E 2: \u002B1 object.\n  \u002B leg\n[render attached: the earlier revision on the left, the later on the right]",
+    "expected": {
+      "verb": "Compare revisions",
+      "subject": "models/table",
+      "subjectStyle": "path",
+      "facets": [
+        "rev 2"
+      ],
+      "blocks": [
+        {
+          "type": "text",
+          "label": "result",
+          "open": false,
+          "tone": "plain",
+          "text": "Revision 1 -\u003E 2: \u002B1 object.\n  \u002B leg\n[render attached: the earlier revision on the left, the later on the right]"
+        }
+      ]
+    }
+  },
+  {
+    "name": "revert a scene",
+    "tool": "scene_history",
+    "input": {
+      "scene": "models/table",
+      "action": "revert",
+      "revision": 1
+    },
+    "result": "Revision 3 of models/table: the scene as it was at revision 1.\n\nScene \u0022table\u0022: 1 object(s), 12 triangles.",
+    "expected": {
+      "verb": "Revert scene",
+      "subject": "models/table",
+      "subjectStyle": "path",
+      "facets": [
+        "rev 1"
+      ],
+      "blocks": [
+        {
+          "type": "text",
+          "label": "result",
+          "open": false,
+          "tone": "plain",
+          "text": "Revision 3 of models/table: the scene as it was at revision 1.\n\nScene \u0022table\u0022: 1 object(s), 12 triangles."
+        }
+      ]
+    }
+  },
+  {
+    "name": "export a scene",
+    "tool": "scene_export",
+    "input": {
+      "scene": "models/table",
+      "format": "glb",
+      "output": "assets/table.glb"
+    },
+    "result": "Wrote assets/table.glb (1,204 bytes): 1 object(s), 12 triangles.\nglTF 2.0 binary, metres, Y-up (a root node rotates the Z-up scene); hierarchy, transforms and PBR materials kept.",
+    "expected": {
+      "verb": "Export scene",
+      "subject": "assets/table.glb",
+      "subjectStyle": "path",
+      "facets": [],
+      "blocks": [
+        {
+          "type": "text",
+          "label": "result",
+          "open": false,
+          "tone": "plain",
+          "text": "Wrote assets/table.glb (1,204 bytes): 1 object(s), 12 triangles.\nglTF 2.0 binary, metres, Y-up (a root node rotates the Z-up scene); hierarchy, transforms and PBR materials kept."
+        }
+      ]
+    }
+  },
+  {
+    "name": "look up the scene api",
+    "tool": "scene_api",
+    "input": {
+      "query": "Mesh.Box"
+    },
+    "result": "  static Mesh Box(double sizeX, double sizeY, double sizeZ)\n      A box centred on the origin.",
+    "expected": {
+      "verb": "Scene API",
+      "subject": "Mesh.Box",
+      "subjectStyle": "plain",
+      "facets": [],
+      "blocks": [
+        {
+          "type": "text",
+          "label": "result",
+          "open": false,
+          "tone": "plain",
+          "text": "static Mesh Box(double sizeX, double sizeY, double sizeZ)\n      A box centred on the origin."
         }
       ]
     }

@@ -170,7 +170,7 @@ describe('openTarget', () => {
 
 describe('links as rendered', () => {
   const navigation = { push: jest.fn() };
-  const services: TranscriptServices = { useOpenLink, ProseImage: null, ArtifactMedia: null, ImageViewer: null };
+  const services: TranscriptServices = { useOpenLink, ProseImage: null, ArtifactMedia: null, ImageViewer: null, KeptImage: null };
 
   function within(children: React.ReactNode) {
     return (
@@ -225,7 +225,7 @@ describe('links in a search result row', () => {
     const { buildToolCard } = require('../src/api/toolcard');
     const { ToolCard } = require('../src/ui/ToolCard');
     const navigation = { push: jest.fn(), navigate: jest.fn() };
-    const services: TranscriptServices = { useOpenLink, ProseImage: null, ArtifactMedia: null, ImageViewer: null };
+    const services: TranscriptServices = { useOpenLink, ProseImage: null, ArtifactMedia: null, ImageViewer: null, KeptImage: null };
     const card = buildToolCard('grep_files', JSON.stringify({ pattern: 'artifacts' }), `fixture/links.txt:1:relative: /artifacts/${ID}`, false);
     let tree: ReturnType<typeof create> | undefined;
     await act(async () => {

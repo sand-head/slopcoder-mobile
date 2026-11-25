@@ -100,6 +100,26 @@ describe('TranscriptFolder', () => {
     });
   });
 
+  it('keeps the pictures a finished tool call carried, and only well-formed ones', () => {
+    const folder = new TranscriptFolder();
+    const id = '0199c0de-0000-7000-8000-00000000cafe';
+
+    folder.fold([
+      event('ToolCallStarted', { toolName: 'Read', inputJson: '{}' }),
+      event('ToolCallFinished', {
+        toolName: 'Read',
+        result: '[image: image/png, 1 KB]',
+        isError: false,
+        images: [{ id, mediaType: 'image/png', size: 812 }, { id: 'x' }, null],
+      }),
+      event('ToolCallStarted', { toolName: 'Read', inputJson: '{}' }),
+      event('ToolCallFinished', { toolName: 'Read', result: 'text', isError: false }),
+    ]);
+
+    expect(folder.all[0]).toMatchObject({ images: [{ id, mediaType: 'image/png', size: 812 }] });
+    expect(folder.all[1]).not.toHaveProperty('images');
+  });
+
   it('leaves an unfinished tool call marked running', () => {
     const folder = new TranscriptFolder();
 

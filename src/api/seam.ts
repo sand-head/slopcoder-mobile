@@ -1105,6 +1105,16 @@ export class Seam {
     return `${this.baseUrl}/artifacts/${id}/raw`;
   }
 
+  /** A picture a tool returned, kept with its session's transcript; owner-only. */
+  toolImageUrl(id: string): string {
+    return `${this.baseUrl}/tool-images/${encodeURIComponent(id)}`;
+  }
+
+  /** The picture a 3D scene tool handed the agent; owner-only. */
+  sceneRenderUrl(id: string): string {
+    return `${this.baseUrl}/scenes/renders/${encodeURIComponent(id)}.png`;
+  }
+
   /** One edition's bytes; owner-only, like the latest's. */
   artifactVersionRawUrl(id: string, version: number): string {
     return `${this.baseUrl}/artifacts/${id}/versions/${version}/raw`;

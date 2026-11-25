@@ -22,6 +22,7 @@ import {
   parseUnifiedDiff,
   type ToolBlock,
   type ToolCard,
+  type ToolResultImage,
 } from '../src/api/toolcard';
 
 interface Fixture {
@@ -31,6 +32,7 @@ interface Fixture {
   raw?: boolean;
   result: string | null;
   isError?: boolean;
+  images?: ToolResultImage[];
   expected: unknown;
 }
 
@@ -52,6 +54,8 @@ function describe_(card: ToolCard): unknown {
     blocks: card.blocks.map(describeBlock),
     // Written only when true, matching the C# encoder: an absent key is false.
     ...(card.bare ? { bare: true } : null),
+    // Likewise only when there is one.
+    ...(card.title !== undefined ? { title: card.title } : null),
   };
 }
 
@@ -73,6 +77,10 @@ function describeBlock(block: ToolBlock): unknown {
       return { ...head, pairs: block.pairs.map(p => [p.key, p.value]) };
     case 'artifact':
       return { ...head, name: block.name, kind: block.kind, size: block.size, artifactId: block.artifactId };
+    case 'scene':
+      return { ...head, scene: block.scene, revision: block.revision, renderId: block.renderId };
+    case 'image':
+      return { ...head, imageId: block.imageId, mediaType: block.mediaType, size: block.size };
   }
 }
 
@@ -83,6 +91,7 @@ function buildFrom(fixture: Fixture): ToolCard {
     fixture.raw === true ? (fixture.input as string) : JSON.stringify(fixture.input),
     fixture.result,
     fixture.isError === true,
+    fixture.images,
   );
 }
 

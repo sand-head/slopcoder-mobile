@@ -284,6 +284,26 @@ function Block({ block }: { block: ToolBlock }) {
     case 'artifact':
       return <ArtifactCard block={block} />;
 
+    case 'image':
+      return (
+        <KeptPicture
+          kind="tool"
+          id={block.imageId}
+          label={`Image a tool returned, ${block.mediaType}, ${block.size}. Opens full screen.`}
+          caption={`${block.mediaType} · ${block.size}`}
+        />
+      );
+
+    case 'scene':
+      return (
+        <KeptPicture
+          kind="scene"
+          id={block.renderId}
+          label={`Render of ${block.scene}${block.revision !== null ? ` at revision ${block.revision}` : ''}. Opens full screen.`}
+          caption={block.revision !== null ? `${block.scene} · rev ${block.revision}` : block.scene}
+        />
+      );
+
     case 'pairs':
       return (
         <View style={{ gap: 3 }}>
@@ -379,6 +399,34 @@ function ArtifactCard({
     </View>
   ) : (
     card
+  );
+}
+
+/**
+ * A picture the server kept — what a tool returned, or a scene's render — with
+ * a one-line caption under it. A tap opens it full screen. Drawn as the caption
+ * alone where there is no picture to fetch (a scene call with rendering off)
+ * or nothing to fetch it with (a test, a preview).
+ */
+function KeptPicture({
+  kind,
+  id,
+  label,
+  caption,
+}: {
+  kind: 'tool' | 'scene';
+  id: string | null;
+  label: string;
+  caption: string;
+}) {
+  const { KeptImage } = useTranscriptServices();
+  return (
+    <View style={{ gap: 4 }}>
+      {id && KeptImage ? <KeptImage kind={kind} id={id} label={label} /> : null}
+      <Mono numberOfLines={1} style={{ fontSize: 10.5 }}>
+        {caption}
+      </Mono>
+    </View>
   );
 }
 

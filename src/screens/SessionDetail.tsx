@@ -1482,7 +1482,7 @@ const TranscriptRow = React.memo(function Transcript({
     case 'tool':
       return (
         <ToolCard
-          card={buildToolCard(item.name, item.input, item.result, item.isError)}
+          card={buildToolCard(item.name, item.input, item.result, item.isError, item.images)}
           state={item.running ? 'running' : item.isError ? 'failed' : 'ok'}
         />
       );

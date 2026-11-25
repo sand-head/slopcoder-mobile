@@ -70,7 +70,39 @@ export type ToolBlock =
       kind: string;
       size: string | null;
       artifactId: string | null;
+    })
+  /**
+   * A look at a 3D scene: the picture the agent was handed, at the revision it
+   * shows. Ids rather than URLs, like `artifact`. A null `renderId` is a call
+   * with no picture kept, and the block then says which scene without one.
+   */
+  | (BlockBase & {
+      type: 'scene';
+      /** The scene document's workspace path, as the agent wrote it. */
+      scene: string;
+      revision: number | null;
+      renderId: string | null;
+    })
+  /**
+   * A picture a tool returned, kept by the server with the transcript and
+   * fetched from `/tool-images/{imageId}` with the device's key.
+   */
+  | (BlockBase & {
+      type: 'image';
+      imageId: string;
+      /** `image/png` and the like. */
+      mediaType: string;
+      /** "182 KB". */
+      size: string;
     });
+
+/** A picture the server kept from a tool result (`ToolCallFinished.images`). */
+export interface ToolResultImage {
+  id: string;
+  mediaType: string;
+  /** Bytes. */
+  size: number;
+}
 
 export interface ToolCard {
   verb: string;
@@ -423,15 +455,30 @@ function parseHunkHeader(header: string): [number, number] {
 
 /**
  * @param result the tool's output, or null while the call is still running.
+ * @param images the pictures the result carried that the server kept; absent
+ *   or empty for none (and on every server that predates keeping them).
  */
 export function buildToolCard(
   toolName: string,
   inputJson: string,
   result: string | null,
   isError: boolean,
+  images?: readonly ToolResultImage[] | null,
 ): ToolCard {
   const input = tryParseObject(inputJson);
-  const card = compose(toolName, input, result, isError);
+  const kept = images && images.length > 0 ? images : null;
+
+  // With the pictures to show, the lines that stood in for them
+  // ("[image: image/png, 12 KB]", "[screenshot attached]") say nothing.
+  let card = compose(toolName, input, kept ? withoutImageLines(result) : result, isError, kept);
+
+  // A card that does not place its own pictures gets them after its body. Open,
+  // because the picture is usually the point — except where it is the side
+  // effect of an act, as each browser step's screenshot is.
+  if (kept && !card.blocks.some(b => b.type === 'image')) {
+    const open = !['browser_click', 'browser_type', 'browser_scroll', 'browser_navigate'].includes(toolName);
+    card = { ...card, blocks: [...card.blocks, ...kept.map(i => picture(i, open))] };
+  }
 
   // A failure is the one thing nobody should have to tap for. Builders that know
   // something about their own errors — the shell lifting an exit code out of the
@@ -498,6 +545,7 @@ function compose(
   input: Json | undefined,
   result: string | null,
   isError: boolean,
+  images: readonly ToolResultImage[] | null,
 ): ToolCard {
   switch (tool) {
     // ---- files ----
@@ -506,11 +554,11 @@ function compose(
     case 'write_file':
       return writeFile(input, result, isError);
     case 'read_file':
-      return readFile(input, result, isError);
+      return readFile(input, result, isError, images);
     // Claude Code's own read: `file_path` rather than `path`, otherwise the
     // same act, so the same card and the same peek.
     case 'Read':
-      return readFile(input, result, isError, 'file_path');
+      return readFile(input, result, isError, images, 'file_path');
     case 'list_dir':
       return listDir(input, result, isError);
 
@@ -616,6 +664,42 @@ function compose(
       return named('Read artifact', str(input, 'slug'), result, isError);
     case 'delete_artifact':
       return named('Delete artifact', str(input, 'slug'), result, isError);
+
+    // ---- 3D scenes ----
+    case 'scene_open':
+      return scene('Open scene', str(input, 'path'), [], [], result, isError);
+    case 'scene_exec':
+      return sceneExec(input, result, isError);
+    case 'scene_inspect': {
+      const target = str(input, 'object');
+      return named(
+        'Inspect scene',
+        target ? `${str(input, 'scene') ?? ''} · ${target}` : str(input, 'scene'),
+        result,
+        isError,
+        'path',
+      );
+    }
+    case 'scene_render':
+      return sceneRender(input, result, isError);
+    case 'scene_history': {
+      const action = str(input, 'action');
+      const wanted = int(input, 'revision');
+      return scene(
+        action === 'diff' ? 'Compare revisions' : action === 'revert' ? 'Revert scene' : 'Scene history',
+        str(input, 'scene'),
+        wanted !== null ? [`rev ${wanted}`] : [],
+        [],
+        result,
+        isError,
+      );
+    }
+    case 'scene_export':
+      return named('Export scene', str(input, 'output') ?? str(input, 'scene'), result, isError, 'path');
+    case 'scene_api': {
+      const query = str(input, 'query');
+      return named('Scene API', query ? query : 'overview', result, isError);
+    }
 
     // ---- forge ----
     case 'create_pull_request':
@@ -858,32 +942,51 @@ function writeFile(
   };
 }
 
+/**
+ * A read. Of text, the text; of an image, the image — kept by the server and
+ * named here by id. An image read with nothing kept (a transcript from before
+ * images were, a shared copy, one over the cap) says what the agent looked at
+ * instead of setting its placeholder line as code.
+ */
 function readFile(
   input: Json | undefined,
   result: string | null,
   isError: boolean,
+  images: readonly ToolResultImage[] | null,
   pathKey = 'path',
 ): ToolCard {
   const path = str(input, pathKey);
-  const image = !isError && result ? imageRead(result) : null;
+  const looked = !isError && !images && result ? imageRead(result) : null;
   const facets: string[] = [];
-  if (image) facets.push(image.mediaType);
-  else if (result && result.length > 0) facets.push(lineCount(result));
+  if (images && images.length > 0) facets.push(images[0].mediaType);
+  else if (looked) {
+    if (looked.mediaType) facets.push(looked.mediaType);
+  } else if (result && result.length > 0) facets.push(lineCount(result));
   const offset = int(input, 'offset');
   if (offset !== null) facets.push(`from ${offset}`);
   const limit = int(input, 'limit');
   if (limit !== null) facets.push(`limit ${limit}`);
 
   const blocks: ToolBlock[] = [];
-  if (image) {
-    // The bytes went to the model and nowhere else: the server keeps only this
-    // sentence. Saying so is better than a code block holding a placeholder.
+  if (images && images.length > 0) {
+    blocks.push(...images.map(i => picture(i, true)));
+    const rest = !isError && result ? result.trim() : '';
+    if (rest.length > 0)
+      blocks.push({ type: 'text', label: 'result', open: false, tone: 'plain', text: rest });
+    return { verb: 'Read', subject: path, subjectStyle: 'path', facets, blocks };
+  }
+  if (looked) {
+    const detail = looked.mediaType
+      ? looked.size
+        ? ` (${looked.mediaType}, ${looked.size})`
+        : ` (${looked.mediaType})`
+      : '';
     blocks.push({
       type: 'text',
       label: null,
       open: false,
       tone: 'muted',
-      text: `The agent looked at this image (${image.mediaType}${image.size ? `, ${image.size}` : ''}). Images a tool reads are not kept, so it cannot be shown here.`,
+      text: `The agent looked at this image${detail}. It was not kept, so it cannot be shown here.`,
     });
     return { verb: 'Read', subject: path, subjectStyle: 'path', facets, blocks };
   }
@@ -907,12 +1010,48 @@ function readFile(
 }
 
 /**
- * `read_file`'s line for an image it handed to the model:
- * `[read_file: shot.png — image/png, 12 KB]`. Null for anything else.
+ * The sentence a read leaves in place of an image — read_file's
+ * `[read_file: shot.png — image/png, 12 KB]`, Claude Code's
+ * `[image: image/png, 12 KB]` or bare `[image]` — taken apart. Null for
+ * anything else.
  */
-export function imageRead(result: string): { mediaType: string; size: string | null } | null {
-  const match = /^\[read_file: .+ — (image\/[a-z0-9.+-]+)(?:, ([^\]]+))?\]$/i.exec(result.trim());
-  return match ? { mediaType: match[1].toLowerCase(), size: match[2] ?? null } : null;
+export function imageRead(result: string): { mediaType: string | null; size: string | null } | null {
+  const match = /^\[(?:read_file: .+ — |image: )(image\/[a-z0-9.+-]+)(?:, ([^\]]+))?\]$|^\[image\]$/i.exec(
+    result.trim(),
+  );
+  if (!match) return null;
+  return { mediaType: match[1] ? match[1].toLowerCase() : null, size: match[2] ?? null };
+}
+
+/**
+ * The result without the lines that stood in for pictures — the image
+ * sentences above, and the "[image attached]" / "[screenshot attached]" notes
+ * MCP and browser tools write — for a card that has the pictures.
+ */
+function withoutImageLines(result: string | null): string | null {
+  if (result === null) return null;
+  return result
+    .split('\n')
+    .filter(line => {
+      const bare = line.trim();
+      return imageRead(line) === null && bare !== '[image attached]' && bare !== '[screenshot attached]';
+    })
+    .join('\n');
+}
+
+function picture(image: ToolResultImage, open: boolean): ToolBlock {
+  return { type: 'image', label: null, open, imageId: image.id, mediaType: image.mediaType, size: formatBytes(image.size) };
+}
+
+/**
+ * "812 B", "182 KB", "2.4 MB". Rounded half-up in integers, so it lands on the
+ * same digit as the C#.
+ */
+export function formatBytes(size: number): string {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${Math.floor((size * 2 + 1024) / 2048)} KB`;
+  const tenths = Math.floor((size * 20 + 1024 * 1024) / (2 * 1024 * 1024));
+  return `${Math.floor(tenths / 10)}.${tenths % 10} MB`;
 }
 
 function listDir(
@@ -1815,6 +1954,129 @@ function readSession(
     facets,
     blocks,
   };
+}
+
+// ---------------------------------------------------------------- 3D scenes
+
+/** The line a scene tool ends its result with when the picture it returned was kept. */
+const RENDER_MARKER = 'Render id: ';
+
+/** `Guid.TryParse` for the forms a result could carry, as the C# writes it back: lower-case, dashed. */
+function parseGuid(text: string): string | null {
+  let hex: string | null = null;
+  const dashed = /^[{(]?([0-9a-f]{8})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{12})[})]?$/i.exec(text);
+  if (dashed) {
+    const open = text[0];
+    const close = text[text.length - 1];
+    const wrapped = open === '{' || open === '(';
+    if (wrapped !== (close === '}' || close === ')')) return null;
+    if (wrapped && (open === '{') !== (close === '}')) return null;
+    hex = dashed.slice(1).join('');
+  } else if (/^[0-9a-f]{32}$/i.test(text)) hex = text;
+  if (!hex) return null;
+  const h = hex.toLowerCase();
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
+/**
+ * A scene tool's result: the stored picture's id, the revision it names, and
+ * the text with the id line taken off — it is an address for the card, and
+ * repeating it under the picture it fetched is noise. Three independent
+ * lookups, so a reworded result loses a detail rather than the whole card.
+ */
+function readScene(result: string | null): { renderId: string | null; revision: number | null; text: string | null } {
+  if (!result || result.length === 0) return { renderId: null, revision: null, text: result ?? null };
+
+  let renderId: string | null = null;
+  let text = result;
+  const at = result.lastIndexOf(RENDER_MARKER);
+  if (at >= 0) {
+    let id = result.slice(at + RENDER_MARKER.length).trim();
+    const end = id.search(/[ \n\r]/);
+    if (end >= 0) id = id.slice(0, end);
+    const parsed = parseGuid(id);
+    if (parsed) {
+      renderId = parsed;
+      text = trimEnd(result.slice(0, at));
+    }
+  }
+
+  let revision: number | null = null;
+  const word = 'Revision ';
+  const mark = text.indexOf(word);
+  if (mark >= 0) {
+    const digits = /^[0-9]+/.exec(text.slice(mark + word.length));
+    if (digits) {
+      const number = Number(digits[0]);
+      if (number <= 2147483647) revision = number;
+    }
+  }
+  return { renderId, revision, text };
+}
+
+function scene(
+  verb: string,
+  scenePath: string | null,
+  facets: string[],
+  blocks: ToolBlock[],
+  result: string | null,
+  isError: boolean,
+): ToolCard {
+  const { revision, text } = readScene(result);
+  if (!isError && revision !== null && facets.length === 0) facets.push(`rev ${revision}`);
+  appendResult(blocks, text, isError, 'text');
+  return { verb, subject: scenePath, subjectStyle: 'path', facets, blocks };
+}
+
+/**
+ * A modelling script: the script behind a disclosure, and — open, because it
+ * is the point — the picture of what the script made.
+ */
+function sceneExec(input: Json | undefined, result: string | null, isError: boolean): ToolCard {
+  const scenePath = str(input, 'scene');
+  const { renderId, revision, text } = readScene(result);
+  const facets: string[] = [];
+  const blocks: ToolBlock[] = [];
+
+  const code = str(input, 'code');
+  const scriptPath = str(input, 'script_path');
+  if (code) blocks.push({ type: 'code', label: 'script', open: false, language: 'csharp', text: code });
+  else if (scriptPath) blocks.push({ type: 'text', label: 'script file', open: false, tone: 'plain', text: scriptPath });
+
+  if (!isError && scenePath) {
+    // "No revision made" names the revision the scene stayed at; the chip is
+    // for a revision this call made.
+    const made =
+      text !== null && text.trimStart().startsWith('Note:')
+        ? text.includes('\nRevision ')
+        : text !== null && text.startsWith('Revision ');
+    if (made && revision !== null) facets.push(`rev ${revision}`);
+    if (renderId !== null)
+      blocks.push({ type: 'scene', label: null, open: true, scene: scenePath, revision, renderId });
+  }
+
+  appendResult(blocks, text, isError, 'text');
+  return { verb: 'Model', subject: scenePath, subjectStyle: 'path', facets, blocks };
+}
+
+function sceneRender(input: Json | undefined, result: string | null, isError: boolean): ToolCard {
+  const scenePath = str(input, 'scene');
+  const { renderId, revision, text } = readScene(result);
+  const facets: string[] = [];
+  const mode = str(input, 'mode');
+  if (mode) facets.push(mode);
+  const views = isObject(input) ? input.views : undefined;
+  if (Array.isArray(views)) {
+    const names = views.filter((v): v is string => typeof v === 'string');
+    if (names.length > 0 && names.length <= 3) facets.push(names.join(' '));
+    else if (names.length > 3) facets.push(`${names.length} views`);
+  }
+
+  const blocks: ToolBlock[] = [];
+  if (!isError && scenePath && renderId !== null)
+    blocks.push({ type: 'scene', label: null, open: true, scene: scenePath, revision, renderId });
+  appendResult(blocks, text, isError, 'text');
+  return { verb: 'Look at scene', subject: scenePath, subjectStyle: 'path', facets, blocks };
 }
 
 // ---------------------------------------------------------------- shared shapes
