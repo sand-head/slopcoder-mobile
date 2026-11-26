@@ -192,6 +192,13 @@ struct SessionScreen: View {
                     proxy.scrollTo(SessionScreen.bottom, anchor: .bottom)
                 }
             })
+            // No scroll bar. The rows are built as they come into view, so the
+            // transcript's length is an estimate that is corrected as you scroll,
+            // and a bar drawn from an estimate lurches — a full screen's worth for
+            // a small drag. It also sits at the edge of the display rather than
+            // the edge of the text when the system stands its bars on their side.
+            // A bar that misreports where you are is worse than none.
+            .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
             // The composer floats over the transcript; the last lines fade under it.
             .softScrollEdges()
