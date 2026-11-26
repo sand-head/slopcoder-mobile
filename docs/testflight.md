@@ -1,20 +1,24 @@
 # Getting a build into TestFlight
 
-The repo is set up so a button does the work: **Actions → release → Run
-workflow** runs `.github/workflows/release.yml`, which archives, signs, and
-uploads whatever is on the branch you pick. What follows is the one-time setup
-on Apple's side that a workflow cannot do for you.
+**Where this stands.** The app is built on Linux now, by xtool, and
+`.github/workflows/release.yml` stops one step short of TestFlight: it produces
+a release `.ipa` with the version, build number, push relay and production APNs
+environment stamped in — **unsigned** — and keeps it as the run's artifact. The
+React Native build went all the way, because a Mac runner had Xcode to sign and
+upload with. Three things stand between that artifact and TestFlight, and none
+of them has been done or tested from Linux yet; [section 4](#4-what-is-left)
+lists them.
 
-The app's bundle identifier is **`codes.sand.slopcoder`**. It appears in the
-Xcode project, the URL type, the Keychain service both TypeScript and Swift
-read, and the export options the workflow generates. `release-readiness.test.ts`
-fails if any of those drift apart, so change it in one place and the suite tells
-you the rest.
+What follows first is the one-time setup on Apple's side, which is the same
+whichever way the last step ends up being done, and none of which needs a Mac.
 
-There is a second bundle: the notification service extension,
+The app's bundle identifier is **`codes.sand.slopcoder`**. It appears in
+`xtool.yml`, the URL type in `App/Info.plist`, and the Keychain service the app
+signs in with. There is a second bundle: the notification service extension,
 **`codes.sand.slopcoder.NotificationService`**, which decrypts pushes before iOS
 shows them. It is its own App ID and its own provisioning profile, signed with
-the same certificate.
+the same certificate. `PackagingTests` fails if the plists, the entitlements and
+`xtool.yml` drift apart.
 
 ---
 
@@ -29,25 +33,28 @@ App ID once you have made one. Ten characters.
 **App ID** — Certificates, IDs & Profiles → Identifiers → **+** → App IDs → App.
 
 - Bundle ID: **Explicit**, `codes.sand.slopcoder`.
-- Capabilities: tick **Push Notifications**, and nothing else.
+- Capabilities: tick **Push Notifications** and **App Groups**.
+
+**App Group** — Identifiers → **+** → App Groups → `group.codes.sand.slopcoder`.
+Then back on the App ID, under App Groups → Configure, select it.
 
 The rule is that the profile must cover every entitlement the app *claims*, and
-the app claims two: `aps-environment`, and `keychain-access-groups` naming its
-own identifier prefix. The first is the Push Notifications capability. The
-second needs nothing ticked — a team's own prefix is always permitted — and is
-what lets the extension read the push keys the app writes. An App ID without
-Push Notifications makes the profile refuse to sign the release build.
+the app claims two (`App/Slopcoder.entitlements`): `aps-environment`, which is
+the Push Notifications capability, and the App Group. The group is where the
+push keys live: the app writes them to a Keychain item filed under it, and the
+extension reads them from there. The React Native build used the app's own
+identifier prefix as a Keychain group instead, which needed nothing ticked —
+but xtool's signer rewrites that entitlement to each bundle's own identifier,
+which would leave the extension unable to see the app's item.
 
 **Extension App ID** — the same page, **+** again → App IDs → App.
 
 - Bundle ID: **Explicit**, `codes.sand.slopcoder.NotificationService`.
-- Capabilities: none. The extension claims only the keychain group.
+- Capabilities: **App Groups**, configured with the same group. Nothing else.
 
 **Siri is not one of them**, despite the app having Siri intents. That capability
-belongs to SiriKit, which this app does not use — `ios/slopcoder_mobile/Intents/`
-is App Intents, where the compiler writes the shortcut metadata into the binary
-and the system discovers it with no entitlement involved. Ticking it would put an
-entitlement in the profile that nothing ever asks for.
+belongs to SiriKit, which this app does not use — `Sources/Slopcoder/Intents/`
+is App Intents, which needs no entitlement.
 
 **Distribution certificate** — every guide for this says "open Keychain
 Access". You do not need a Mac; Apple only ever sees a certificate signing
@@ -82,21 +89,17 @@ openssl pkcs12 -export -inkey distribution.key -in distribution.pem \
   -certpbe PBE-SHA1-3DES -keypbe PBE-SHA1-3DES -macalg sha1
 ```
 
-**Those three algorithm flags are not decoration.** OpenSSL 3 defaults to
-AES-256-CBC with an SHA-256 MAC, and macOS's `security import` — which is what
-the runner uses — is unreliable with that combination. The 3DES/SHA-1 form is
-what every Apple tool reads. The password you type at the export prompt becomes
-`IOS_CERTIFICATE_PASSWORD`; the file becomes `IOS_CERTIFICATE_BASE64`.
+The three algorithm flags pick the 3DES/SHA-1 form, which every tool that reads
+a `.p12` understands; OpenSSL 3's default (AES-256-CBC with an SHA-256 MAC) is
+not read reliably by Apple's own. Remember the password you type at the export
+prompt: whatever signs the build will need the file and the password together.
 
 **Provisioning profiles** — Profiles → **+** → *App Store Connect* → pick the App
-ID and the distribution certificate. Download the `.mobileprovision`. Its name
-does not matter, and neither does knowing your Team ID: the job decodes the
-profile with `security cms -D` and reads both out of it, so neither can drift
-from what the portal actually issued.
+ID and the distribution certificate. Download the `.mobileprovision`.
 
-Then once more for the extension's App ID, with the same certificate. Two
-profiles, two secrets; the job reads the extension's name out of it the same
-way.
+Then once more for the extension's App ID, with the same certificate: two
+profiles. Make them after the App Group is configured — a profile is a snapshot
+of its App ID's capabilities, and one made earlier does not cover the group.
 
 **APNs key** — Keys → **+** → tick *Apple Push Notifications service*. Under
 Configure, leave the environment on **Sandbox & Production**: a token-based key
@@ -114,8 +117,9 @@ the `.p8` as a private key rather than as a config value.
 Download it; no CSR and no OpenSSL here, Apple generates this one whole.
 
 Nothing in slopcoder selects an environment either — the app reports whether it
-holds a sandbox token (`AppDelegate.swift`, from `#if DEBUG`) and the server
-picks the matching APNs host per device (`ApnsSender.cs`). One key covers both.
+holds a sandbox token (`PushEnvironment`, read from the profile it was signed
+with) and the server picks the matching APNs host per device (`ApnsSender.cs`).
+One key covers both.
 
 **The key is for the server, not for CI** — it fills slopcoder's
 `Push:Apns:{KeyId,TeamId,BundleId,PrivateKey}` on the deployment that acts as
@@ -125,7 +129,7 @@ neither can be downloaded twice.
 
 **The relay is yours, not the user's.** The app never sends its APNs token to
 the instance it signs in to. It sends it to the relay — the deployment whose
-address is baked into the build as `SLOPCODER_PUSH_RELAY` — and gets back a
+address is stamped into the build from `SLOPCODER_PUSH_RELAY` — and gets back a
 Web Push endpoint, which it subscribes on its own instance with. So anyone can
 host slopcoder and have this app notify them, with nothing from Apple; only
 the deployment that ships the app holds the key. See `docs/push-relay.md` in
@@ -141,57 +145,69 @@ list, a name, and an SKU (any stable string; `slopcoder-mobile` is fine).
 the top of the page, shared by all keys), and a `.p8` that downloads **exactly
 once**.
 
-None of the above needs macOS. The only Mac in this pipeline is the
-`macos-15` runner that builds the archive.
+None of the above needs macOS.
 
-## 3. Repository secrets
+## 3. One repository variable
 
-GitHub → Settings → Secrets and variables → Actions. Base64 with
-`base64 -i <file> | pbcopy` on macOS, `base64 -w0 <file>` on Linux.
-
-| Secret | From |
-|---|---|
-| `IOS_CERTIFICATE_BASE64` | the `.p12`, base64'd |
-| `IOS_CERTIFICATE_PASSWORD` | the password you set exporting it |
-| `IOS_PROVISIONING_PROFILE_BASE64` | the app's `.mobileprovision`, base64'd |
-| `IOS_EXTENSION_PROVISIONING_PROFILE_BASE64` | the extension's `.mobileprovision`, base64'd |
-| `APP_STORE_KEY_ID` | App Store Connect API key |
-| `APP_STORE_ISSUER_ID` | App Store Connect API, above the key list |
-| `APP_STORE_KEY_BASE64` | the App Store Connect `.p8`, base64'd |
-
-And one **variable** (Secrets and variables → Actions → Variables), because it
-is a public URL and not a secret:
+Settings → Secrets and variables → Actions → **Variables**. It is an address
+rather than a secret.
 
 | Variable | Value |
 |---|---|
 | `SLOPCODER_PUSH_RELAY` | the deployment that holds the APNs key, e.g. `https://slop.example.com` |
 
-Leave it unset and the build is a working app with notifications off, which
-the log says once at launch. It is deliberately not in the project file: a fork
-shipping its own build points it at its own deployment by setting the variable,
-not by editing a checked-in address.
+The iOS SDK needs nothing set up: the release borrows it from the Xcode already
+on a macOS runner (`.github/workflows/xcode-sdk.yml`).
 
-The four `ANDROID_*` secrets are only for the Android job and are not needed to
-reach TestFlight. Without `ANDROID_KEYSTORE_BASE64` that job is skipped rather
-than failed, so a release does not go red for a platform nobody is shipping yet;
-adding the secrets turns it back on with nothing to remember to flip.
+Leave `SLOPCODER_PUSH_RELAY` unset and the build is a working app with
+notifications off, which the log says once at launch. It is deliberately not in
+the repository: a fork shipping its own build points it at its own deployment by
+setting the variable, not by editing a checked-in address.
 
-## 4. Run it
+Then **Actions → release → Run workflow**, on the branch you want built. There
+is no version to pick and nothing to tag: App Store Connect enforces uniqueness
+on the **build** number and on nothing else, and that number is the workflow run
+number, which can never repeat. The marketing version is the date the build was
+cut, so TestFlight would read `2026.09.13 (35)` — true without anyone having
+decided it. The run's artifact is `slopcoder-<run>-unsigned`.
 
-**Actions → release → Run workflow**, on the branch you want built. There is no
-version to pick and nothing to tag.
+## 4. What is left
 
-App Store Connect enforces uniqueness on the **build** number and on nothing
-else, and that number is the workflow run number, which can never repeat. The
-marketing version is simply the date the build was cut, so TestFlight reads
-`2026.09.13 (35)` — true without anyone having decided it. Several builds in one
-day are ordinary: they differ by the build number, which is what it is for.
-Which commit a build is comes from the run that made it.
+Each of these is a real gap, not a formality, and nothing below has been tried.
 
-Processing takes ten minutes or so. **Internal testing** — up to 100 people on
-your team — needs no review and is the fast path to your own phone. **External
-testing** needs a Beta App Review, typically a day, and needs the app's
-description and a contact email filled in first.
+1. **An asset catalog.** App Store Connect rejects an iOS app whose icon is not
+   in a compiled asset catalog (`Assets.car`, named by `CFBundleIconName`).
+   Compiling one takes `actool`, which exists only on a Mac. The bundle xtool
+   makes carries a loose `App/AppIcon.png` instead — fine on a device, refused
+   on upload. The likely fix is to compile `App/Assets.xcassets` once on any Mac
+   (`xcrun actool App/Assets.xcassets --compile App --platform iphoneos
+   --minimum-deployment-target 17.0 --app-icon AppIcon
+   --output-partial-info-plist /tmp/icon.plist`), commit the resulting
+   `App/Assets.car`, list it under `resources:` in `xtool.yml`, and add
+   `CFBundleIconName` = `AppIcon` to `App/Info.plist`. It only needs redoing
+   when the icon changes.
+2. **Distribution signing.** xtool signs for development — a registered device,
+   through `xtool auth` — and has no option to sign with a distribution
+   certificate and a provisioning profile you hand it. The unsigned `.ipa` has
+   to be re-signed: both bundles, extension first, each with its own profile
+   embedded and its own entitlements (`App/*.entitlements`, with the team prefix
+   filled in). On Linux the candidates are `rcodesign` (the `apple-codesign`
+   project) and `zsign`; on a Mac, `codesign`. Whichever it is will want the
+   `.p12`, its password and the two profiles from section 1 as secrets.
+3. **Upload.** xtool has none. Apple's Transporter (`iTMSTransporter`) is
+   distributed for Linux and takes the App Store Connect API key from section 2;
+   `xcrun altool` is the Mac equivalent the old workflow used.
+
+The shortest route that is known to work is a small macOS job appended to the
+release workflow that downloads the unsigned artifact, adds the asset catalog,
+signs with `codesign` and uploads with `altool` — the compile stays on Linux,
+and the Mac does only what only a Mac can. A Linux-only route is plausible with
+the tools above and unproven.
+
+Once a build is in: processing takes ten minutes or so. **Internal testing** —
+up to 100 people on your team — needs no review and is the fast path to your own
+phone. **External testing** needs a Beta App Review, typically a day, and needs
+the app's description and a contact email filled in first.
 
 ---
 
@@ -202,23 +218,19 @@ description and a contact email filled in first.
 - **Keep `distribution.key`.** It is the half of the certificate Apple never
   had, so it cannot be re-downloaded — only replaced, by revoking the
   certificate and making a new one. Back it up somewhere that is not this repo.
-- **A sandbox push token is not a production one.** The debug and release
-  entitlements differ on purpose (`entitlements.test.ts` pins it), and the relay
-  is told which environment a token came from, because production APNs rejects a
-  sandbox token outright. A TestFlight build is *production*, even though it
-  feels like a test.
+- **A sandbox push token is not a production one.** `App/Slopcoder.entitlements`
+  says `development`, and `scripts/stamp.py --aps production` is what a release
+  changes it to; the relay is told which environment a token came from, because
+  production APNs rejects a sandbox token outright. A TestFlight build is
+  *production*, even though it feels like a test.
 - **A notification that shows "You have a new notification."** is the relay's
   placeholder: the extension did not run, or could not open the message. On a
   phone that has not been unlocked since it booted, that is expected. Otherwise
-  it means the keys the app wrote are not the keys the extension found —
-  almost always the keychain group differing between the entitlement files,
-  which `push-relay.test.ts` pins.
-- **The first archive is the slow one.** Expect 20–30 minutes on a `macos-15`
-  runner with a cold CocoaPods cache.
-- **`exportArchive` errors are usually the keychain, not the profile.** The
-  workflow adds its throwaway keychain to the search list and extends its lock
-  timeout to an hour for exactly this reason; if you change that step, those two
-  lines are the ones to keep.
-- **Automatic signing is off for Release** and deliberately so: CI installs one
-  specific profile, and letting Xcode pick means it picks something else on a
-  machine you cannot see.
+  it means the keys the app wrote are not the keys the extension found — almost
+  always the App Group missing from one of the two profiles, or differing
+  between the entitlement files, which `PackagingTests` pins.
+- **An extension's version must equal its app's.** `scripts/stamp.py` writes the
+  same two values into both plists; do not stamp one by hand.
+- **Re-signing replaces entitlements, it does not merge them.** Sign the
+  extension with the extension's file and the app with the app's, or the build
+  installs and then cannot register for push.

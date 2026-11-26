@@ -1,0 +1,29 @@
+{
+  "name": "slopcoder (Swift + xtool)",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "remoteUser": "dev",
+  // The iOS SDK (installed once from your own Xcode.xip) and xtool's Apple
+  // sign-in live in volumes, so rebuilding the container does not lose them.
+  "mounts": [
+    "source=slopcoder-swiftpm,target=/home/dev/.swiftpm,type=volume",
+    "source=slopcoder-xtool,target=/home/dev/.config/xtool,type=volume"
+  ],
+  // Fetch nothing and prove the toolchain works: the core builds and its tests
+  // pass with no SDK at all.
+  "postCreateCommand": "swift build --target SlopcoderCore && xtool --version",
+  "customizations": {
+    "vscode": {
+      "extensions": ["swiftlang.swift-vscode"],
+      "settings": {
+        "swift.path": "/usr/bin",
+        "files.exclude": { ".build": true, "xtool": true }
+      }
+    }
+  }
+  // To install on a phone over USB from inside the container, the host's
+  // usbmuxd socket has to be shared with it. Uncomment on a Linux host:
+  // "runArgs": ["-v", "/var/run/usbmuxd:/var/run/usbmuxd"]
+}

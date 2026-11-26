@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Siri has to be able to say it, and it is what sits under the icon. -->
+	<key>CFBundleDisplayName</key>
+	<string>slopcoder</string>
+	<key>CFBundleName</key>
+	<string>slopcoder</string>
+	<!-- Placeholders. xtool substitutes nothing, so scripts/stamp.py rewrites
+	     these two for a release: the date the build was cut, and the run number. -->
+	<key>CFBundleShortVersionString</key>
+	<string>0.0.1</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>codes.sand.slopcoder</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>slopcoder</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<false/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<!-- Pairing scans a QR code off the web cockpit. Without this string iOS does
+	     not prompt, it terminates the app the moment the camera is asked for — a
+	     crash on the one screen a new install starts on. -->
+	<key>NSCameraUsageDescription</key>
+	<string>The camera scans the pairing code on your slopcoder settings page, and takes photos to send to the agent.</string>
+	<!-- Choosing from the library goes through the system picker, which needs
+	     no permission; the key is still declared so that Photos, which the
+	     picker links, never has cause to terminate the app for a missing
+	     string. -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Photos you choose are sent to the agent with your message.</string>
+	<!-- The app speaks HTTPS and nothing else, which is exempt. Declaring it here
+	     answers the export-compliance question once instead of once per build. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<!-- Where the phone turns its APNs token into a Web Push endpoint: the
+	     slopcoder deployment that holds this app's Apple key, which is the
+	     publisher's and not necessarily the one the user signs in to. Empty
+	     means no notifications, said once in the log. scripts/stamp.py fills it
+	     from the SLOPCODER_PUSH_RELAY repository variable. -->
+	<key>SlopcoderPushRelay</key>
+	<string></string>
+	<!-- iPhone only, upright only. -->
+	<key>UIDeviceFamily</key>
+	<array>
+		<integer>1</integer>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<!-- An empty launch screen: the system draws the window's background and
+	     nothing else. A storyboard or an asset-catalog image would need ibtool
+	     or actool, and neither exists off a Mac. -->
+	<key>UILaunchScreen</key>
+	<dict/>
+</dict>
+</plist>

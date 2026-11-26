@@ -1,4 +1,5 @@
-# Checks that need no secrets, so a fork's pull request gets real signal.
+# Checks on every push and pull request. Nothing here needs a secret or a
+# variable, so a fork's pull request gets the same signal.
 name: ci
 
 on:
@@ -7,80 +8,115 @@ on:
   pull_request:
 
 jobs:
-  check:
+  # The part of the app that is not UI — the wire client, the live stream, the
+  # transcript, every rule about what a screen says — is plain Swift with no
+  # Apple framework in it. It builds and is tested on Linux with no SDK.
+  test:
     runs-on: ubuntu-latest
+    container: swift:6.4.2-noble
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - run: npx tsc --noEmit
-      - run: npx eslint . --ext .ts,.tsx
-      - run: npx jest
-
-  android:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-      - uses: gradle/actions/setup-gradle@v4
-      - run: npm ci
-      - name: Assemble debug
-        working-directory: android
-        # One ABI. This job exists to prove the thing compiles, and building all
-        # four takes twenty minutes of which nineteen prove nothing extra.
-        # release.yml keeps the full set, because that one ships.
-        run: ./gradlew assembleDebug --no-daemon -PreactNativeArchitectures=arm64-v8a
-
-  ios:
-    # Free for public repositories on standard runners. Larger macOS runners are
-    # billed even here, so do not reach for one without a reason. The dedicated
-    # Xcode 27 image tracks this major; general macOS 26 images stop at 26.6.
-    runs-on: xcode-27
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - uses: maxim-lobanov/setup-xcode@v1
-        with:
-          # Pinned deliberately: a runner image bump moves the default Xcode and
-          # breaks the build at a time unrelated to any commit here. This is the
-          # latest public (non-beta) toolchain, with the iOS 27.2 SDK.
-          xcode-version: '27.2'
-      - run: npm ci
       - uses: actions/cache@v4
         with:
-          path: ios/Pods
-          key: pods-${{ hashFiles('package-lock.json', 'ios/Podfile') }}
-      - uses: ruby/setup-ruby@v1
-        # Version comes from .ruby-version. The Gemfile works on 3.4 too, but
-        # pinning means a runner image bump cannot change the CocoaPods that
-        # generates the Xcode project.
-        with:
-          bundler-cache: true
-      - name: Install pods
-        # The Gemfile is at the repo root, not in ios/ — only pod install runs there.
-        run: bundle exec pod install --project-directory=ios
-      - name: Build for the simulator
-        working-directory: ios
-        # No signing, so this needs no secrets and runs on fork PRs too.
+          path: .build
+          key: swiftpm-${{ runner.os }}-${{ hashFiles('Package.swift') }}-${{ github.sha }}
+          restore-keys: swiftpm-${{ runner.os }}-${{ hashFiles('Package.swift') }}-
+      # On Linux the SwiftUI sources are inside `#if canImport(UIKit)`: this
+      # parses them but type-checks none of it. The `ios` job compiles them.
+      - name: Build
+        run: swift build --build-tests
+      - name: Test
+        run: swift test --skip-build
+
+  # A macOS runner lends its Xcode's SDK to the Linux job below.
+  sdk:
+    uses: ./.github/workflows/xcode-sdk.yml
+
+  # The app itself, compiled against Apple's SDK and packaged by xtool — on Linux.
+  ios:
+    needs: sdk
+    runs-on: ubuntu-latest
+    container: swift:6.4.2-noble
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
         run: |
-          xcodebuild \
-            -workspace slopcoder_mobile.xcworkspace \
-            -scheme slopcoder_mobile \
-            -configuration Debug \
-            -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
-            CODE_SIGNING_ALLOWED=NO \
-            build
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates curl zstd xz-utils zip unzip python3
+          scripts/install-xtool.sh
+      - name: Restore the parts of Xcode
+        uses: actions/cache/restore@v4
+        with:
+          path: xcode
+          key: ${{ needs.sdk.outputs.key }}
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
+      - name: Install the iOS SDK
+        run: |
+          xtool sdk install --slim xcode/Xcode.app
+          xtool sdk status
+          rm -rf xcode
+      - uses: actions/cache@v4
+        with:
+          path: .build
+          key: swiftpm-ios-${{ hashFiles('Package.swift') }}-${{ github.sha }}
+          restore-keys: swiftpm-ios-${{ hashFiles('Package.swift') }}-
+      # Unsigned: this proves the app and its notification extension compile,
+      # link and package. It needs no Apple account.
+      - name: Build the app
+        run: xtool dev build --ipa
+      - name: Keep the unsigned build
+        uses: actions/upload-artifact@v4
+        with:
+          name: slopcoder-unsigned-${{ github.sha }}
+          path: xtool/*.ipa
+          retention-days: 7
+      # The same sources for the simulator, which the next job launches.
+      - name: Build for the simulator
+        run: |
+          xtool dev build --triple arm64-apple-ios17.0-simulator
+          tar -czf slopcoder-simulator.tar.gz -C xtool Slopcoder.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: simulator-app
+          path: slopcoder-simulator.tar.gz
+          retention-days: 3
+
+  # Compiling is not running. This opens the Linux-built app on a simulated
+  # iPhone, fails if it does not stay up, and keeps a screenshot of what it
+  # showed — the sign-in screen, since nothing here has an account.
+  simulator:
+    needs: ios
+    runs-on: xcode-27
+    timeout-minutes: 30
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: simulator-app
+      - name: Launch it on a simulated iPhone
+        run: |
+          tar -xzf slopcoder-simulator.tar.gz
+          # The simulator wants a signature, but any will do.
+          codesign --force --deep --sign - Slopcoder.app
+          udid=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print([x['udid'] for r in sorted(d, reverse=True) if 'iOS' in r for x in d[r] if x['name'].startswith('iPhone')][0])")
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl install "$udid" Slopcoder.app
+          # Prints "codes.sand.slopcoder: <pid>"; the pid is a process on this Mac.
+          pid=$(xcrun simctl launch "$udid" codes.sand.slopcoder | awk '{print $NF}')
+          echo "launched as $pid"
+          sleep 15
+          xcrun simctl io "$udid" screenshot screenshot.png
+          if ! kill -0 "$pid" 2>/dev/null; then
+            echo "::error::The app exited within 15 seconds of launch."
+            xcrun simctl spawn "$udid" log show --last 1m --predicate 'process == "Slopcoder"' | tail -100
+            exit 1
+          fi
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulator-screenshot
+          path: screenshot.png
+          retention-days: 14
