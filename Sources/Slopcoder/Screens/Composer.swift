@@ -101,33 +101,7 @@ struct Composer: View {
                 text = "/\(name) "
             } }
 
-            VStack(alignment: .leading, spacing: 8) {
-                if let sessionStatus {
-                    if let onStatusTap {
-                        Button(action: onStatusTap) { Mono(sessionStatus, color: Status.running) }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("\(sessionStatus). Jump to current request")
-                    } else {
-                        Mono(sessionStatus)
-                    }
-                }
-                chips
-                if let error = images?.error { Text(error).font(AppFont.sans(12)).foregroundStyle(Palette.destructive) }
-
-                TextField(connection.reachable ? placeholder : "Offline", text: $text, axis: .vertical)
-                    .font(AppFont.sans(16))
-                    .foregroundStyle(Palette.foreground)
-                    .lineLimit(launcher ? 3...12 : 1...8)
-                    .focused($focused)
-                    .padding(.vertical, 4)
-                    .accessibilityLabel(placeholder)
-
-                toolbar
-            }
-            .padding(.horizontal, 12)
-            .padding(.top, 10)
-            .padding(.bottom, 8)
-            .glassSurface(cornerRadius: Radius.xl)
+            if launcher { card } else { pill }
         }
         .sheet(item: $sheet) { which in
             switch which {
@@ -158,6 +132,124 @@ struct Composer: View {
             }
             .ignoresSafeArea()
         }
+    }
+
+    /// The launcher: a card with room to write a brief, and its dials on show.
+    private var card: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let sessionStatus {
+                if let onStatusTap {
+                    Button(action: onStatusTap) { Mono(sessionStatus, color: Status.running) }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(sessionStatus). Jump to current request")
+                } else {
+                    Mono(sessionStatus)
+                }
+            }
+            chips
+            if let error = images?.error { Text(error).font(AppFont.sans(12)).foregroundStyle(Palette.destructive) }
+
+            TextField(connection.reachable ? placeholder : "Offline", text: $text, axis: .vertical)
+                .font(AppFont.sans(16))
+                .foregroundStyle(Palette.foreground)
+                .lineLimit(launcher ? 3...12 : 1...8)
+                .focused($focused)
+                .padding(.vertical, 4)
+                .accessibilityLabel(placeholder)
+
+            toolbar
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
+        .glassSurface(cornerRadius: Radius.xl)
+    }
+
+    /// In a session: one line that grows, as a chat composer is everywhere else.
+    /// Attach on the left, send on the right, and everything that is a setting
+    /// rather than a message — the model, the turn's dials — behind the plus.
+    private var pill: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            // "Idle" is the absence of news; only say what is happening.
+            if let sessionStatus, sessionStatus != "Idle" {
+                Group {
+                    if let onStatusTap {
+                        Button(action: onStatusTap) { Mono(sessionStatus, color: Status.running) }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("\(sessionStatus). Jump to current request")
+                    } else {
+                        Mono(sessionStatus)
+                    }
+                }
+                .padding(.horizontal, 14)
+            }
+            chips
+            if let error = images?.error {
+                Text(error).font(AppFont.sans(12)).foregroundStyle(Palette.destructive).padding(.horizontal, 14)
+            }
+
+            HStack(alignment: .bottom, spacing: 2) {
+                plusMenu
+                TextField(connection.reachable ? placeholder : "Offline", text: $text, axis: .vertical)
+                    .font(AppFont.sans(16))
+                    .foregroundStyle(Palette.foreground)
+                    .lineLimit(1...8)
+                    .focused($focused)
+                    .padding(.vertical, 11)
+                    .padding(.horizontal, 4)
+                    .accessibilityLabel(placeholder)
+                if running, let onStop {
+                    SendButton(mode: .stop, busy: stopping, disabled: !connection.reachable, label: stopping ? "Stopping" : "Stop", action: onStop)
+                }
+                SendButton(mode: .send, busy: busy, disabled: disabled || !connection.reachable, label: action, action: onAction)
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 3)
+            .glassSurface(cornerRadius: 25)
+        }
+    }
+
+    private var plusMenu: some View {
+        Menu {
+            if images != nil {
+                Button {
+                    if room > 0 { pickingPhotos = true } else { images?.onAdd([], ImageRules.tooMany) }
+                } label: { Label("Photo Library", systemImage: "photo.on.rectangle") }
+                Button {
+                    if room <= 0 {
+                        images?.onAdd([], ImageRules.tooMany)
+                    } else if CameraPicker.available {
+                        takingPhoto = true
+                    } else {
+                        images?.onAdd([], "No camera on this device.")
+                    }
+                } label: { Label("Take Photo", systemImage: "camera") }
+            }
+            if attachments != nil {
+                Button { sheet = .attach } label: { Label("Repositories & nodes", systemImage: "folder") }
+            }
+            Divider()
+            Button { sheet = .model } label: { Label("Model: \(modelLabel)", systemImage: "cpu") }
+            Button { sheet = .turn } label: { Label(turnSummary, systemImage: "slider.horizontal.3") }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 17, weight: .regular))
+                .foregroundStyle(Palette.foreground)
+                .frame(width: 36, height: 36)
+                .background(Palette.mutedForeground.opacity(0.14), in: Circle())
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel("Attach, model and turn settings")
+    }
+
+    /// The turn's dials in a line, so what is set shows without opening the sheet.
+    private var turnSummary: String {
+        var parts: [String] = []
+        if let shownThinking { parts.append(levelLabel(shownThinking, caps)) }
+        if options.approval != .dangerous { parts.append(ApprovalChoice.label(for: options.approval)) }
+        if let facet = options.facet, !facet.isEmpty { parts.append(facet) }
+        return parts.isEmpty ? "Turn settings" : "Turn settings: \(parts.joined(separator: ", "))"
     }
 
     @ViewBuilder private var chips: some View {

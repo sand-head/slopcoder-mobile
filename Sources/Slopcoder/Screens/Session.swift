@@ -42,6 +42,9 @@ struct SessionScreen: View {
     @State private var commandsAsked = false
     @State private var options: TurnOptions?
     @State private var pinned = true
+    /// Bumped to send the transcript to its end: `jump` at once, `glide` with a move.
+    @State private var jump = 0
+    @State private var glide = 0
     @State private var sheet: SheetKind?
     @State private var loadingEarlier = false
 
@@ -182,9 +185,23 @@ struct SessionScreen: View {
                 .readingWidth()
             }
             .defaultScrollAnchor(.bottom)
+            .modifier(EndOfTranscript(jump: jump, glide: glide) { animated in
+                if animated {
+                    withAnimation { proxy.scrollTo(SessionScreen.bottom, anchor: .bottom) }
+                } else {
+                    proxy.scrollTo(SessionScreen.bottom, anchor: .bottom)
+                }
+            })
             .scrollDismissesKeyboard(.interactively)
             // The composer floats over the transcript; the last lines fade under it.
             .softScrollEdges()
+            // A lazy stack that starts at its end can come up blank until it is
+            // scrolled: the rows arrive after the first layout, and nothing asks
+            // for the ones now in view. Going to the end once they are there asks.
+            .onChange(of: rows.isEmpty) { _, empty in if !empty { settle() } }
+            .onAppear { if !rows.isEmpty { settle() } }
+            // While the reader is at the end, stay there as the turn grows.
+            .onChange(of: rows.last?.id) { _, _ in if pinned { jump += 1 } }
             .safeAreaInset(edge: .top) { ConnectionBanner().padding(.horizontal, 10) }
             .safeAreaInset(edge: .bottom) { footer(proxy, rows: rows) }
             .onChange(of: state?.pendingApprovalIds.count ?? 0) { _, _ in jumpNotice = nil }
@@ -210,6 +227,16 @@ struct SessionScreen: View {
         )
     }
 
+    /// Go to the end of a transcript that has just arrived — now, and once more
+    /// after the rows have been measured, since the first pass works from guesses.
+    private func settle() {
+        jump += 1
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(120))
+            jump += 1
+        }
+    }
+
     private func loadEarlier(_ proxy: ScrollViewProxy, anchor: String?) {
         guard let store, store.canLoadEarlier, !loadingEarlier else { return }
         loadingEarlier = true
@@ -230,7 +257,7 @@ struct SessionScreen: View {
                 HStack {
                     Spacer()
                     Button {
-                        withAnimation { proxy.scrollTo(SessionScreen.bottom, anchor: .bottom) }
+                        glide += 1
                     } label: {
                         Image(systemName: "arrow.down")
                             .font(.system(size: 14, weight: .semibold))
@@ -301,13 +328,18 @@ struct SessionScreen: View {
                     Text(title).font(AppFont.sansMedium(15)).foregroundStyle(Palette.foreground).lineLimit(1)
                     Text(subtitle).font(AppFont.sans(11)).foregroundStyle(Palette.mutedForeground).lineLimit(1)
                 }
+                .padding(.horizontal, 6)
             }
-            .buttonStyle(.plain)
+            // On iOS 26 a bar gives a button its glass capsule; left plain, the
+            // title would be bare text beside everything else that floats.
+            .modifier(PlainBeforeGlass())
             .accessibilityLabel("\(title). \(subtitle). \(archived ? "archived · read-only. " : "")Session context")
         }
         ToolbarItem(placement: .topBarTrailing) {
             Button { sheet = .usage } label: {
-                Label { Text("Session usage") } icon: { ContextRing(percent: contextPercent) }
+                // A picture, not a view: the system only stands an item in a
+                // vertical bar when its icon is an image.
+                Label { Text("Session usage") } icon: { ContextRingImage(percent: contextPercent) }
             }
             .accessibilityLabel(
                 contextPercent.map { "\($0)% of context used. Session usage" } ?? "Context usage not reported yet. Session usage"
@@ -664,6 +696,8 @@ private struct LiveThinking: View {
 struct ContextRing: View {
     let percent: Int?
     var size: CGFloat = 24
+    /// Say the figure inside the ring, where there is nowhere else to say it.
+    var showsNumber = false
 
     static func tone(_ percent: Int) -> Color {
         percent >= 90 ? Palette.destructive : percent >= 70 ? Status.running : Palette.primary
@@ -680,6 +714,12 @@ struct ContextRing: View {
                     .trim(from: 0, to: CGFloat(min(100, value)) / 100)
                     .stroke(ContextRing.tone(value), style: StrokeStyle(lineWidth: 3, lineCap: .round))
                     .rotationEffect(.degrees(-90))
+            }
+            if showsNumber, let percent {
+                Text(String(min(100, percent)))
+                    .font(.system(size: size * 0.36, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Palette.foreground)
+                    .minimumScaleFactor(0.6)
             }
         }
         .frame(width: size, height: size)
@@ -734,6 +774,74 @@ private struct SubSessionNote: View {
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassSurface(cornerRadius: Radius.xl)
+    }
+}
+/// Sends a scroll view to its end when asked.
+///
+/// On iOS 18 this is the scroll view's own position, which knows where the end
+/// of lazy content is without the last row having been built. Before that, the
+/// caller's way of getting there.
+private struct EndOfTranscript: ViewModifier {
+    let jump: Int
+    let glide: Int
+    let fallback: (_ animated: Bool) -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.modifier(Positioned(jump: jump, glide: glide))
+        } else {
+            content
+                .onChange(of: jump) { _, _ in fallback(false) }
+                .onChange(of: glide) { _, _ in fallback(true) }
+        }
+    }
+
+    @available(iOS 18.0, *)
+    private struct Positioned: ViewModifier {
+        let jump: Int
+        let glide: Int
+        @State private var position = ScrollPosition(edge: .bottom)
+
+        func body(content: Content) -> some View {
+            content
+                .scrollPosition($position)
+                .onChange(of: jump) { _, _ in position.scrollTo(edge: .bottom) }
+                .onChange(of: glide) { _, _ in withAnimation { position.scrollTo(edge: .bottom) } }
+        }
+    }
+}
+
+/// Before iOS 26 a button in a bar is drawn plain; from 26 the bar draws it.
+private struct PlainBeforeGlass: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+        } else {
+            content.buttonStyle(.plain)
+        }
+    }
+}
+
+/// The context ring as an image, with the percentage inside it.
+private struct ContextRingImage: View {
+    let percent: Int?
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.displayScale) private var scale
+
+    var body: some View {
+        let renderer = ImageRenderer(
+            content: ContextRing(percent: percent, size: 26, showsNumber: true)
+                .padding(2)
+                .environment(\.colorScheme, scheme)
+        )
+        renderer.scale = scale
+        return Group {
+            if let image = renderer.uiImage {
+                Image(uiImage: image).renderingMode(.original)
+            } else {
+                Image(systemName: "chart.pie")
+            }
+        }
     }
 }
 #endif
