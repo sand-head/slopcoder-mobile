@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- A development build gets a sandbox APNs token; the relay stores which it
+	     is, because production APNs refuses a sandbox token outright.
+	     scripts/stamp.py writes "production" here for a release: shipping a build
+	     that still says "development" delivers every notification to nobody. -->
+	<key>aps-environment</key>
+	<string>development</string>
+	<!-- The notification service extension decrypts with keys this app writes.
+	     Both name this App Group, and the Keychain item holding the keys uses it
+	     as its access group. It was the app's own identifier group before; xtool's
+	     signer rewrites keychain-access-groups to each bundle's own identifier,
+	     which would leave the two bundles unable to see one item. Unlike the old
+	     arrangement this is a portal capability: the group has to be registered
+	     and enabled on both App IDs. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.codes.sand.slopcoder</string>
+	</array>
+</dict>
+</plist>

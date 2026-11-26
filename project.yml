@@ -1,0 +1,82 @@
+# The Xcode project a release is built from, for XcodeGen (`xcodegen generate`).
+#
+# Day to day the app is built on Linux by xtool, straight from Package.swift.
+# A TestFlight build is the exception: App Store Connect wants an app signed
+# for distribution, with a compiled asset catalog, built by Apple's own
+# toolchain — and only Xcode on a Mac does all three. So the release workflow
+# generates this project on a Mac runner and archives it.
+#
+# It holds no code of its own. Each target compiles one empty file and links a
+# product of the package in this directory, so a release is the same sources
+# the Linux build compiles, through the same Package.swift. The generated
+# .xcodeproj is never committed.
+#
+# scripts/xcode-plists.py writes the two Info.plists under build/xcode first.
+name: Slopcoder
+options:
+  deploymentTarget:
+    iOS: "17.0"
+  # No scheme files to keep in step: one is generated per target.
+  generateEmptyDirectories: false
+packages:
+  Slopcoder:
+    path: .
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    # Signing identity comes from the release workflow, which reads the team
+    # and the profile names out of the provisioning profiles themselves.
+    DEVELOPMENT_TEAM: $(SLOPCODER_TEAM_ID)
+targets:
+  SlopcoderApp:
+    type: application
+    platform: iOS
+    scheme: {}
+    sources:
+      - path: App/Xcode/empty.c
+      - path: App/Assets.xcassets
+      - path: App/PrivacyInfo.xcprivacy
+        buildPhase: resources
+    dependencies:
+      - package: Slopcoder
+        product: Slopcoder
+      # An app extension dependency is embedded under PlugIns/ automatically.
+      - target: SlopcoderNotifications
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: codes.sand.slopcoder
+        # Not "Slopcoder": that is the package product this links.
+        PRODUCT_NAME: SlopcoderApp
+        INFOPLIST_FILE: build/xcode/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: App/Slopcoder.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        LD_RUNPATH_SEARCH_PATHS: ["$(inherited)", "@executable_path/Frameworks"]
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          "CODE_SIGN_IDENTITY[sdk=iphoneos*]": Apple Distribution
+          PROVISIONING_PROFILE_SPECIFIER: $(SLOPCODER_PROFILE)
+  SlopcoderNotifications:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: App/Xcode/empty.c
+    dependencies:
+      - package: Slopcoder
+        product: NotificationService
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: codes.sand.slopcoder.NotificationService
+        PRODUCT_NAME: SlopcoderNotifications
+        INFOPLIST_FILE: build/xcode/NotificationService-Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: App/NotificationService.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        LD_RUNPATH_SEARCH_PATHS: ["$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks"]
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          "CODE_SIGN_IDENTITY[sdk=iphoneos*]": Apple Distribution
+          PROVISIONING_PROFILE_SPECIFIER: $(SLOPCODER_EXTENSION_PROFILE)

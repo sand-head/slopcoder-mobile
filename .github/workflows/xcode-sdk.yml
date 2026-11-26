@@ -1,0 +1,70 @@
+# Lends the Linux jobs Apple's iOS SDK, without anyone hosting it.
+#
+# Apple's SDK cannot be redistributed, and its download sits behind a sign-in,
+# so a Linux job cannot simply fetch it. A macOS runner, though, already has
+# Xcode installed. This job copies out of it just the parts xtool builds its
+# SDK from (scripts/lend-xcode.sh, about 2 GB) into this repository's Actions
+# cache, where the Linux jobs restore it and run `xtool sdk install --slim`.
+# Apple's files never leave the repository's own cache, and there is no URL,
+# variable or secret to set up.
+#
+# It is a few seconds when the cache is warm, which is nearly always: the key
+# changes only with the Xcode version or the list of parts. GitHub drops a
+# cache nobody has read for a week; the next run simply fills it again.
+name: xcode-sdk
+
+on:
+  workflow_call:
+    outputs:
+      key:
+        description: The Actions cache key holding xcode/Xcode.app
+        value: ${{ jobs.lend.outputs.key }}
+
+env:
+  # Pinned deliberately: a runner image bump moves the default Xcode and would
+  # change the SDK at a time unrelated to any commit here.
+  XCODE_VERSION: '27.2'
+
+jobs:
+  lend:
+    # The dedicated image carries the public Xcode 27 toolchain. Standard macOS
+    # runners are free for public repositories.
+    runs-on: xcode-27
+    timeout-minutes: 30
+    outputs:
+      key: ${{ steps.xcode.outputs.key }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Find Xcode
+        id: xcode
+        run: |
+          app="/Applications/Xcode_${XCODE_VERSION}.app"
+          if [ ! -d "$app" ]; then
+            echo "::error::No $app on this runner. Installed:"
+            ls -d /Applications/Xcode*.app
+            exit 1
+          fi
+          echo "app=$(cd "$app" && pwd -P)" >> "$GITHUB_OUTPUT"
+          echo "key=xcode-sdk-parts-${XCODE_VERSION}-${{ hashFiles('scripts/lend-xcode.sh') }}" >> "$GITHUB_OUTPUT"
+      - name: Is it already in the cache?
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: xcode
+          key: ${{ steps.xcode.outputs.key }}
+          # Saved on macOS, restored on Linux.
+          enableCrossOsArchive: true
+          lookup-only: true
+      - name: Copy the parts of Xcode the SDK is made from
+        if: steps.cache.outputs.cache-hit != 'true'
+        env:
+          # Keeps macOS's ._ metadata files out, which a Linux build trips over.
+          COPYFILE_DISABLE: '1'
+        run: scripts/lend-xcode.sh "${{ steps.xcode.outputs.app }}" xcode
+      - name: Save them
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: xcode
+          key: ${{ steps.xcode.outputs.key }}
+          enableCrossOsArchive: true

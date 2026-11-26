@@ -1,0 +1,21 @@
+# How xtool turns this package into slopcoder.app. `xtool dev build` reads it.
+#
+# xtool builds the `Slopcoder` library product, links it as the app's
+# executable, and wraps it in a bundle; the notification service extension is
+# built the same way from its own product and placed under PlugIns/.
+version: 1
+bundleID: codes.sand.slopcoder
+product: Slopcoder
+# Merged over xtool's defaults (executable, identifier, minimum OS, launch
+# screen). Nothing in it is substituted: scripts/stamp.py writes the version,
+# the build number and the push relay into it before a release build.
+infoPath: App/Info.plist
+entitlementsPath: App/Slopcoder.entitlements
+iconPath: App/AppIcon.png
+resources:
+  - App/PrivacyInfo.xcprivacy
+extensions:
+  - product: NotificationService
+    bundleID: codes.sand.slopcoder.NotificationService
+    infoPath: App/NotificationService-Info.plist
+    entitlementsPath: App/NotificationService.entitlements

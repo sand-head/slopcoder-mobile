@@ -1,102 +1,62 @@
-# Signed builds. Started by hand from the Actions tab, never on a pull request —
-# fork PRs must never see these secrets.
+# Signed builds, sent to TestFlight. Started by hand from the Actions tab, never
+# on a pull request — fork PRs must never see these secrets.
 #
 # There is no version to choose. App Store Connect enforces uniqueness on the
-# build number and nothing else, and CURRENT_PROJECT_VERSION is the run number,
-# which can never repeat; MARKETING_VERSION is the date the build was cut, so
-# TestFlight reads "2026.09.13 (35)" and says something true without anyone
-# having decided it. Which commit it is comes from the run.
+# build number and nothing else, and the build number is the run number, which
+# can never repeat; the version is the date the build was cut, so TestFlight
+# reads "2026.09.13 (35)" and says something true without anyone having decided
+# it. Which commit it is comes from the run.
+#
+# Everything else in this repository builds on Linux with xtool. This is the one
+# build that uses Xcode: distribution signing, the compiled asset catalog and the
+# upload are things only a Mac does. It is the same package and the same
+# sources — project.yml is a shell around Package.swift's products.
 name: release
 
 on:
   workflow_dispatch:
 
 jobs:
-  # Android release signing is not configured — the four ANDROID_* secrets are
-  # unset — and a release must not go red for a platform nobody is shipping yet.
-  # This job exists only so the one below can be gated on a secret: the `secrets`
-  # context is not readable from a job-level `if`, but a `needs` output is. Add
-  # the secrets and the Android build comes back on its own, with nothing here to
-  # remember to flip.
-  android-signing:
+  # A release must not ship something the tests would have caught.
+  test:
     runs-on: ubuntu-latest
-    outputs:
-      configured: ${{ steps.check.outputs.configured }}
-    steps:
-      - id: check
-        env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo 'configured=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'configured=false' >> "$GITHUB_OUTPUT"
-            echo 'No ANDROID_KEYSTORE_BASE64 secret; skipping the Android build.' \
-              >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-  android:
-    needs: android-signing
-    if: needs.android-signing.outputs.configured == 'true'
-    runs-on: ubuntu-latest
+    container: swift:6.4.2-noble
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-      - run: npm ci
-      - name: Restore the keystore
-        env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        # Outside the checkout, so no step that archives the workspace can carry
-        # the signing key off the runner with it.
-        run: echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
-      - name: Assemble release
-        working-directory: android
-        env:
-          SLOPCODER_STORE_FILE: ${{ runner.temp }}/release.keystore
-          SLOPCODER_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
-          SLOPCODER_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          SLOPCODER_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease bundleRelease --no-daemon
-      # A run, not a tag: there is no GitHub release to hang these off, so they
-      # are the run's own artifacts and expire with it.
-      - name: Keep the APK and the bundle
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-${{ github.run_number }}
-          path: |
-            android/app/build/outputs/apk/release/app-release.apk
-            android/app/build/outputs/bundle/release/app-release.aab
+      - run: swift test
 
-  ios:
+  testflight:
+    needs: test
     # The dedicated image carries the public Xcode 27 toolchain.
     runs-on: xcode-27
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           # Latest public toolchain: iOS 27.2 SDK, not the 27.3 beta.
           xcode-version: '27.2'
-      - run: npm ci
-      - uses: ruby/setup-ruby@v1
-        # Version comes from .ruby-version. The Gemfile works on 3.4 too, but
-        # pinning means a runner image bump cannot change the CocoaPods that
-        # generates the Xcode project.
-        with:
-          bundler-cache: true
-      - name: Install pods
-        # The Gemfile is at the repo root, not in ios/ — only pod install runs there.
-        run: bundle exec pod install --project-directory=ios
+      - name: Stamp the version
+        env:
+          # Where the app turns its APNs token into a Web Push endpoint: the
+          # slopcoder deployment that holds this app's Apple key. A variable
+          # rather than a secret — it is a public URL — and rather than a value
+          # in the repository, because it is the publisher's address and not a
+          # property of the code. Empty builds an app with notifications off.
+          SLOPCODER_PUSH_RELAY: ${{ vars.SLOPCODER_PUSH_RELAY }}
+        run: |
+          # The date is the version; the run number is the build. Two builds on
+          # one day differ by their build number, which is what it is for.
+          python3 scripts/stamp.py \
+            --version "$(date -u +%Y.%m.%d)" \
+            --build "$GITHUB_RUN_NUMBER" \
+            --relay "$SLOPCODER_PUSH_RELAY" \
+            --aps production
+      - name: Generate the Xcode project
+        run: |
+          python3 scripts/xcode-plists.py
+          command -v xcodegen >/dev/null || brew install xcodegen
+          xcodegen generate
       - name: Import the signing certificate
         env:
           CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
@@ -116,8 +76,7 @@ jobs:
           security set-keychain-settings -lut 3600 build.keychain
           # Decoded signing material goes to RUNNER_TEMP, never into the
           # checkout. Nothing archives the workspace today, but a step that did
-          # would carry the certificate and the profile out with it, and that is
-          # not a mistake anyone would catch reading the diff that made it.
+          # would carry the certificate and the profile out with it.
           echo "$CERTIFICATE_BASE64" | base64 -d > "$RUNNER_TEMP/certificate.p12"
           security import "$RUNNER_TEMP/certificate.p12" -k build.keychain -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k runner build.keychain
@@ -126,14 +85,20 @@ jobs:
           echo "$PROVISIONING_PROFILE_BASE64" | base64 -d > "$RUNNER_TEMP/profile.mobileprovision"
           cp "$RUNNER_TEMP/profile.mobileprovision" ~/Library/MobileDevice/Provisioning\ Profiles/
           # The profile carries its own name and the team it belongs to. Reading
-          # them out of it beats two more secrets that can drift from the portal
-          # — and a team id is a lookup nobody should have to go hunting for.
+          # them out of it beats two more secrets that can drift from the portal.
           security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" > "$RUNNER_TEMP/profile.plist"
           PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/profile.plist")
           TEAM_ID=$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$RUNNER_TEMP/profile.plist")
           echo "SLOPCODER_PROFILE=$PROFILE_NAME" >> "$GITHUB_ENV"
           echo "SLOPCODER_TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
           echo "profile: $PROFILE_NAME, team: $TEAM_ID"
+          # The app shares its push keys with the extension through an App
+          # Group. A profile made before that capability was enabled does not
+          # cover it, and the failure otherwise surfaces deep inside the archive.
+          if ! /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.security.application-groups' "$RUNNER_TEMP/profile.plist" | grep -q group.codes.sand.slopcoder; then
+            echo "::error::The app's provisioning profile does not include the App Group group.codes.sand.slopcoder. Enable App Groups on both App IDs and regenerate both profiles — see docs/testflight.md."
+            exit 1
+          fi
           # The notification service extension is its own bundle with its own
           # App ID, so Apple issues it its own profile. Same certificate.
           echo "$EXTENSION_PROFILE_BASE64" | base64 -d > "$RUNNER_TEMP/extension.mobileprovision"
@@ -143,26 +108,11 @@ jobs:
           echo "SLOPCODER_EXTENSION_PROFILE=$EXTENSION_PROFILE_NAME" >> "$GITHUB_ENV"
           echo "extension profile: $EXTENSION_PROFILE_NAME"
       - name: Archive and export
-        working-directory: ios
-        env:
-          # Where the app turns its APNs token into a Web Push endpoint: the
-          # slopcoder deployment that holds this app's Apple key. A variable
-          # rather than a secret — it is a public URL — and rather than a value
-          # in the project file, because it is the publisher's address and not
-          # a property of the code. Empty builds an app with notifications off.
-          SLOPCODER_PUSH_RELAY: ${{ vars.SLOPCODER_PUSH_RELAY }}
         run: |
-          # The date is the version; the run number is the build. App Store Connect
-          # rejects a build number it has already seen, so it must never be the
-          # literal 1 that sits in the project file. Two builds on one day differ
-          # by their build number, which is what that number is for.
-          VERSION=$(date -u +%Y.%m.%d)
-          echo "version $VERSION build $GITHUB_RUN_NUMBER"
-
           # Generated rather than committed: every value in it comes from a
           # secret or from the profile, so a checked-in copy would be a file that
           # is wrong by definition.
-          cat > ExportOptions.plist <<PLIST
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -180,18 +130,16 @@ jobs:
           </plist>
           PLIST
 
-          xcodebuild -workspace slopcoder_mobile.xcworkspace \
-            -scheme slopcoder_mobile -configuration Release \
+          xcodebuild -project Slopcoder.xcodeproj \
+            -scheme SlopcoderApp -configuration Release \
+            -destination generic/platform=iOS \
             -archivePath build/slopcoder.xcarchive \
-            MARKETING_VERSION="$VERSION" \
-            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
             SLOPCODER_TEAM_ID="$SLOPCODER_TEAM_ID" \
             SLOPCODER_PROFILE="$SLOPCODER_PROFILE" \
             SLOPCODER_EXTENSION_PROFILE="$SLOPCODER_EXTENSION_PROFILE" \
-            SLOPCODER_PUSH_RELAY="$SLOPCODER_PUSH_RELAY" \
             archive
           xcodebuild -exportArchive -archivePath build/slopcoder.xcarchive \
-            -exportOptionsPlist ExportOptions.plist -exportPath build/ipa
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath build/ipa
       - name: Upload to TestFlight
         env:
           APP_STORE_KEY_ID: ${{ secrets.APP_STORE_KEY_ID }}
@@ -200,5 +148,5 @@ jobs:
         run: |
           mkdir -p ~/private_keys
           echo "$APP_STORE_KEY_BASE64" | base64 -d > ~/private_keys/AuthKey_$APP_STORE_KEY_ID.p8
-          xcrun altool --upload-app -f ios/build/ipa/*.ipa -t ios \
+          xcrun altool --upload-app -f build/ipa/*.ipa -t ios \
             --apiKey "$APP_STORE_KEY_ID" --apiIssuer "$APP_STORE_ISSUER_ID"
