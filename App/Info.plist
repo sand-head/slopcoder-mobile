@@ -64,10 +64,12 @@
 	     laid out, on the inner display of an iPhone Duo and in Split View — and
 	     a Duo set down like a tent is a landscape screen. Nothing here asks to
 	     be full screen (UIRequiresFullScreen) for the same reason: the window
-	     is whatever size the system gives it. -->
+	     is whatever size the system gives it. All four, upside down included:
+	     App Store Connect refuses a resizable app that leaves one out (90474). -->
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>

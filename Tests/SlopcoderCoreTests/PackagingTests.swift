@@ -29,9 +29,12 @@ import Testing
         // Restricting orientation, or asking for the full screen, gets the app
         // scaled instead of laid out on an iPhone Duo's inner display.
         let orientations = try #require(info["UISupportedInterfaceOrientations"] as? [String])
-        #expect(orientations.contains("UIInterfaceOrientationPortrait"))
-        #expect(orientations.contains("UIInterfaceOrientationLandscapeLeft"))
-        #expect(orientations.contains("UIInterfaceOrientationLandscapeRight"))
+        // All four: App Store Connect rejects the upload of a resizable app that
+        // omits any of them (error 90474), upside down included.
+        #expect(Set(orientations) == [
+            "UIInterfaceOrientationPortrait", "UIInterfaceOrientationPortraitUpsideDown",
+            "UIInterfaceOrientationLandscapeLeft", "UIInterfaceOrientationLandscapeRight",
+        ])
         #expect(info["UIRequiresFullScreen"] == nil)
         #expect(info["SlopcoderPushRelay"] is String)
         let transport = try #require(info["NSAppTransportSecurity"] as? [String: Any])
