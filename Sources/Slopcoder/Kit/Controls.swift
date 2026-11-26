@@ -210,6 +210,8 @@ struct Card<Content: View>: View {
 /// case, it is most of the matrix, and it has to look finished on its own.
 struct GlassSurface: ViewModifier {
     var cornerRadius: CGFloat = Radius.xxl
+    /// Something pressed rather than something typed into: the glass answers the touch.
+    var interactive = false
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     func body(content: Content) -> some View {
@@ -219,7 +221,7 @@ struct GlassSurface: ViewModifier {
                 .background(Palette.card, in: shape)
                 .overlay(shape.strokeBorder(Palette.border, lineWidth: 1))
         } else if #available(iOS 26.0, *) {
-            content.glassEffect(.regular, in: shape)
+            content.glassEffect(interactive ? .regular.interactive() : .regular, in: shape)
         } else {
             content
                 .background(.regularMaterial, in: shape)
@@ -229,8 +231,8 @@ struct GlassSurface: ViewModifier {
 }
 
 extension View {
-    func glassSurface(cornerRadius: CGFloat = Radius.xxl) -> some View {
-        modifier(GlassSurface(cornerRadius: cornerRadius))
+    func glassSurface(cornerRadius: CGFloat = Radius.xxl, interactive: Bool = false) -> some View {
+        modifier(GlassSurface(cornerRadius: cornerRadius, interactive: interactive))
     }
 
     /// A hairline in the palette's border colour.
@@ -427,10 +429,121 @@ struct EmptyState: View {
     }
 }
 
+/// Marks the row whose screen is open beside the list.
+///
+/// Only where the list and the screen are both on show; on a narrow screen
+/// nothing is beside the list, and a highlight would point at nothing.
+private struct OpenBeside: ViewModifier {
+    let open: Bool
+    @Environment(\.wideWindow) private var wide
+
+    func body(content: Content) -> some View {
+        let marked = open && wide
+        content
+            .background(
+                RoundedRectangle(cornerRadius: Radius.lg)
+                    .fill(Palette.muted)
+                    .padding(.horizontal, -8)
+                    .opacity(marked ? 1 : 0)
+            )
+            .accessibilityAddTraits(marked ? .isSelected : [])
+    }
+}
+
 extension View {
+    func openBeside(_ open: Bool) -> some View { modifier(OpenBeside(open: open)) }
+
     /// The page ground, behind everything and under the bars.
     func pageBackground() -> some View {
         background(Palette.background.ignoresSafeArea())
+    }
+}
+// MARK: - bar buttons
+
+// Bars are not always horizontal. On the outer display of an iPhone Duo, and
+// beside a detail column on the inner one, the system stands the toolbar on its
+// side, and what it can stand up is an item with a symbol. An item that is only
+// words stays out of a vertical bar, and one that is only a symbol has nothing
+// to say in an overflow menu. So every bar button here has both, and the system
+// picks.
+
+/// An action in a bar: a symbol, and the words for it.
+struct BarButton: View {
+    let title: String
+    let systemImage: String
+    let action: () -> Void
+
+    init(_ title: String, systemImage: String, action: @escaping () -> Void) {
+        self.title = title
+        self.systemImage = systemImage
+        self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) { Label(title, systemImage: systemImage) }
+    }
+}
+
+/// The way out of a sheet without keeping anything.
+struct CancelBarButton: View {
+    var title = "Cancel"
+    let action: () -> Void
+
+    var body: some View {
+        if #available(iOS 26.0, *) {
+            Button(title, systemImage: "xmark", role: .cancel, action: action)
+        } else {
+            Button(title, action: action)
+        }
+    }
+}
+
+/// The one action a sheet exists to take.
+///
+/// On iOS 26 the system draws a confirming button as a prominent checkmark; the
+/// title is still what VoiceOver reads and what an overflow menu shows. Before
+/// that, a bar says it in words.
+struct ConfirmBarButton: View {
+    let title: String
+    let action: () -> Void
+
+    init(_ title: String, action: @escaping () -> Void) {
+        self.title = title
+        self.action = action
+    }
+
+    var body: some View {
+        if #available(iOS 26.0, *) {
+            Button(title, systemImage: "checkmark", role: .confirm, action: action)
+        } else {
+            Button(title, action: action)
+        }
+    }
+}
+
+extension View {
+    /// Let scrolled content fade out under whatever floats over it, rather than
+    /// being cut off by it. iOS 26; before that the bars draw their own edge.
+    @ViewBuilder
+    func softScrollEdges() -> some View {
+        if #available(iOS 26.0, *) {
+            scrollEdgeEffectStyle(.soft, for: .all)
+        } else {
+            self
+        }
+    }
+}
+
+extension ToolbarContent {
+    /// Keep this item in the bar when there is not room for all of them: it
+    /// shows something, rather than only doing something.
+    @ToolbarContentBuilder
+    func keptVisible() -> some ToolbarContent {
+        if #available(iOS 27.0, *) {
+            visibilityPriority(.high)
+        } else {
+            self
+        }
     }
 }
 #endif

@@ -55,14 +55,21 @@
 	     from the SLOPCODER_PUSH_RELAY repository variable. -->
 	<key>SlopcoderPushRelay</key>
 	<string></string>
-	<!-- iPhone only, upright only. -->
+	<!-- iPhone, including iPhone Duo. -->
 	<key>UIDeviceFamily</key>
 	<array>
 		<integer>1</integer>
 	</array>
+	<!-- Every way an iPhone is held. An app that restricts this is scaled, not
+	     laid out, on the inner display of an iPhone Duo and in Split View — and
+	     a Duo set down like a tent is a landscape screen. Nothing here asks to
+	     be full screen (UIRequiresFullScreen) for the same reason: the window
+	     is whatever size the system gives it. -->
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<!-- An empty launch screen: the system draws the window's background and
 	     nothing else. A storyboard or an asset-catalog image would need ibtool

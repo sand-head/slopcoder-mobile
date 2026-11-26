@@ -106,6 +106,7 @@ struct SessionsScreen: View {
             .padding(.horizontal, 20)
             .padding(.top, 8)
             .padding(.bottom, 24)
+            .readingWidth()
         }
         .scrollDismissesKeyboard(.interactively)
         .pageBackground()
@@ -229,6 +230,7 @@ struct SessionsScreen: View {
                             },
                             onDelete: { deleting = session }
                         )
+                        .openBeside(router.selection(on: .sessions) == .session(id: session.id))
                     }
                 }
                 .padding(.horizontal, 12)
@@ -278,7 +280,7 @@ struct SessionsScreen: View {
         // Leaving with the keyboard up lands on a page with a composer of its own
         // and a keyboard already open for something else.
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-        router.push(.session(id: id))
+        router.select(.session(id: id))
     }
 
     private func opened() async {
@@ -400,6 +402,8 @@ struct SessionsScreen: View {
             return
         }
         Haptics.refuse()
+        // Beside the list, the session just deleted may be the one on show.
+        if router.selection(on: .sessions) == .session(id: session.id) { router.sessions = [] }
         await load()
     }
 
@@ -497,7 +501,7 @@ private struct RoutineStrip: View {
     @State private var retrying = false
 
     private func open(_ id: String, run: String?) {
-        router.push(.routine(id: id, run: run))
+        router.select(.routine(id: id, run: run))
     }
 
     var body: some View {

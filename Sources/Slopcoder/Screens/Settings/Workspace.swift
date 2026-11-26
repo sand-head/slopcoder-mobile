@@ -41,8 +41,7 @@ struct McpServersPage: View {
         .navigationTitle("MCP servers")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button { editing = McpDraft(server: nil) } label: { Image(systemName: "plus") }
-                    .accessibilityLabel("Add server")
+                BarButton("Add server", systemImage: "plus") { editing = McpDraft(server: nil) }
             }
         }
         .confirms($confirmation)
@@ -242,8 +241,7 @@ struct RemoteNodesPage: View {
         .navigationTitle("Remote nodes")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button { editing = NodeDraft(node: nil) } label: { Image(systemName: "plus") }
-                    .accessibilityLabel("Register a node")
+                BarButton("Register a node", systemImage: "plus") { editing = NodeDraft(node: nil) }
             }
         }
         .confirms($confirmation)
@@ -479,7 +477,7 @@ struct TerminalPrefsPage: View {
         .navigationTitle("Terminal")
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Save") { Task { await save() } }.disabled(!dirty || busy)
+                ConfirmBarButton("Save") { Task { await save() } }.disabled(!dirty || busy)
             }
         }
         .task { await load() }
@@ -545,7 +543,7 @@ struct GitIdentityPage: View {
         .navigationTitle("Git identity")
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Save") { Task { await save() } }.disabled(!dirty || busy)
+                ConfirmBarButton("Save") { Task { await save() } }.disabled(!dirty || busy)
             }
         }
         .task { await load() }

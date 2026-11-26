@@ -69,6 +69,20 @@ public final class Router {
         }
     }
 
+    /// Choose `route` from the current tab's own list: it becomes the one thing
+    /// open on that tab.
+    ///
+    /// On a narrow screen a tab's list is only ever visible with nothing pushed,
+    /// so this is the same as a push. On a wide one the list stays on screen
+    /// beside what it opened, and picking a second row has to replace the first
+    /// rather than stack on top of it.
+    public func select(_ route: Route) {
+        setStack(tab, [route])
+    }
+
+    /// What is open on a tab, if anything: the screen its list led to.
+    public func selection(on tab: AppTab) -> Route? { stack(tab).first }
+
     /// Leave the screen on top of the current tab.
     public func pop() {
         switch tab {

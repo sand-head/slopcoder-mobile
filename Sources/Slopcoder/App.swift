@@ -7,9 +7,8 @@ import UserNotifications
 /// The shell: restore the key, then either the sign-in flow or the app.
 ///
 /// Signed out: the login page and, over it, the scanner as a full-screen cover.
-/// Signed in: the tab bar, and over it the screens you *enter* — a session, a
-/// routine — which cover the tabs because each wants the bottom edge for a
-/// composer or a switch. Starting a session is not a screen: the composer on
+/// Signed in: the tabs, each a list with what it opened beside it — or, where
+/// there is no room for both, pushed over it. Starting a session is not a screen: the composer on
 /// the sessions page is the launcher, as it is on the web. Writing a routine is
 /// a form, and a form the platform presents as a sheet.
 ///
@@ -79,7 +78,12 @@ struct RootView: View {
     }
 }
 
-/// The rail, as a phone has one: a tab bar.
+/// The rail: a tab bar, wherever the system puts one.
+///
+/// At the bottom on an iPhone, down the side on the outer display of an iPhone
+/// Duo, along the top where there is width to spare. Nothing here chooses; the
+/// bar is the platform's, and following it is what keeps controls where people
+/// already look for them.
 ///
 /// The one thing the cockpit's rail has that a bar must keep: Routines carries a
 /// red pip when a run failed, so "something broke overnight" reaches you on
@@ -87,63 +91,183 @@ struct RootView: View {
 struct MainTabs: View {
     @Environment(Router.self) private var router
     @Environment(RoutineAlert.self) private var alert
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
+        tabs
+            // Read here, at the window: inside a column of a split view the size
+            // class is the column's, which says nothing about the window.
+            .environment(\.wideWindow, sizeClass == .regular)
+            .modifier(TabBarMinimizing())
+    }
+
+    @ViewBuilder private var tabs: some View {
         @Bindable var router = router
-        TabView(selection: $router.tab) {
-            NavigationStack(path: $router.sessions) {
-                SessionsScreen().routes()
+        if #available(iOS 18.0, *) {
+            TabView(selection: $router.tab) {
+                Tab("Sessions", systemImage: "bubble.left.and.bubble.right", value: AppTab.sessions) { page(.sessions) }
+                Tab("Routines", systemImage: "clock", value: AppTab.routines) { page(.routines) }
+                    .badge(alert.anyFailed ? Text("!") : nil)
+                Tab("Artifacts", systemImage: "doc.text", value: AppTab.artifacts) { page(.artifacts) }
+                Tab("Usage", systemImage: "chart.bar", value: AppTab.usage) { page(.usage) }
+                Tab("Settings", systemImage: "gearshape", value: AppTab.settings) { page(.settings) }
             }
-            .tabItem { Label("Sessions", systemImage: "bubble.left.and.bubble.right") }
-            .tag(AppTab.sessions)
+        } else {
+            TabView(selection: $router.tab) {
+                page(.sessions)
+                    .tabItem { Label("Sessions", systemImage: "bubble.left.and.bubble.right") }
+                    .tag(AppTab.sessions)
+                page(.routines)
+                    .tabItem { Label("Routines", systemImage: "clock") }
+                    .badge(alert.anyFailed ? "!" : nil)
+                    .tag(AppTab.routines)
+                page(.artifacts)
+                    .tabItem { Label("Artifacts", systemImage: "doc.text") }
+                    .tag(AppTab.artifacts)
+                page(.usage)
+                    .tabItem { Label("Usage", systemImage: "chart.bar") }
+                    .tag(AppTab.usage)
+                page(.settings)
+                    .tabItem { Label("Settings", systemImage: "gearshape") }
+                    .tag(AppTab.settings)
+            }
+        }
+    }
 
-            NavigationStack(path: $router.routines) {
-                RoutinesScreen().routes()
+    @ViewBuilder
+    private func page(_ tab: AppTab) -> some View {
+        @Bindable var router = router
+        switch tab {
+        case .sessions:
+            SplitTab(path: $router.sessions, empty: "No session open", hint: "Choose one from the list, or start one below it.") {
+                SessionsScreen()
             }
-            .tabItem { Label("Routines", systemImage: "clock") }
-            .badge(alert.anyFailed ? "!" : nil)
-            .tag(AppTab.routines)
-
-            NavigationStack(path: $router.artifacts) {
-                ArtifactsScreen().routes()
+        case .routines:
+            SplitTab(path: $router.routines, empty: "No routine open", hint: "Choose one from the list to see its runs.") {
+                RoutinesScreen()
             }
-            .tabItem { Label("Artifacts", systemImage: "doc.text") }
-            .tag(AppTab.artifacts)
-
-            NavigationStack(path: $router.usage) {
-                UsageScreen().routes()
+        case .artifacts:
+            SplitTab(path: $router.artifacts, empty: "Nothing open", hint: "Choose something the agent published.") {
+                ArtifactsScreen()
             }
-            .tabItem { Label("Usage", systemImage: "chart.bar") }
-            .tag(AppTab.usage)
-
-            NavigationStack(path: $router.settings) {
-                SettingsScreen().routes()
+        case .usage:
+            // One page, nothing to open beside it.
+            NavigationStack(path: $router.usage) { UsageScreen().routes() }
+        case .settings:
+            SplitTab(path: $router.settings, empty: "Settings", hint: "Choose a page from the list.") {
+                SettingsScreen()
             }
-            .tabItem { Label("Settings", systemImage: "gearshape") }
-            .tag(AppTab.settings)
         }
     }
 }
 
-extension View {
-    /// Every screen a tab can push. Screens that are entered hide the tab bar:
-    /// a composer, a switch, a photo each want the bottom edge to themselves.
-    func routes() -> some View {
-        navigationDestination(for: Route.self) { route in
-            switch route {
-            case .session(let id):
-                SessionScreen(sessionId: id).toolbar(.hidden, for: .tabBar)
-            case .reviews(let sessionId):
-                ReviewsScreen(sessionId: sessionId).toolbar(.hidden, for: .tabBar)
-            case .review(let id):
-                ReviewDetailScreen(reviewId: id).toolbar(.hidden, for: .tabBar)
-            case .routine(let id, let run):
-                RoutineScreen(routineId: id, initialRun: run).toolbar(.hidden, for: .tabBar)
-            case .artifact(let id, let version):
-                ArtifactScreen(artifactId: id, version: version).toolbar(.hidden, for: .tabBar)
-            case .settings(let page):
-                SettingsPageView(page: page)
+/// A tab's list, and beside it whatever the list opened.
+///
+/// One view for both shapes of screen, on purpose. Where there is room — the
+/// inner display of an iPhone Duo, an iPhone in Split View given the wider
+/// half — the list stays and the session opens next to it. Where there is not,
+/// the same view collapses to a stack: the list, and the session pushed over
+/// it. Because it is the same view either way, opening or closing the device
+/// in the middle of a sentence keeps the sentence: the draft, the scroll
+/// position and the screen you were on all survive, which two separate layouts
+/// switched on size class would throw away.
+///
+/// The tab's path is the router's, unchanged: its first entry is what the list
+/// opened and shows as the detail; anything after it is pushed on top.
+struct SplitTab<Root: View>: View {
+    @Binding var path: [Route]
+    let empty: String
+    let hint: String
+    @ViewBuilder var root: () -> Root
+    @State private var columns = NavigationSplitViewVisibility.doubleColumn
+
+    var body: some View {
+        NavigationSplitView(columnVisibility: $columns, preferredCompactColumn: compactColumn) {
+            root()
+        } detail: {
+            NavigationStack(path: pushed) {
+                Group {
+                    if let head = path.first {
+                        // A different session is a different screen, not the
+                        // same one with new arguments.
+                        RouteView(route: head).id(head)
+                    } else {
+                        EmptyState(empty, detail: hint)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .pageBackground()
+                    }
+                }
+                .routes()
             }
+        }
+        .navigationSplitViewStyle(.balanced)
+    }
+
+    /// Collapsed, the detail is on top exactly when something is open; going
+    /// back to the list closes it.
+    private var compactColumn: Binding<NavigationSplitViewColumn> {
+        Binding(
+            get: { path.isEmpty ? .sidebar : .detail },
+            set: { column in if column == .sidebar, !path.isEmpty { path = [] } }
+        )
+    }
+
+    private var pushed: Binding<[Route]> {
+        Binding(get: { Array(path.dropFirst()) }, set: { path = Array(path.prefix(1)) + $0 })
+    }
+}
+
+/// The screen a route names.
+struct RouteView: View {
+    let route: Route
+    @Environment(\.wideWindow) private var wide
+
+    var body: some View {
+        switch route {
+        case .session(let id): entered(SessionScreen(sessionId: id))
+        case .reviews(let sessionId): entered(ReviewsScreen(sessionId: sessionId))
+        case .review(let id): entered(ReviewDetailScreen(reviewId: id))
+        case .routine(let id, let run): entered(RoutineScreen(routineId: id, initialRun: run))
+        case .artifact(let id, let version): entered(ArtifactScreen(artifactId: id, version: version))
+        case .settings(let page): SettingsPageView(page: page)
+        }
+    }
+
+    /// A screen that is entered hides a bottom tab bar: a composer, a switch, a
+    /// photo each want that edge to themselves. In a wide window the bar is not
+    /// at the bottom, and hiding it would take away the only way to change tab
+    /// while something is open — which, beside a list, is always.
+    private func entered(_ screen: some View) -> some View {
+        screen.toolbar(wide ? .automatic : .hidden, for: .tabBar)
+    }
+}
+
+extension View {
+    /// Every screen a tab can push.
+    func routes() -> some View {
+        navigationDestination(for: Route.self) { RouteView(route: $0) }
+    }
+}
+
+private struct WideWindowKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// Whether the window has room for two columns: regular width at the root.
+    var wideWindow: Bool {
+        get { self[WideWindowKey.self] }
+        set { self[WideWindowKey.self] = newValue }
+    }
+}
+
+/// On iOS 26 the tab bar steps out of the way while a list is scrolled.
+private struct TabBarMinimizing: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.tabBarMinimizeBehavior(.onScrollDown)
+        } else {
+            content
         }
     }
 }

@@ -30,8 +30,9 @@ struct SettingsScreen: View {
                     SectionLabel("workspace")
                     ForEach(SettingsScreen.pages, id: \.page) { entry in
                         HubRow(label: entry.label, count: counts[entry.page]) {
-                            model.router.push(.settings(entry.page))
+                            model.router.select(.settings(entry.page))
                         }
+                        .openBeside(model.router.selection(on: .settings) == .settings(entry.page))
                     }
                 }
                 VStack(alignment: .leading, spacing: 0) {
@@ -61,6 +62,8 @@ struct SettingsScreen: View {
         .confirms($confirmation)
         .task { await load() }
         .onAppear { Task { await load() } }
+        // The counts beside each row change on the pages they lead to.
+        .onChange(of: model.router.settings) { _, _ in Task { await load() } }
     }
 
     /// Each count is read on its own: one that fails leaves its row bare rather

@@ -29,3 +29,5 @@ xtool/
 xcuserdata/
 DerivedData/
 .bsp/
+build/
+*.xcodeproj

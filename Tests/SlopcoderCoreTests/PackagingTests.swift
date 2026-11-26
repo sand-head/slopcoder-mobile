@@ -26,7 +26,13 @@ import Testing
         #expect((info["NSPhotoLibraryUsageDescription"] as? String)?.isEmpty == false)
         #expect(info["ITSAppUsesNonExemptEncryption"] as? Bool == false)
         #expect(info["CFBundleDisplayName"] as? String == "slopcoder")
-        #expect(info["UISupportedInterfaceOrientations"] as? [String] == ["UIInterfaceOrientationPortrait"])
+        // Restricting orientation, or asking for the full screen, gets the app
+        // scaled instead of laid out on an iPhone Duo's inner display.
+        let orientations = try #require(info["UISupportedInterfaceOrientations"] as? [String])
+        #expect(orientations.contains("UIInterfaceOrientationPortrait"))
+        #expect(orientations.contains("UIInterfaceOrientationLandscapeLeft"))
+        #expect(orientations.contains("UIInterfaceOrientationLandscapeRight"))
+        #expect(info["UIRequiresFullScreen"] == nil)
         #expect(info["SlopcoderPushRelay"] is String)
         let transport = try #require(info["NSAppTransportSecurity"] as? [String: Any])
         #expect(transport["NSAllowsArbitraryLoads"] as? Bool == false)
@@ -78,6 +84,26 @@ import Testing
             guard let path = trimmed.split(separator: " ").last, trimmed.contains("App/") else { continue }
             guard !trimmed.hasPrefix("#") else { continue }
             #expect(FileManager.default.fileExists(atPath: PackagingTests.root.appendingPathComponent(String(path)).path), "\(path)")
+        }
+    }
+
+    /// A release is built by Xcode from project.yml; everything else by xtool
+    /// from xtool.yml. They describe the same two bundles or the release is a
+    /// different app from the one that was tested.
+    @Test func theXcodeProjectDescribesTheSameBundlesAsXtool() throws {
+        let project = try text("project.yml")
+        let package = try text("Package.swift")
+        #expect(project.contains("PRODUCT_BUNDLE_IDENTIFIER: codes.sand.slopcoder\n"))
+        #expect(project.contains("PRODUCT_BUNDLE_IDENTIFIER: codes.sand.slopcoder.NotificationService\n"))
+        for product in ["Slopcoder", "NotificationService"] {
+            #expect(project.contains("product: \(product)\n"))
+            #expect(package.contains(".library(name: \"\(product)\""))
+        }
+        #expect(project.contains("CODE_SIGN_ENTITLEMENTS: App/Slopcoder.entitlements"))
+        #expect(project.contains("CODE_SIGN_ENTITLEMENTS: App/NotificationService.entitlements"))
+        #expect(project.contains("iOS: \"17.0\"") && package.contains(".iOS(.v17)"))
+        for path in ["App/Xcode/empty.c", "App/Assets.xcassets/AppIcon.appiconset/Contents.json", "scripts/xcode-plists.py"] {
+            #expect(FileManager.default.fileExists(atPath: PackagingTests.root.appendingPathComponent(path).path), "\(path)")
         }
     }
 }

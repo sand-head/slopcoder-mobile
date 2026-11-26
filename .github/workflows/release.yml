@@ -1,4 +1,5 @@
-# A release build, cut by hand from the Actions tab — never on a pull request.
+# Signed builds, sent to TestFlight. Started by hand from the Actions tab, never
+# on a pull request — fork PRs must never see these secrets.
 #
 # There is no version to choose. App Store Connect enforces uniqueness on the
 # build number and nothing else, and the build number is the run number, which
@@ -6,52 +7,35 @@
 # reads "2026.09.13 (35)" and says something true without anyone having decided
 # it. Which commit it is comes from the run.
 #
-# What this does today: builds the app in release configuration on Linux, with
-# the version, build number, push relay and production APNs environment stamped
-# in, and keeps the unsigned .ipa as the run's artifact.
-#
-# What it does not do yet: sign that .ipa for distribution and send it to
-# TestFlight. The React Native build did both with Xcode on a Mac runner. xtool
-# signs for development only (a registered device, via `xtool auth` and
-# `xtool dev run`) and has no upload. docs/testflight.md says what is needed to
-# close that gap from Linux, and what is still unproven about it.
+# Everything else in this repository builds on Linux with xtool. This is the one
+# build that uses Xcode: distribution signing, the compiled asset catalog and the
+# upload are things only a Mac does. It is the same package and the same
+# sources — project.yml is a shell around Package.swift's products.
 name: release
 
 on:
   workflow_dispatch:
 
 jobs:
-  # A macOS runner lends its Xcode's SDK to the Linux job below.
-  sdk:
-    uses: ./.github/workflows/xcode-sdk.yml
-
-  ios:
-    needs: sdk
+  # A release must not ship something the tests would have caught.
+  test:
     runs-on: ubuntu-latest
     container: swift:6.4.2-noble
     steps:
       - uses: actions/checkout@v4
-      - name: Install tools
-        run: |
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            ca-certificates curl zstd xz-utils zip unzip python3
-          scripts/install-xtool.sh
-      # A release must not ship something the tests would have caught.
-      - name: Test
-        run: swift test
-      - name: Restore the parts of Xcode
-        uses: actions/cache/restore@v4
+      - run: swift test
+
+  testflight:
+    needs: test
+    # The dedicated image carries the public Xcode 27 toolchain.
+    runs-on: xcode-27
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
         with:
-          path: xcode
-          key: ${{ needs.sdk.outputs.key }}
-          enableCrossOsArchive: true
-          fail-on-cache-miss: true
-      - name: Install the iOS SDK
-        run: |
-          xtool sdk install --slim xcode/Xcode.app
-          xtool sdk status
-          rm -rf xcode
+          # Latest public toolchain: iOS 27.2 SDK, not the 27.3 beta.
+          xcode-version: '27.2'
       - name: Stamp the version
         env:
           # Where the app turns its APNs token into a Web Push endpoint: the
@@ -68,12 +52,101 @@ jobs:
             --build "$GITHUB_RUN_NUMBER" \
             --relay "$SLOPCODER_PUSH_RELAY" \
             --aps production
-      - name: Build the app
-        run: xtool dev build --configuration release --ipa
-      # A run, not a tag: there is no release to hang this off, so it is the
-      # run's own artifact and expires with it.
-      - name: Keep the unsigned build
-        uses: actions/upload-artifact@v4
-        with:
-          name: slopcoder-${{ github.run_number }}-unsigned
-          path: xtool/*.ipa
+      - name: Generate the Xcode project
+        run: |
+          python3 scripts/xcode-plists.py
+          command -v xcodegen >/dev/null || brew install xcodegen
+          xcodegen generate
+      - name: Import the signing certificate
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          EXTENSION_PROFILE_BASE64: ${{ secrets.IOS_EXTENSION_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          # A throwaway keychain, so nothing outlives the job.
+          security create-keychain -p runner build.keychain
+          security default-keychain -s build.keychain
+          # codesign searches the keychain *list*, which create-keychain does not
+          # join. Without this the identity is present and still "not found".
+          security list-keychains -d user -s build.keychain login.keychain
+          security unlock-keychain -p runner build.keychain
+          # An archive outlasts the default five-minute lock, and the failure
+          # reads as a signing error rather than as a timeout.
+          security set-keychain-settings -lut 3600 build.keychain
+          # Decoded signing material goes to RUNNER_TEMP, never into the
+          # checkout. Nothing archives the workspace today, but a step that did
+          # would carry the certificate and the profile out with it.
+          echo "$CERTIFICATE_BASE64" | base64 -d > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k build.keychain -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k runner build.keychain
+          rm "$RUNNER_TEMP/certificate.p12"
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "$PROVISIONING_PROFILE_BASE64" | base64 -d > "$RUNNER_TEMP/profile.mobileprovision"
+          cp "$RUNNER_TEMP/profile.mobileprovision" ~/Library/MobileDevice/Provisioning\ Profiles/
+          # The profile carries its own name and the team it belongs to. Reading
+          # them out of it beats two more secrets that can drift from the portal.
+          security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" > "$RUNNER_TEMP/profile.plist"
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/profile.plist")
+          TEAM_ID=$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$RUNNER_TEMP/profile.plist")
+          echo "SLOPCODER_PROFILE=$PROFILE_NAME" >> "$GITHUB_ENV"
+          echo "SLOPCODER_TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
+          echo "profile: $PROFILE_NAME, team: $TEAM_ID"
+          # The app shares its push keys with the extension through an App
+          # Group. A profile made before that capability was enabled does not
+          # cover it, and the failure otherwise surfaces deep inside the archive.
+          if ! /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.security.application-groups' "$RUNNER_TEMP/profile.plist" | grep -q group.codes.sand.slopcoder; then
+            echo "::error::The app's provisioning profile does not include the App Group group.codes.sand.slopcoder. Enable App Groups on both App IDs and regenerate both profiles — see docs/testflight.md."
+            exit 1
+          fi
+          # The notification service extension is its own bundle with its own
+          # App ID, so Apple issues it its own profile. Same certificate.
+          echo "$EXTENSION_PROFILE_BASE64" | base64 -d > "$RUNNER_TEMP/extension.mobileprovision"
+          cp "$RUNNER_TEMP/extension.mobileprovision" ~/Library/MobileDevice/Provisioning\ Profiles/
+          security cms -D -i "$RUNNER_TEMP/extension.mobileprovision" > "$RUNNER_TEMP/extension.plist"
+          EXTENSION_PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/extension.plist")
+          echo "SLOPCODER_EXTENSION_PROFILE=$EXTENSION_PROFILE_NAME" >> "$GITHUB_ENV"
+          echo "extension profile: $EXTENSION_PROFILE_NAME"
+      - name: Archive and export
+        run: |
+          # Generated rather than committed: every value in it comes from a
+          # secret or from the profile, so a checked-in copy would be a file that
+          # is wrong by definition.
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>teamID</key><string>$SLOPCODER_TEAM_ID</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>uploadSymbols</key><true/>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>codes.sand.slopcoder</key><string>$SLOPCODER_PROFILE</string>
+              <key>codes.sand.slopcoder.NotificationService</key><string>$SLOPCODER_EXTENSION_PROFILE</string>
+            </dict>
+          </dict>
+          </plist>
+          PLIST
+
+          xcodebuild -project Slopcoder.xcodeproj \
+            -scheme SlopcoderApp -configuration Release \
+            -destination generic/platform=iOS \
+            -archivePath build/slopcoder.xcarchive \
+            SLOPCODER_TEAM_ID="$SLOPCODER_TEAM_ID" \
+            SLOPCODER_PROFILE="$SLOPCODER_PROFILE" \
+            SLOPCODER_EXTENSION_PROFILE="$SLOPCODER_EXTENSION_PROFILE" \
+            archive
+          xcodebuild -exportArchive -archivePath build/slopcoder.xcarchive \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath build/ipa
+      - name: Upload to TestFlight
+        env:
+          APP_STORE_KEY_ID: ${{ secrets.APP_STORE_KEY_ID }}
+          APP_STORE_ISSUER_ID: ${{ secrets.APP_STORE_ISSUER_ID }}
+          APP_STORE_KEY_BASE64: ${{ secrets.APP_STORE_KEY_BASE64 }}
+        run: |
+          mkdir -p ~/private_keys
+          echo "$APP_STORE_KEY_BASE64" | base64 -d > ~/private_keys/AuthKey_$APP_STORE_KEY_ID.p8
+          xcrun altool --upload-app -f build/ipa/*.ipa -t ios \
+            --apiKey "$APP_STORE_KEY_ID" --apiIssuer "$APP_STORE_ISSUER_ID"

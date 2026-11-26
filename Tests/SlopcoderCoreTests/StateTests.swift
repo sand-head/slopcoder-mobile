@@ -399,6 +399,23 @@ private let never: SessionHub.Sleep = { _ in try await Task.sleep(nanoseconds: 6
 // navigator with nothing in between, so it is pinned here.
 @MainActor
 @Suite struct RouterTests {
+    /// Beside a list that stays on screen, picking a second row replaces the
+    /// first; it does not pile up behind a back button.
+    @MainActor @Test func choosingFromATabsListReplacesWhatWasOpen() {
+        let router = Router()
+        router.select(.session(id: "a"))
+        router.push(.reviews(sessionId: "a"))
+        #expect(router.sessions == [.session(id: "a"), .reviews(sessionId: "a")])
+        router.select(.session(id: "b"))
+        #expect(router.sessions == [.session(id: "b")])
+        #expect(router.selection(on: .sessions) == .session(id: "b"))
+        #expect(router.selection(on: .routines) == nil)
+        router.tab = .settings
+        router.select(.settings(.memory))
+        #expect(router.settings == [.settings(.memory)])
+        #expect(router.sessions == [.session(id: "b")])
+    }
+
     let id = "01a09313-3900-7f10-bff7-e2c02724d9eb"
 
     @Test func routesToTheCockpitWithTheTabBarUnderIt() {

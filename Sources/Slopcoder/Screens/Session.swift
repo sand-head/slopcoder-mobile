@@ -104,7 +104,7 @@ struct SessionScreen: View {
             Haptics.confirm()
             sheet = .terminal
         }
-        .sheet(item: $sheet) { kind in
+        .sheet(item: sheetBinding) { kind in
             switch kind {
             case .context: contextSheet
             case .usage: usageSheet
@@ -112,6 +112,33 @@ struct SessionScreen: View {
             case .terminal: TerminalSheet(sessionId: sessionId)
             }
         }
+        .fullScreenCover(isPresented: terminalCover) {
+            TerminalSheet(sessionId: sessionId, fullScreen: true)
+        }
+    }
+
+    /// Where the system can arrange a view around a fold (iOS 27.1), the terminal
+    /// takes the whole window so that it can: its screen above the fold of an
+    /// iPhone Duo set down like a laptop, its keys below. Before that it is a sheet.
+    private static var terminalTakesTheWindow: Bool {
+        if #available(iOS 27.1, *) { return true }
+        return false
+    }
+
+    private var sheetBinding: Binding<SheetKind?> {
+        Binding(
+            get: { sheet == .terminal && SessionScreen.terminalTakesTheWindow ? nil : sheet },
+            // A sheet finishing its own dismissal must not close a terminal
+            // that was opened from it.
+            set: { next in if next != nil || !(sheet == .terminal && SessionScreen.terminalTakesTheWindow) { sheet = next } }
+        )
+    }
+
+    private var terminalCover: Binding<Bool> {
+        Binding(
+            get: { sheet == .terminal && SessionScreen.terminalTakesTheWindow },
+            set: { shown in if !shown, sheet == .terminal { sheet = nil } }
+        )
     }
 
     // MARK: the transcript
@@ -152,9 +179,12 @@ struct SessionScreen: View {
                 }
                 .padding(.horizontal, Reading.column)
                 .padding(.vertical, 16)
+                .readingWidth()
             }
             .defaultScrollAnchor(.bottom)
             .scrollDismissesKeyboard(.interactively)
+            // The composer floats over the transcript; the last lines fade under it.
+            .softScrollEdges()
             .safeAreaInset(edge: .top) { ConnectionBanner().padding(.horizontal, 10) }
             .safeAreaInset(edge: .bottom) { footer(proxy, rows: rows) }
             .onChange(of: state?.pendingApprovalIds.count ?? 0) { _, _ in jumpNotice = nil }
@@ -206,7 +236,7 @@ struct SessionScreen: View {
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(Palette.foreground)
                             .frame(width: 36, height: 36)
-                            .glassSurface(cornerRadius: 18)
+                            .glassSurface(cornerRadius: 18, interactive: true)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Jump to the latest")
@@ -258,6 +288,8 @@ struct SessionScreen: View {
         .padding(.horizontal, 10)
         .padding(.top, 4)
         .padding(.bottom, 10)
+        // The same measure as the transcript above it, so the two share an edge.
+        .readingWidth()
     }
 
     // MARK: the bar
@@ -274,24 +306,39 @@ struct SessionScreen: View {
             .accessibilityLabel("\(title). \(subtitle). \(archived ? "archived · read-only. " : "")Session context")
         }
         ToolbarItem(placement: .topBarTrailing) {
-            Button { sheet = .usage } label: { ContextRing(percent: contextPercent) }
-                .accessibilityLabel(
-                    contextPercent.map { "\($0)% of context used. Session usage" } ?? "Context usage not reported yet. Session usage"
-                )
-        }
-        ToolbarItem(placement: .topBarTrailing) {
-            Menu {
-                if !archived {
-                    Button { sheet = .terminal } label: { Label("Open terminal", systemImage: "terminal") }
-                }
-                Button { sheet = .context } label: { Label("Session context", systemImage: "folder") }
-                Button { sheet = .switcher } label: { Label("Switch session", systemImage: "bubble.left.and.bubble.right") }
-                Button { sheet = .usage } label: { Label("Session usage", systemImage: "chart.bar") }
-            } label: {
-                Image(systemName: "ellipsis.circle")
+            Button { sheet = .usage } label: {
+                Label { Text("Session usage") } icon: { ContextRing(percent: contextPercent) }
             }
-            .accessibilityLabel("Session options")
+            .accessibilityLabel(
+                contextPercent.map { "\($0)% of context used. Session usage" } ?? "Context usage not reported yet. Session usage"
+            )
         }
+        // The ring shows how full the context is; when a bar runs short of room
+        // it is the item to keep.
+        .keptVisible()
+        optionsMenu
+    }
+
+    /// Everything else the session can do. Where the system has an overflow menu
+    /// of its own (iOS 27) these go into it, so there is one place to look and
+    /// it is the same place in every app; before that, a menu of ours.
+    @ToolbarContentBuilder private var optionsMenu: some ToolbarContent {
+        if #available(iOS 27.0, *) {
+            ToolbarOverflowMenu { menuItems }
+        } else {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu { menuItems } label: { Label("Session options", systemImage: "ellipsis.circle") }
+            }
+        }
+    }
+
+    @ViewBuilder private var menuItems: some View {
+        if !archived {
+            Button { sheet = .terminal } label: { Label("Open terminal", systemImage: "terminal") }
+        }
+        Button { sheet = .context } label: { Label("Session context", systemImage: "folder") }
+        Button { sheet = .switcher } label: { Label("Switch session", systemImage: "bubble.left.and.bubble.right") }
+        Button { sheet = .usage } label: { Label("Session usage", systemImage: "chart.bar") }
     }
 
     // MARK: sheets

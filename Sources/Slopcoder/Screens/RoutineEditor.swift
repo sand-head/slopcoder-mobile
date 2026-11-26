@@ -94,10 +94,10 @@ struct RoutineEditorScreen: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { if dirty { confirmingDiscard = true } else { dismiss() } }
+                    CancelBarButton { if dirty { confirmingDiscard = true } else { dismiss() } }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(creating ? "Create" : "Save") { Task { await save(thenRun: false) } }.disabled(!ready)
+                    ConfirmBarButton(creating ? "Create" : "Save") { Task { await save(thenRun: false) } }.disabled(!ready)
                 }
             }
         }
@@ -730,7 +730,7 @@ struct RoutineEditorScreen: View {
         sheet = nil
         let created = creating ? savedId : nil
         dismiss()
-        if let created { router.push(.routine(id: created, run: nil)) }
+        if let created { router.select(.routine(id: created, run: nil)) }
     }
 }
 

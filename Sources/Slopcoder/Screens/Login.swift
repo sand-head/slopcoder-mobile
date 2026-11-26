@@ -66,6 +66,7 @@ struct LoginScreen: View {
             }
             .padding(20)
             .padding(.top, 48)
+            .readingWidth(Reading.formWidth)
         }
         .scrollDismissesKeyboard(.interactively)
         .pageBackground()
@@ -159,7 +160,7 @@ struct ScanScreen: View {
             .navigationTitle("Scan a pairing code")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { CancelBarButton { dismiss() } }
             }
         }
     }
@@ -193,6 +194,8 @@ struct QRScanner: UIViewControllerRepresentable {
         var onCode: ((String) -> Bool)?
         private let session = AVCaptureSession()
         private var preview: AVCaptureVideoPreviewLayer?
+        private var rotation: AVCaptureDevice.RotationCoordinator?
+        private var rotationObservation: NSKeyValueObservation?
         private var handled = false
         private let queue = DispatchQueue(label: "codes.sand.slopcoder.scanner")
 
@@ -217,6 +220,22 @@ struct QRScanner: UIViewControllerRepresentable {
             layer.frame = view.bounds
             view.layer.addSublayer(layer)
             preview = layer
+
+            // The picture has to stay upright however the phone is turned, and on
+            // an iPhone Duo opening or closing it can turn the window without the
+            // hand moving. The coordinator knows the angle; this follows it.
+            let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: layer)
+            rotation = coordinator
+            applyRotation(coordinator.videoRotationAngleForHorizonLevelPreview)
+            rotationObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: [.new]) { [weak self] _, change in
+                guard let angle = change.newValue else { return }
+                DispatchQueue.main.async { self?.applyRotation(angle) }
+            }
+        }
+
+        private func applyRotation(_ angle: CGFloat) {
+            guard let connection = preview?.connection, connection.isVideoRotationAngleSupported(angle) else { return }
+            connection.videoRotationAngle = angle
         }
 
         override func viewDidLayoutSubviews() {

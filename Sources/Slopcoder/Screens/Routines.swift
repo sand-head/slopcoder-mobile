@@ -91,17 +91,22 @@ struct RoutinesScreen: View {
             .padding(.horizontal, 20)
             .padding(.top, 8)
             .padding(.bottom, 24)
+            .readingWidth()
         }
         .pageBackground()
         .navigationTitle("Routines")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button { editing = true } label: { Image(systemName: "plus") }.accessibilityLabel("New routine")
+                BarButton("New routine", systemImage: "plus") { editing = true }
             }
         }
         .refreshable { await load() }
         .task { await load() }
+        // Beside this list, the screen it opened can change what the list should
+        // say — a routine deleted, a share switched on — without the list ever
+        // leaving the screen. Whenever what is open changes, read again.
+        .onChange(of: router.routines) { _, _ in Task { await load() } }
         .task(id: running) {
             guard running else { return }
             while !Task.isCancelled {
@@ -152,6 +157,7 @@ struct RoutinesScreen: View {
     @ViewBuilder private func routinesTab(_ board: RoutineBoard) -> some View {
         ForEach(cards) { card in
             RoutineTile(card: card, busy: busy, onOpen: { open(card.id, run: nil) }) { setEnabled(card.id, $0) }
+                .openBeside(isOpen(card.id))
         }
         if cards.isEmpty { Hint("No routines yet.") }
         if !board.upcoming.isEmpty {
@@ -162,6 +168,7 @@ struct RoutinesScreen: View {
     @ViewBuilder private func heartbeatTab(_ board: RoutineBoard) -> some View {
         if let beat = board.heartbeat {
             HeartbeatTile(beat: beat, busy: busy, onOpen: { open(beat.id, run: nil) }) { setEnabled(beat.id, $0) }
+                .openBeside(isOpen(beat.id))
         } else {
             Hint("The heartbeat is one check-in the system owns: it wakes on its own cadence, reads the notepad it keeps, and says something only when there is something to say. Other routines can ride it.")
             AppButton("Set up the heartbeat", variant: .outline, busy: busy) { Task { await setUpHeartbeat() } }
@@ -170,7 +177,12 @@ struct RoutinesScreen: View {
     }
 
     private func open(_ id: String, run: String?) {
-        router.push(.routine(id: id, run: run))
+        router.select(.routine(id: id, run: run))
+    }
+
+    private func isOpen(_ id: String) -> Bool {
+        if case .routine(let open, _)? = router.selection(on: .routines) { return open == id }
+        return false
     }
 
     private func load() async {

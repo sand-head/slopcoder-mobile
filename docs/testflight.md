@@ -1,16 +1,26 @@
 # Getting a build into TestFlight
 
-**Where this stands.** The app is built on Linux now, by xtool, and
-`.github/workflows/release.yml` stops one step short of TestFlight: it produces
-a release `.ipa` with the version, build number, push relay and production APNs
-environment stamped in — **unsigned** — and keeps it as the run's artifact. The
-React Native build went all the way, because a Mac runner had Xcode to sign and
-upload with. Three things stand between that artifact and TestFlight, and none
-of them has been done or tested from Linux yet; [section 4](#4-what-is-left)
-lists them.
+The repo is set up so a button does the work: **Actions → release → Run
+workflow** runs `.github/workflows/release.yml`, which archives, signs, and
+uploads whatever is on the branch you pick.
 
-What follows first is the one-time setup on Apple's side, which is the same
-whichever way the last step ends up being done, and none of which needs a Mac.
+Everything else here builds on Linux with xtool. A TestFlight build is the one
+exception: it is made by Xcode on a Mac runner, because distribution signing,
+a compiled asset catalog and the upload are things only a Mac does. It builds
+the same Swift package — `project.yml` is two empty targets that link
+`Package.swift`'s products.
+
+**This path has not run yet.** It was written without a Mac to try it on;
+`ci.yml`'s `xcode` job builds the same project unsigned on every push to
+`main`, so that is where a mistake in it will show first.
+
+**If you set this up for the React Native app, one thing changed:** the app now
+shares its push keys with the notification extension through an App Group, so
+both App IDs need the App Groups capability and both provisioning profiles need
+regenerating (section 1). The release checks for this and says so if not.
+
+What follows is the one-time setup on Apple's side that a workflow cannot do
+for you. None of it needs a Mac.
 
 The app's bundle identifier is **`codes.sand.slopcoder`**. It appears in
 `xtool.yml`, the URL type in `App/Info.plist`, and the Keychain service the app
@@ -145,69 +155,54 @@ list, a name, and an SKU (any stable string; `slopcoder-mobile` is fine).
 the top of the page, shared by all keys), and a `.p8` that downloads **exactly
 once**.
 
-None of the above needs macOS.
+None of the above needs macOS. The only Mac in this pipeline is the runner.
 
-## 3. One repository variable
+## 3. Repository secrets
 
-Settings → Secrets and variables → Actions → **Variables**. It is an address
-rather than a secret.
+Settings → Secrets and variables → Actions. Base64 with `base64 -w0 <file>` on
+Linux, `base64 -i <file> | pbcopy` on macOS.
+
+| Secret | From |
+|---|---|
+| `IOS_CERTIFICATE_BASE64` | the `.p12`, base64'd |
+| `IOS_CERTIFICATE_PASSWORD` | the password you set exporting it |
+| `IOS_PROVISIONING_PROFILE_BASE64` | the app's `.mobileprovision`, base64'd |
+| `IOS_EXTENSION_PROVISIONING_PROFILE_BASE64` | the extension's `.mobileprovision`, base64'd |
+| `APP_STORE_KEY_ID` | App Store Connect API key |
+| `APP_STORE_ISSUER_ID` | App Store Connect API, above the key list |
+| `APP_STORE_KEY_BASE64` | the App Store Connect `.p8`, base64'd |
+
+These are the same seven the React Native release used; only the two profiles
+need replacing, for the App Group.
+
+And one **variable** (Secrets and variables → Actions → Variables), because it
+is a public URL and not a secret:
 
 | Variable | Value |
 |---|---|
 | `SLOPCODER_PUSH_RELAY` | the deployment that holds the APNs key, e.g. `https://slop.example.com` |
 
-The iOS SDK needs nothing set up: the release borrows it from the Xcode already
-on a macOS runner (`.github/workflows/xcode-sdk.yml`).
+Leave it unset and the build is a working app with notifications off, which
+the log says once at launch. It is deliberately not in the repository: a fork
+shipping its own build points it at its own deployment by setting the variable,
+not by editing a checked-in address.
 
-Leave `SLOPCODER_PUSH_RELAY` unset and the build is a working app with
-notifications off, which the log says once at launch. It is deliberately not in
-the repository: a fork shipping its own build points it at its own deployment by
-setting the variable, not by editing a checked-in address.
+## 4. Run it
 
-Then **Actions → release → Run workflow**, on the branch you want built. There
-is no version to pick and nothing to tag: App Store Connect enforces uniqueness
-on the **build** number and on nothing else, and that number is the workflow run
-number, which can never repeat. The marketing version is the date the build was
-cut, so TestFlight would read `2026.09.13 (35)` — true without anyone having
-decided it. The run's artifact is `slopcoder-<run>-unsigned`.
+**Actions → release → Run workflow**, on the branch you want built. There is no
+version to pick and nothing to tag.
 
-## 4. What is left
+App Store Connect enforces uniqueness on the **build** number and on nothing
+else, and that number is the workflow run number, which can never repeat. The
+marketing version is simply the date the build was cut, so TestFlight reads
+`2026.09.13 (35)` — true without anyone having decided it. Several builds in one
+day are ordinary: they differ by the build number, which is what it is for.
+Which commit a build is comes from the run that made it.
 
-Each of these is a real gap, not a formality, and nothing below has been tried.
-
-1. **An asset catalog.** App Store Connect rejects an iOS app whose icon is not
-   in a compiled asset catalog (`Assets.car`, named by `CFBundleIconName`).
-   Compiling one takes `actool`, which exists only on a Mac. The bundle xtool
-   makes carries a loose `App/AppIcon.png` instead — fine on a device, refused
-   on upload. The likely fix is to compile `App/Assets.xcassets` once on any Mac
-   (`xcrun actool App/Assets.xcassets --compile App --platform iphoneos
-   --minimum-deployment-target 17.0 --app-icon AppIcon
-   --output-partial-info-plist /tmp/icon.plist`), commit the resulting
-   `App/Assets.car`, list it under `resources:` in `xtool.yml`, and add
-   `CFBundleIconName` = `AppIcon` to `App/Info.plist`. It only needs redoing
-   when the icon changes.
-2. **Distribution signing.** xtool signs for development — a registered device,
-   through `xtool auth` — and has no option to sign with a distribution
-   certificate and a provisioning profile you hand it. The unsigned `.ipa` has
-   to be re-signed: both bundles, extension first, each with its own profile
-   embedded and its own entitlements (`App/*.entitlements`, with the team prefix
-   filled in). On Linux the candidates are `rcodesign` (the `apple-codesign`
-   project) and `zsign`; on a Mac, `codesign`. Whichever it is will want the
-   `.p12`, its password and the two profiles from section 1 as secrets.
-3. **Upload.** xtool has none. Apple's Transporter (`iTMSTransporter`) is
-   distributed for Linux and takes the App Store Connect API key from section 2;
-   `xcrun altool` is the Mac equivalent the old workflow used.
-
-The shortest route that is known to work is a small macOS job appended to the
-release workflow that downloads the unsigned artifact, adds the asset catalog,
-signs with `codesign` and uploads with `altool` — the compile stays on Linux,
-and the Mac does only what only a Mac can. A Linux-only route is plausible with
-the tools above and unproven.
-
-Once a build is in: processing takes ten minutes or so. **Internal testing** —
-up to 100 people on your team — needs no review and is the fast path to your own
-phone. **External testing** needs a Beta App Review, typically a day, and needs
-the app's description and a contact email filled in first.
+Processing takes ten minutes or so. **Internal testing** — up to 100 people on
+your team — needs no review and is the fast path to your own phone. **External
+testing** needs a Beta App Review, typically a day, and needs the app's
+description and a contact email filled in first.
 
 ---
 
@@ -231,6 +226,10 @@ the app's description and a contact email filled in first.
   between the entitlement files, which `PackagingTests` pins.
 - **An extension's version must equal its app's.** `scripts/stamp.py` writes the
   same two values into both plists; do not stamp one by hand.
-- **Re-signing replaces entitlements, it does not merge them.** Sign the
-  extension with the extension's file and the app with the app's, or the build
-  installs and then cannot register for push.
+- **`exportArchive` errors are usually the keychain, not the profile.** The
+  workflow adds its throwaway keychain to the search list and extends its lock
+  timeout to an hour for exactly this reason; if you change that step, those two
+  lines are the ones to keep.
+- **Signing is manual for Release** and deliberately so: CI installs one
+  specific profile per bundle, and letting Xcode pick means it picks something
+  else on a machine you cannot see.

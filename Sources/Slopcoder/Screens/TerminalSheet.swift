@@ -29,7 +29,46 @@ struct TerminalSheet: View {
         }
     }
 
+    /// Presented over the whole window rather than as a sheet. That is how it is
+    /// shown where the system can arrange it around a fold.
+    var fullScreen = false
+
     var body: some View {
+        layout
+            .background(TerminalSheet.ground.ignoresSafeArea())
+            .preferredColorScheme(.dark)
+            .onDisappear { terminal.detach() }
+    }
+
+    /// The screen, and the keys a phone keyboard lacks.
+    ///
+    /// Two views that belong side by side or one above the other is exactly what
+    /// an arrangement view is for, so where there is one (iOS 27.1) the system
+    /// places them: keys under the screen when the window is tall, beside it when
+    /// it is wide, and — on an iPhone Duo folded like a laptop — the screen on
+    /// the upper half and the keys on the lower, with nothing in the fold. The
+    /// keys ask for only the room they need, so on a flat display this is the
+    /// same picture as the plain stack below.
+    @ViewBuilder private var layout: some View {
+        if #available(iOS 27.1, *), fullScreen {
+            ArrangementView {
+                screen
+            } secondary: {
+                ArrangedKeyPad(onKey: { terminal.send($0) }, onKeyboard: { typing.toggle() })
+                    .splitArrangementFixedLayoutSize()
+            }
+            .arrangementViewStyle(.split)
+        } else {
+            VStack(spacing: 0) {
+                screen
+                TerminalKeyPad(column: false, onKey: { terminal.send($0) }, onKeyboard: { typing.toggle() })
+            }
+            .presentationDetents([.fraction(0.85)])
+            .presentationDragIndicator(.visible)
+        }
+    }
+
+    private var screen: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
                 Text(terminal.title.isEmpty ? "terminal" : terminal.title)
@@ -43,13 +82,14 @@ struct TerminalSheet: View {
                     .lineLimit(1)
                 Button { dismiss() } label: {
                     Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(TerminalSheet.ink)
-                        .frame(width: 32, height: 32)
+                        .frame(width: 44, height: 44)
                 }
                 .accessibilityLabel("Close terminal")
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 14)
-            .padding(.bottom, 8)
+            .padding(.leading, 16)
+            .padding(.trailing, 6)
+            .padding(.top, 8)
+            .padding(.bottom, 2)
 
             GeometryReader { proxy in
                 ScrollViewReader { reader in
@@ -77,53 +117,15 @@ struct TerminalSheet: View {
                         if pinned { reader.scrollTo(TerminalSheet.end, anchor: .bottom) }
                     }
                 }
+                // The shell is told the size of the screen it actually has, and
+                // told again whenever that changes: a rotation, a fold, the
+                // other app in Split View being given more room.
                 .onAppear { attach(proxy.size) }
                 .onChange(of: proxy.size) { _, size in attach(size) }
             }
 
-            keyRow
             TerminalKeyboard(focused: $typing, onText: { terminal.send($0) }).frame(width: 0, height: 0)
         }
-        .background(TerminalSheet.ground.ignoresSafeArea())
-        .presentationDetents([.fraction(0.85)])
-        .presentationDragIndicator(.visible)
-        .preferredColorScheme(.dark)
-        .onDisappear { terminal.detach() }
-    }
-
-    /// The keys a phone keyboard has no key for. Ctrl-C is the one that matters —
-    /// it is the whole reason for typing into a terminal from a phone at all —
-    /// but a shell without arrows or tab is a text box.
-    private var keyRow: some View {
-        let keys: [(label: String, send: String)] = [
-            ("^C", TerminalKeys.ctrlC), ("^D", TerminalKeys.ctrlD), ("esc", TerminalKeys.escape), ("tab", TerminalKeys.tab),
-            ("↑", TerminalKeys.up), ("↓", TerminalKeys.down), ("←", TerminalKeys.left), ("→", TerminalKeys.right),
-        ]
-        return HStack(spacing: 6) {
-            ForEach(keys, id: \.label) { key in
-                Button { terminal.send(key.send) } label: {
-                    Text(key.label)
-                        .font(AppFont.mono(12))
-                        .foregroundStyle(TerminalSheet.ink)
-                        .frame(maxWidth: .infinity, minHeight: 36)
-                        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: Radius.sm))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(key.label)
-            }
-            Button { typing.toggle() } label: {
-                Image(systemName: "keyboard")
-                    .font(.system(size: 13))
-                    .foregroundStyle(TerminalSheet.ink)
-                    .frame(maxWidth: .infinity, minHeight: 36)
-                    .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: Radius.sm))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Type a command")
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .overlay(alignment: .top) { Color.white.opacity(0.08).frame(height: 1) }
     }
 
     private func attach(_ size: CGSize) {
@@ -131,6 +133,73 @@ struct TerminalSheet: View {
         let cols = max(20, Int((size.width - 20) / LiveTerminal.cellWidth))
         let rows = max(6, Int(size.height / LiveTerminal.lineHeight))
         terminal.attach(baseUrl: seam.baseUrl, apiKey: seam.apiKey, sessionId: sessionId, cols: cols, rows: rows)
+    }
+}
+/// The keys a phone keyboard has no key for. Ctrl-C is the one that matters —
+/// it is the whole reason for typing into a terminal from a phone at all — but
+/// a shell without arrows or tab is a text box.
+///
+/// A row under the screen, or a column beside it.
+struct TerminalKeyPad: View {
+    let column: Bool
+    let onKey: (String) -> Void
+    let onKeyboard: () -> Void
+
+    private static let ink = Color(css: TerminalPalette.foreground)
+    private static let keys: [(label: String, name: String, send: String)] = [
+        ("^C", "Control C", TerminalKeys.ctrlC), ("^D", "Control D", TerminalKeys.ctrlD),
+        ("esc", "Escape", TerminalKeys.escape), ("tab", "Tab", TerminalKeys.tab),
+        ("↑", "Up", TerminalKeys.up), ("↓", "Down", TerminalKeys.down),
+        ("←", "Left", TerminalKeys.left), ("→", "Right", TerminalKeys.right),
+    ]
+
+    var body: some View {
+        Group {
+            if column {
+                // Two abreast, so the arrows sit as pairs and the column stays narrow.
+                LazyVGrid(columns: [GridItem(.fixed(48), spacing: 6), GridItem(.fixed(48), spacing: 6)], spacing: 6) { buttons }
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .overlay(alignment: .leading) { Color.white.opacity(0.08).frame(width: 1).padding(.leading, -10) }
+            } else {
+                HStack(spacing: 6) { buttons }
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .overlay(alignment: .top) { Color.white.opacity(0.08).frame(height: 1).padding(.top, -8) }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+    }
+
+    @ViewBuilder private var buttons: some View {
+        ForEach(TerminalKeyPad.keys, id: \.label) { key in
+            Button { onKey(key.send) } label: { cap { Text(key.label).font(AppFont.mono(12)) } }
+                .buttonStyle(.plain)
+                .accessibilityLabel(key.name)
+        }
+        Button(action: onKeyboard) { cap { Image(systemName: "keyboard").font(.system(size: 13)) } }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Type a command")
+    }
+
+    private func cap(@ViewBuilder _ label: () -> some View) -> some View {
+        label()
+            .foregroundStyle(TerminalKeyPad.ink)
+            .frame(maxWidth: .infinity, minHeight: column ? 44 : 36)
+            .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: Radius.sm))
+            .contentShape(Rectangle())
+    }
+}
+
+/// The key pad inside an arrangement: a row when it is placed under the screen,
+/// a column when it is placed beside it.
+@available(iOS 27.1, *)
+private struct ArrangedKeyPad: View {
+    let onKey: (String) -> Void
+    let onKeyboard: () -> Void
+    @Environment(\.splitArrangementAxis) private var axis
+
+    var body: some View {
+        TerminalKeyPad(column: axis == .horizontal, onKey: onKey, onKeyboard: onKeyboard)
     }
 }
 #endif

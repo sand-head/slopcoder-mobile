@@ -60,7 +60,7 @@ struct FacetsPage: View {
         .navigationTitle("Facets")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button { editing = .facet(nil) } label: { Image(systemName: "plus") }.accessibilityLabel("New facet")
+                BarButton("New facet", systemImage: "plus") { editing = .facet(nil) }
             }
         }
         .confirms($confirmation)
@@ -132,7 +132,7 @@ struct SkillsPage: View {
         .navigationTitle("Skills")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button { editing = .skill(nil) } label: { Image(systemName: "plus") }.accessibilityLabel("New skill")
+                BarButton("New skill", systemImage: "plus") { editing = .skill(nil) }
             }
         }
         .confirms($confirmation)
@@ -206,7 +206,7 @@ struct MemoryPage: View {
         .navigationTitle("Memory")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button { editing = .memory(nil) } label: { Image(systemName: "plus") }.accessibilityLabel("New entry")
+                BarButton("New entry", systemImage: "plus") { editing = .memory(nil) }
             }
         }
         .confirms($confirmation)

@@ -32,8 +32,7 @@ struct ChannelsPage: View {
         .navigationTitle("Channels")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button { editing = ChannelDraftTarget(channel: nil) } label: { Image(systemName: "plus") }
-                    .accessibilityLabel("Connect a channel")
+                BarButton("Connect a channel", systemImage: "plus") { editing = ChannelDraftTarget(channel: nil) }
             }
         }
         .confirms($confirmation)

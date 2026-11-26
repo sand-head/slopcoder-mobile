@@ -22,6 +22,7 @@ struct SettingsScroll<Content: View>: View {
             }
             .padding(20)
             .padding(.bottom, 20)
+            .readingWidth()
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollDismissesKeyboard(.interactively)
@@ -397,10 +398,10 @@ struct EditorSheet<Content: View>: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { if dirty { discarding = true } else { dismiss() } }
+                    CancelBarButton { if dirty { discarding = true } else { dismiss() } }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    if !confirm.isEmpty { Button(confirm, action: onConfirm).disabled(!ready) }
+                    if !confirm.isEmpty { ConfirmBarButton(confirm, action: onConfirm).disabled(!ready) }
                 }
             }
         }

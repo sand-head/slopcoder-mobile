@@ -21,7 +21,7 @@ struct AppSheet<Content: View>: View {
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { ConfirmBarButton("Done") { dismiss() } }
             }
         }
         .presentationDetents(detents)

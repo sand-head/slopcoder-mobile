@@ -124,22 +124,32 @@ struct RoutineScreen: View {
                 .accessibilityLabel("\(routine.name) enabled")
             }
         }
-        ToolbarItem(placement: .topBarTrailing) {
-            if let routine {
-                Menu {
-                    if let sessionId = routine.sessionId {
-                        Button { router.push(.session(id: sessionId)) } label: { Label("Open session", systemImage: "bubble.left") }
-                    }
-                    // The heartbeat is the system's: its prompt and triggers are not a form.
-                    if !isBeat {
-                        Button { editing = EditTarget(addTrigger: false) } label: { Label("Edit", systemImage: "pencil") }
-                    }
-                    Button(role: .destructive) { confirmingDelete = true } label: { Label("Delete", systemImage: "trash") }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
+        optionsMenu
+    }
+
+    /// In the system's own overflow menu where there is one (iOS 27).
+    @ToolbarContentBuilder private var optionsMenu: some ToolbarContent {
+        if #available(iOS 27.0, *) {
+            ToolbarOverflowMenu { options }
+        } else {
+            ToolbarItem(placement: .topBarTrailing) {
+                if routine != nil {
+                    Menu { options } label: { Label("More", systemImage: "ellipsis.circle") }
                 }
-                .accessibilityLabel("More")
             }
+        }
+    }
+
+    @ViewBuilder private var options: some View {
+        if let routine {
+            if let sessionId = routine.sessionId {
+                Button { router.push(.session(id: sessionId)) } label: { Label("Open session", systemImage: "bubble.left") }
+            }
+            // The heartbeat is the system's: its prompt and triggers are not a form.
+            if !isBeat {
+                Button { editing = EditTarget(addTrigger: false) } label: { Label("Edit", systemImage: "pencil") }
+            }
+            Button(role: .destructive) { confirmingDelete = true } label: { Label("Delete", systemImage: "trash") }
         }
     }
 
@@ -174,6 +184,7 @@ struct RoutineScreen: View {
                 }
             }
             .padding(20)
+            .readingWidth()
         }
         .scrollDismissesKeyboard(.interactively)
     }

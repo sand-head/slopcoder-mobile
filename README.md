@@ -112,7 +112,7 @@ libimobiledevice tools. Or install [Swift 6.4](https://www.swift.org/install/lin
 
 ```bash
 swift build          # the core, and a parse of everything else
-swift test           # 207 tests; needs no SDK and no network
+swift test           # 209 tests; needs no SDK and no network
 ```
 
 ### Building the app
@@ -153,8 +153,39 @@ with it; `devcontainer.json` has the line to uncomment.
   extracts. The intents in `Sources/Slopcoder/Intents/` compile, but a Linux build does not
   list them with the system. Deep links (`slopcoder://session/<id>`) are unaffected.
 - **Development signing only, and no upload.** `xtool dev run` signs for a registered
-  device. Distribution signing and TestFlight are not wired; see
-  [docs/testflight.md](docs/testflight.md).
+  device. A TestFlight build is therefore made by Xcode on a Mac runner (`release.yml`),
+  which also gets the full icon set; see [docs/testflight.md](docs/testflight.md).
+
+### Layout: one app, any width
+
+The window is not assumed to be a phone held upright. It may be an iPhone in landscape,
+the outer or inner display of an iPhone Duo, or half of a Split View, and it changes size
+while the app is running. The rules the code follows, which are Apple's
+([Preparing your app for iPhone Duo](https://developer.apple.com/documentation/technologyoverviews/preparing-your-app-for-iphone-duo),
+[Designing for iPhone Duo](https://developer.apple.com/design/human-interface-guidelines/designing-for-iphone-duo)):
+
+- **Two layouts, chosen by size class, never by device.** Compact width is a list that
+  pushes what it opens; regular width is the list with what it opened beside it. Each tab
+  is one `NavigationSplitView` (`SplitTab` in `App.swift`) that does both, so opening or
+  closing a Duo mid-sentence keeps the draft, the scroll position and the screen you were
+  on. `Router.select` is what a list row calls: beside a list, a second pick replaces the
+  first instead of stacking on it.
+- **No orientation lock and no full-screen requirement** in `App/Info.plist`; either gets
+  an app scaled instead of laid out. A test holds that.
+- **The bars are the system's.** It stands them on their side on a Duo, so every bar
+  button has a symbol and a title (`BarButton`, `ConfirmBarButton`, `CancelBarButton`),
+  and per-screen menus go into the system overflow menu on iOS 27.
+- **Reading has a measure.** `readingWidth()` caps a column at 760 points and centres it,
+  so a transcript does not run the width of an unfolded display.
+- **The terminal uses an `ArrangementView`** (iOS 27.1): screen above keys, or beside
+  them in landscape, and — on a Duo folded like a laptop — screen on the upper half, keys
+  on the lower, nothing in the fold. Earlier systems get the same two views in a stack.
+- **iOS 26**: Liquid Glass on what floats over content (the composer, the jump button), a
+  tab bar that minimises on scroll, soft scroll edges under the composer, and the system's
+  confirm and cancel buttons in sheets.
+
+None of this has been seen on a device. It compiles against the iOS 27.2 SDK, and CI's
+`simulator` job launches the app on a simulated iPhone and iPhone Duo and keeps screenshots.
 
 ### Design notes
 
@@ -169,7 +200,8 @@ with it; `devcontainer.json` has the line to uncomment.
 ## Requirements
 
 iOS 17 or later (the React Native app supported 16; the port uses the Observation
-framework, which is 17+). iPhone, portrait.
+framework, which is 17+). iPhone, in any orientation and at any size the system gives the
+window — see [Layout](#layout-one-app-any-width).
 
 Swift 6.4 and xtool 1.24 on the build machine, and an iOS SDK from a current Xcode (the
 React Native build used Xcode 27.2's). One API newer than iOS 17 is used — `glassEffect`,
@@ -188,23 +220,34 @@ warm, and refills it by itself when GitHub has expired it. Apple's files never l
 repository's cache. This is the pattern other xtool projects use; xtool's own CI goes one
 further and runs a Linux VM on a Mac to mount Xcode directly.
 
-- **`ci.yml`**, on every push and pull request:
+- **`ci.yml`**, on every push to `main`. Development happens on Forgejo, which mirrors
+  `main` to GitHub, so this runs after a change merges, not on its branch:
   - `test` — builds the package and runs the tests on Linux. No SDK.
   - `ios` — builds the unsigned `.ipa` and a simulator build with xtool, on Linux.
-  - `simulator` — on a Mac runner, opens the Linux-built app on a simulated iPhone, fails
-    if it exits within 15 seconds, and keeps a screenshot as an artifact.
+  - `simulator` — on a Mac runner, opens the Linux-built app on a simulated iPhone and a
+    simulated iPhone Duo, fails if it exits within 15 seconds on either, and keeps a
+    screenshot of each as an artifact.
+  - `xcode` — builds the release's Xcode project unsigned, so a change that breaks a
+    release is found when it reaches `main`, not on release day.
 - **`release.yml`**, started by hand: runs the tests, stamps the version (the date), the
   build number (the run number), the push relay (`SLOPCODER_PUSH_RELAY`, a repository
-  variable) and the production APNs environment with `scripts/stamp.py`, builds in release
-  configuration, and keeps the unsigned `.ipa` as the run's artifact. It does not sign for
-  distribution or upload — the React Native release did, on a Mac runner.
+  variable) and the production APNs environment with `scripts/stamp.py`, then on a Mac
+  runner archives with Xcode, signs for distribution and uploads to TestFlight. Secrets
+  and setup are in [docs/testflight.md](docs/testflight.md).
 
-The compiling is all on Linux; the Mac runner only lends files and hosts the simulator.
+A release is the one build made by Xcode rather than xtool: distribution signing, a compiled
+asset catalog and the upload are things only a Mac does. It is the same package —
+`project.yml` (for XcodeGen) is two empty targets that link `Package.swift`'s products, and
+the generated project is never committed.
+
+Day-to-day compiling is all on Linux; in `ci.yml` the Mac runners lend files, host the
+simulator and check the release project.
 
 None of these has run on a runner yet. The Linux half has been replayed by hand — the
 lending script run against a real Xcode 27.2, a slim SDK installed from its output, and the
 `.ipa` and the simulator build made from a clean copy of the tree. The Mac half (finding
-Xcode on the runner, the cross-OS cache, the simulator launch) is what a first run will test.
+Xcode on the runner, the cross-OS cache, the simulator launch, and the whole Xcode build of
+`project.yml` that a release depends on) is what a first run will test.
 
 ## Siri
 
@@ -270,7 +313,8 @@ Not verified:
 - Anything at run time. The app has never been launched: no screen has been seen, no
   sign-in made, no push received. The screens follow the React Native ones in structure
   and wording, not pixel for pixel; the session switcher is a sheet rather than a drawer,
-  and code blocks are not syntax-highlighted.
+  and code blocks are not syntax-highlighted. The wide and folded layouts are new and have
+  no React Native counterpart to compare with.
 - Signing with a real identity, and installing on a phone (`xtool dev run`).
 - The dev container image, and the workflows on an actual runner (see [CI](#ci)).
 

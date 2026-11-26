@@ -74,9 +74,8 @@ struct ConnectionsPage: View {
                         Button { adding = choice } label: { Label("\(choice.label) · \(choice.note)", systemImage: "key") }
                     }
                 } label: {
-                    Image(systemName: "plus")
+                    Label("Add provider", systemImage: "plus")
                 }
-                .accessibilityLabel("Add provider")
             }
         }
         .confirms($confirmation)

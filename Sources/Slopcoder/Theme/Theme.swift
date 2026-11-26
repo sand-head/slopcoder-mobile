@@ -179,6 +179,11 @@ enum AppFont {
 /// so the transcript, a routine's answer and a sub-session's tail cannot drift
 /// apart.
 enum Reading {
+    /// The widest a column of reading gets. Past this a line is too long to
+    /// follow back to its start, however much screen there is.
+    static let maxWidth: CGFloat = 760
+    /// The widest a short form gets: a sign-in is not a document.
+    static let formWidth: CGFloat = 460
     /// Space either side of the transcript column.
     static let column: CGFloat = 21
     static let proseSize: CGFloat = 14
@@ -205,6 +210,16 @@ struct ThemedImage: View {
 
     var body: some View {
         Image(scheme == .dark ? night : day, bundle: .module).resizable().scaledToFit()
+    }
+}
+extension View {
+    /// Hold content to a readable measure and centre it in whatever is left.
+    ///
+    /// On a phone held upright this does nothing — the screen is narrower than
+    /// the measure. In landscape, on the inner display of an iPhone Duo, or in a
+    /// wide Split View half, it is what stops prose running the width of the glass.
+    func readingWidth(_ width: CGFloat = Reading.maxWidth) -> some View {
+        frame(maxWidth: width, alignment: .leading).frame(maxWidth: .infinity, alignment: .center)
     }
 }
 #endif

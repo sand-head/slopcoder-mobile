@@ -22,17 +22,23 @@ struct ArtifactsScreen: View {
                 }
                 ForEach(artifacts ?? []) { artifact in
                     ArtifactListCard(artifact: artifact, onOpen: { open(artifact) }, onDelete: { deleting = artifact })
+                        .openBeside(isOpen(artifact))
                 }
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
             .padding(.bottom, 24)
+            .readingWidth()
         }
         .pageBackground()
         .navigationTitle("Artifacts")
         .navigationBarTitleDisplayMode(.large)
         .refreshable { await load() }
         .task { await load() }
+        // Beside this list, the screen it opened can change what the list should
+        // say — a routine deleted, a share switched on — without the list ever
+        // leaving the screen. Whenever what is open changes, read again.
+        .onChange(of: router.artifacts) { _, _ in Task { await load() } }
         .confirmationDialog(
             deleting.map { "Delete ‘\($0.title)’?" } ?? "",
             isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
@@ -49,7 +55,12 @@ struct ArtifactsScreen: View {
     }
 
     private func open(_ artifact: ArtifactSummary) {
-        router.push(.artifact(id: artifact.id, version: nil))
+        router.select(.artifact(id: artifact.id, version: nil))
+    }
+
+    private func isOpen(_ artifact: ArtifactSummary) -> Bool {
+        if case .artifact(let open, _)? = router.selection(on: .artifacts) { return open == artifact.id }
+        return false
     }
 
     private func load() async {
@@ -69,6 +80,7 @@ struct ArtifactsScreen: View {
         do {
             _ = try await seam.deleteArtifact(artifact.id)
             Haptics.confirm()
+            if isOpen(artifact) { router.artifacts = [] }
         } catch {
             Haptics.error()
         }
@@ -216,10 +228,9 @@ struct ArtifactScreen: View {
             Button { showingDetails = true } label: { Label("Details", systemImage: "info.circle") }
             Button(role: .destructive) { confirmingDelete = true } label: { Label("Delete", systemImage: "trash") }
         } label: {
-            Image(systemName: "ellipsis.circle")
+            Label("More", systemImage: "ellipsis.circle")
         }
         .disabled(busy)
-        .accessibilityLabel("More")
     }
 
     private var details: String {
@@ -335,7 +346,7 @@ private struct ArtifactBody: View {
             ScrollView {
                 Group {
                     if artifact.format == .markdown {
-                        Prose(text, size: .document)
+                        Prose(text, size: .document).readingWidth()
                     } else {
                         // Not markdown: shown exactly as it is, and never wrapped —
                         // a wrapped log line is a different log line.

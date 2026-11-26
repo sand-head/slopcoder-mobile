@@ -53,6 +53,7 @@ struct ReviewsScreen: View {
                 }
             }
             .padding(20)
+            .readingWidth()
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .pageBackground()
@@ -160,6 +161,7 @@ struct ReviewDetailScreen: View {
                 }
             }
             .padding(20)
+            .readingWidth()
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .pageBackground()
