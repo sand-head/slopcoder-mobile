@@ -72,25 +72,11 @@ struct Composer: View {
     @State private var takingPhoto = false
     @FocusState private var focused: Bool
 
-    private var current: ModelCandidate? {
-        options.selection.auto ? nil : findCandidate(models, connectionId: options.selection.connectionId, modelId: options.selection.modelId)
-    }
-
-    private var caps: ThinkingCaps? {
-        let candidate = options.selection.auto
-            ? findCandidate(models, connectionId: routed?.connectionId, modelId: routed?.modelId)
-            : current
-        return candidate.map(ThinkingCaps.init)
-    }
-
-    private var modelLabel: String {
-        options.selection.auto ? "Auto" : current?.modelDisplayName ?? "Model"
-    }
-
-    /// A stale pick is shown as what it runs as, not as what was picked.
-    private var shownThinking: ThinkingLevel? {
-        options.thinking.map { runsAs($0, caps) }
-    }
+    private var dials: TurnDials { TurnDials(options: options, models: models, routed: routed) }
+    private var current: ModelCandidate? { dials.current }
+    private var caps: ThinkingCaps? { dials.caps }
+    private var modelLabel: String { dials.modelLabel }
+    private var shownThinking: ThinkingLevel? { dials.shownThinking }
 
     private var room: Int { ImageRules.maxImages - (images?.pending.count ?? 0) }
 
@@ -166,8 +152,9 @@ struct Composer: View {
     }
 
     /// In a session: one line that grows, as a chat composer is everywhere else.
-    /// Attach on the left, send on the right, and everything that is a setting
-    /// rather than a message — the model, the turn's dials — behind the plus.
+    /// Attach on the left, send on the right. The model and the turn's dials are
+    /// the session's, not the message's, and live with the session: behind its
+    /// title.
     private var pill: some View {
         VStack(alignment: .leading, spacing: 6) {
             // "Idle" is the absence of news; only say what is happening.
@@ -228,9 +215,6 @@ struct Composer: View {
             if attachments != nil {
                 Button { sheet = .attach } label: { Label("Repositories & nodes", systemImage: "folder") }
             }
-            Divider()
-            Button { sheet = .model } label: { Label("Model: \(modelLabel)", systemImage: "cpu") }
-            Button { sheet = .turn } label: { Label(turnSummary, systemImage: "slider.horizontal.3") }
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 17, weight: .regular))
@@ -240,16 +224,7 @@ struct Composer: View {
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
-        .accessibilityLabel("Attach, model and turn settings")
-    }
-
-    /// The turn's dials in a line, so what is set shows without opening the sheet.
-    private var turnSummary: String {
-        var parts: [String] = []
-        if let shownThinking { parts.append(levelLabel(shownThinking, caps)) }
-        if options.approval != .dangerous { parts.append(ApprovalChoice.label(for: options.approval)) }
-        if let facet = options.facet, !facet.isEmpty { parts.append(facet) }
-        return parts.isEmpty ? "Turn settings" : "Turn settings: \(parts.joined(separator: ", "))"
+        .accessibilityLabel("Attach")
     }
 
     @ViewBuilder private var chips: some View {
@@ -328,35 +303,13 @@ struct Composer: View {
     }
 
     private var modelSheet: some View {
-        let ordered = orderModels(models)
-        let options = [SheetOption(key: "auto", label: "Auto", description: "Let the router pick per turn")]
-            + ordered.map { model in
-                SheetOption(
-                    key: Composer.modelKey(model.connectionId, model.modelId),
-                    label: model.modelDisplayName.isEmpty ? model.modelId : model.modelDisplayName,
-                    description: model.connectionName
-                )
-            }
-        let selected = current.map { Composer.modelKey($0.connectionId, $0.modelId) } ?? "auto"
-        return AppSheet(title: "Select model") {
-            SheetGroup(options: options, selected: selected) { key in
-                // Keyed by connection and id: the same model on two connections
-                // is two rows, and must not collide.
-                if let picked = models.first(where: { Composer.modelKey($0.connectionId, $0.modelId) == key }) {
-                    self.options.selection = ModelSelection(auto: false, connectionId: picked.connectionId, modelId: picked.modelId)
-                } else {
-                    self.options.selection = .autoRoute
-                }
-                sheet = nil
-            }
-            if models.isEmpty { Mono("No providers connected yet.") }
+        AppSheet(title: "Select model") {
+            ModelPicker(options: $options, models: models) { sheet = nil }
         }
     }
 
     private var turnSheet: some View {
-        let offered = offeredLevels(caps)
-        let caps = self.caps
-        return AppSheet(title: "Turn settings") {
+        AppSheet(title: "Turn settings") {
             if launcher {
                 Button { sheet = .model } label: {
                     HStack {
@@ -369,34 +322,113 @@ struct Composer: View {
                 }
                 .buttonStyle(.plain)
             }
-            SheetSegments(
-                label: "thinking",
-                options: [SheetOption(key: "auto", label: "Auto")] + offered.map { SheetOption(key: levelKey($0), label: levelLabel($0, caps)) },
-                selected: shownThinking.map(levelKey) ?? "auto"
-            ) { key in
-                options.thinking = offered.first { levelKey($0) == key }
-            }
-            SheetGroup(
-                label: "approvals",
-                options: ApprovalChoice.all.map { SheetOption(key: $0.key, label: $0.label, description: $0.description) },
-                selected: ApprovalChoice.all.first { $0.value == options.approval }?.key ?? "dangerous"
-            ) { key in
-                options.approval = ApprovalChoice.all.first { $0.key == key }?.value ?? .dangerous
-            }
-            if !facets.isEmpty {
-                SheetGroup(
-                    label: "facet",
-                    options: [SheetOption(key: "", label: "Default")] + facets.map { SheetOption(key: $0.name, label: $0.name, description: $0.description) },
-                    selected: options.facet ?? ""
-                ) { key in
-                    options.facet = key.isEmpty ? nil : key
-                }
-            }
+            TurnSettingsFields(options: $options, dials: dials, facets: facets)
         }
     }
 
     static func modelKey(_ connectionId: String, _ modelId: String) -> String {
         "\(connectionId)/\(modelId)"
+    }
+}
+
+/// What a turn's dials say, worked out once for whoever shows them: the
+/// composer on the sessions page, and a session's own panel.
+struct TurnDials {
+    let options: TurnOptions
+    let models: [ModelCandidate]
+    /// The model an Auto session last routed to, whose dial this one follows.
+    var routed: (connectionId: String?, modelId: String?)?
+
+    var current: ModelCandidate? {
+        options.selection.auto ? nil : findCandidate(models, connectionId: options.selection.connectionId, modelId: options.selection.modelId)
+    }
+
+    var caps: ThinkingCaps? {
+        let candidate = options.selection.auto
+            ? findCandidate(models, connectionId: routed?.connectionId, modelId: routed?.modelId)
+            : current
+        return candidate.map(ThinkingCaps.init)
+    }
+
+    var modelLabel: String {
+        options.selection.auto ? "Auto" : current?.modelDisplayName ?? "Model"
+    }
+
+    /// A stale pick is shown as what it runs as, not as what was picked.
+    var shownThinking: ThinkingLevel? {
+        options.thinking.map { runsAs($0, caps) }
+    }
+
+    var thinkingLabel: String { shownThinking.map { levelLabel($0, caps) } ?? "Auto" }
+    var approvalLabel: String { ApprovalChoice.label(for: options.approval) }
+}
+
+/// Auto, then every model on every connection.
+struct ModelPicker: View {
+    @Binding var options: TurnOptions
+    let models: [ModelCandidate]
+    var onPicked: () -> Void = {}
+
+    var body: some View {
+        let ordered = orderModels(models)
+        let choices = [SheetOption(key: "auto", label: "Auto", description: "Let the router pick per turn")]
+            + ordered.map { model in
+                SheetOption(
+                    key: Composer.modelKey(model.connectionId, model.modelId),
+                    label: model.modelDisplayName.isEmpty ? model.modelId : model.modelDisplayName,
+                    description: model.connectionName
+                )
+            }
+        let current = options.selection.auto
+            ? nil
+            : findCandidate(models, connectionId: options.selection.connectionId, modelId: options.selection.modelId)
+        let selected = current.map { Composer.modelKey($0.connectionId, $0.modelId) } ?? "auto"
+        SheetGroup(options: choices, selected: selected) { key in
+            // Keyed by connection and id: the same model on two connections
+            // is two rows, and must not collide.
+            if let picked = models.first(where: { Composer.modelKey($0.connectionId, $0.modelId) == key }) {
+                options.selection = ModelSelection(auto: false, connectionId: picked.connectionId, modelId: picked.modelId)
+            } else {
+                options.selection = .autoRoute
+            }
+            onPicked()
+        }
+        if models.isEmpty { Mono("No providers connected yet.") }
+    }
+}
+
+/// Thinking, approvals and facet: the dials of a turn.
+struct TurnSettingsFields: View {
+    @Binding var options: TurnOptions
+    let dials: TurnDials
+    let facets: [FacetOption]
+
+    var body: some View {
+        let caps = dials.caps
+        let offered = offeredLevels(caps)
+        SheetSegments(
+            label: "thinking",
+            options: [SheetOption(key: "auto", label: "Auto")] + offered.map { SheetOption(key: levelKey($0), label: levelLabel($0, caps)) },
+            selected: dials.shownThinking.map(levelKey) ?? "auto"
+        ) { key in
+            options.thinking = offered.first { levelKey($0) == key }
+        }
+        SheetGroup(
+            label: "approvals",
+            options: ApprovalChoice.all.map { SheetOption(key: $0.key, label: $0.label, description: $0.description) },
+            selected: ApprovalChoice.all.first { $0.value == options.approval }?.key ?? "dangerous"
+        ) { key in
+            options.approval = ApprovalChoice.all.first { $0.key == key }?.value ?? .dangerous
+        }
+        if !facets.isEmpty {
+            SheetGroup(
+                label: "facet",
+                options: [SheetOption(key: "", label: "Default")] + facets.map { SheetOption(key: $0.name, label: $0.name, description: $0.description) },
+                selected: options.facet ?? ""
+            ) { key in
+                options.facet = key.isEmpty ? nil : key
+            }
+        }
     }
 }
 

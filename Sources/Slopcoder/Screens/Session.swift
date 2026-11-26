@@ -290,10 +290,7 @@ struct SessionScreen: View {
                     running: running,
                     onStop: stop,
                     stopping: state?.stopRequested ?? false,
-                    options: Binding(
-                        get: { options ?? state.map(TranscriptLayout.turnOptions) ?? TurnOptions() },
-                        set: { apply($0) }
-                    ),
+                    options: turnOptions,
                     models: models,
                     routed: state?.autoRoute == true ? (state?.connectionId, state?.selectedModel) : nil,
                     facets: facets,
@@ -333,7 +330,7 @@ struct SessionScreen: View {
             // On iOS 26 a bar gives a button its glass capsule; left plain, the
             // title would be bare text beside everything else that floats.
             .modifier(PlainBeforeGlass())
-            .accessibilityLabel("\(title). \(subtitle). \(archived ? "archived · read-only. " : "")Session context")
+            .accessibilityLabel("\(title). \(subtitle). \(archived ? "archived · read-only. " : "")Session settings")
         }
         ToolbarItem(placement: .topBarTrailing) {
             Button { sheet = .usage } label: {
@@ -368,37 +365,197 @@ struct SessionScreen: View {
         if !archived {
             Button { sheet = .terminal } label: { Label("Open terminal", systemImage: "terminal") }
         }
-        Button { sheet = .context } label: { Label("Session context", systemImage: "folder") }
+        Button { sheet = .context } label: { Label("Session settings", systemImage: "slider.horizontal.3") }
         Button { sheet = .switcher } label: { Label("Switch session", systemImage: "bubble.left.and.bubble.right") }
         Button { sheet = .usage } label: { Label("Session usage", systemImage: "chart.bar") }
     }
 
     // MARK: sheets
 
+    /// The session's dials: what it is running as, and the way to change that.
+    private var turnOptions: Binding<TurnOptions> {
+        Binding(
+            get: { options ?? state.map(TranscriptLayout.turnOptions) ?? TurnOptions() },
+            set: { apply($0) }
+        )
+    }
+
+    private var dials: TurnDials {
+        TurnDials(
+            options: turnOptions.wrappedValue, models: models,
+            routed: state?.autoRoute == true ? (state?.connectionId, state?.selectedModel) : nil
+        )
+    }
+
+    /// Everything about the session that is not the conversation: what it runs
+    /// as, what it works on, how full it is, and the ways out of it.
+    ///
+    /// The model and the turn's dials are here rather than on the composer
+    /// because they belong to the session, not to the next message.
     private var contextSheet: some View {
-        let repoCount = state?.repoNames.count ?? 0
-        return AppSheet(title: "Session context") {
-            BodyText(repoCount == 0 ? "No repositories" : "\(repoCount) \(repoCount == 1 ? "repository" : "repositories")")
-            ForEach(state?.repoNames ?? [], id: \.self) { name in Mono(name).textSelection(.enabled) }
-            if let repoError { BodyText(repoError) }
-            if repoDetails == nil, repoError == nil { BodyText("Loading workspace details…", color: Palette.mutedForeground) }
-            ForEach(repoDetails ?? [], id: \.repo) { repo in
-                VStack(alignment: .leading, spacing: 2) {
-                    BodyText(repo.repo).textSelection(.enabled)
-                    Mono(repoLine(repo)).textSelection(.enabled)
+        let dials = self.dials
+        let status = TranscriptLayout.statusLine(state) ?? ""
+        return AppSheet(title: "Session", detents: [.large]) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title).font(AppFont.sansMedium(22)).foregroundStyle(Palette.foreground)
+                HStack(spacing: 8) {
+                    StatusDot(running: running)
+                    Mono(archived ? "archived · read-only" : status.lowercased())
+                    if let handle = state?.chatHandle, !handle.isEmpty {
+                        Mono("· @\(handle)").textSelection(.enabled)
+                    }
+                }
+            }
+            .padding(.bottom, 4)
+
+            if !archived, !parentDriven {
+                PanelSection(label: "runs as") {
+                    NavigationLink {
+                        ChoicePage(title: "Model") { done in
+                            ModelPicker(options: turnOptions, models: models, onPicked: done)
+                        }
+                    } label: { PanelRow(systemImage: "cpu", title: "Model", value: dials.modelLabel) }
+                    PanelDivider()
+                    NavigationLink { thinkingPage } label: {
+                        PanelRow(systemImage: "brain", title: "Thinking", value: dials.thinkingLabel)
+                    }
+                    PanelDivider()
+                    NavigationLink { approvalsPage } label: {
+                        PanelRow(systemImage: "hand.raised", title: "Approvals", value: dials.approvalLabel)
+                    }
+                    if !facets.isEmpty {
+                        PanelDivider()
+                        NavigationLink { facetPage } label: {
+                            PanelRow(systemImage: "theatermasks", title: "Facet", value: turnOptions.wrappedValue.facet ?? "Default")
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+
+            PanelSection(label: "context") {
+                VStack(alignment: .leading, spacing: 8) {
+                    if let usage = state?.lastUsage, usage.contextWindowTokens > 0 {
+                        ContextBar(percent: contextPercent ?? 0)
+                        Mono("\(contextPercent ?? 0)% of \(usage.contextWindowTokens.formatted()) tokens on the last request")
+                    } else {
+                        Mono("No request yet.")
+                    }
+                }
+                .padding(14)
+                PanelDivider()
+                Button { sheet = .usage } label: {
+                    PanelRow(
+                        systemImage: "chart.bar", title: "Usage",
+                        value: state?.usage.estimatedCost.map { "$\(jsToFixed($0, 2))" }
+                    )
+                }
+                PanelDivider()
+                Button {
+                    sheet = nil
+                    router.push(.reviews(sessionId: sessionId))
+                } label: { PanelRow(systemImage: "checklist", title: "Code reviews") }
+            }
+            .buttonStyle(.plain)
+
+            PanelSection(label: "workspace") {
+                let names = state?.repoNames ?? []
+                if names.isEmpty, (repoDetails ?? []).isEmpty {
+                    Mono("No repositories.").padding(14)
+                }
+                if let details = repoDetails {
+                    ForEach(Array(details.enumerated()), id: \.element.repo) { index, repo in
+                        if index > 0 { PanelDivider() }
+                        workspaceRow(repo.repo, detail: repoLine(repo))
+                    }
+                } else {
+                    ForEach(Array(names.enumerated()), id: \.element) { index, name in
+                        if index > 0 { PanelDivider() }
+                        workspaceRow(name, detail: repoError ?? "loading…")
+                    }
                 }
             }
             if !archived {
-                AppField(placeholder: "Repository URL", text: $repoUrl, keyboard: .URL)
-                AppButton("Add repository", busy: addingRepo, disabled: repoUrl.trimmingCharacters(in: .whitespaces).isEmpty) {
-                    Task { await addRepository() }
+                HStack(spacing: 8) {
+                    AppField(placeholder: "Add a repository URL", text: $repoUrl, keyboard: .URL)
+                    AppButton("Add", busy: addingRepo, disabled: repoUrl.trimmingCharacters(in: .whitespaces).isEmpty) {
+                        Task { await addRepository() }
+                    }
                 }
                 if let repoMessage { BodyText(repoMessage, size: 13) }
             }
-            if let handle = state?.chatHandle, !handle.isEmpty { Mono("Agent: \(handle)").textSelection(.enabled) }
-            AppButton("Session usage", variant: .ghost) { sheet = .usage }
+
+            PanelSection {
+                if !archived {
+                    Button { sheet = .terminal } label: { PanelRow(systemImage: "terminal", title: "Open terminal") }
+                    PanelDivider()
+                }
+                Button { sheet = .switcher } label: {
+                    PanelRow(systemImage: "bubble.left.and.bubble.right", title: "Switch session")
+                }
+            }
+            .buttonStyle(.plain)
         }
         .task(id: repoMessage) { await loadWorkspace() }
+    }
+
+    private func workspaceRow(_ name: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "folder").font(.system(size: 15)).foregroundStyle(Palette.mutedForeground).frame(width: 24).padding(.top, 2)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name).font(AppFont.sans(15)).foregroundStyle(Palette.foreground).textSelection(.enabled)
+                Mono(detail).textSelection(.enabled)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+
+    private var thinkingPage: some View {
+        let caps = dials.caps
+        let offered = offeredLevels(caps)
+        return ChoicePage(title: "Thinking") { done in
+            SheetGroup(
+                options: [SheetOption(key: "auto", label: "Auto", description: "Whatever the model does by default")]
+                    + offered.map { SheetOption(key: levelKey($0), label: levelLabel($0, caps)) },
+                selected: dials.shownThinking.map(levelKey) ?? "auto"
+            ) { key in
+                var next = turnOptions.wrappedValue
+                next.thinking = offered.first { levelKey($0) == key }
+                turnOptions.wrappedValue = next
+                done()
+            }
+        }
+    }
+
+    private var approvalsPage: some View {
+        ChoicePage(title: "Approvals") { done in
+            SheetGroup(
+                options: ApprovalChoice.all.map { SheetOption(key: $0.key, label: $0.label, description: $0.description) },
+                selected: ApprovalChoice.all.first { $0.value == turnOptions.wrappedValue.approval }?.key ?? "dangerous"
+            ) { key in
+                var next = turnOptions.wrappedValue
+                next.approval = ApprovalChoice.all.first { $0.key == key }?.value ?? .dangerous
+                turnOptions.wrappedValue = next
+                done()
+            }
+        }
+    }
+
+    private var facetPage: some View {
+        ChoicePage(title: "Facet") { done in
+            SheetGroup(
+                options: [SheetOption(key: "", label: "Default")]
+                    + facets.map { SheetOption(key: $0.name, label: $0.name, description: $0.description) },
+                selected: turnOptions.wrappedValue.facet ?? ""
+            ) { key in
+                var next = turnOptions.wrappedValue
+                next.facet = key.isEmpty ? nil : key
+                turnOptions.wrappedValue = next
+                done()
+            }
+        }
     }
 
     private func repoLine(_ repo: WorkspaceRepo) -> String {
