@@ -150,6 +150,80 @@ struct SheetSegments: View {
     }
 }
 
+// MARK: - panels
+
+/// A group of rows on one card, with an optional heading over it.
+struct PanelSection<Content: View>: View {
+    var label: String?
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            if let label { Meta(label).padding(.leading, 4) }
+            VStack(alignment: .leading, spacing: 0, content: content)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Palette.card, in: RoundedRectangle(cornerRadius: Radius.xl, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Radius.xl, style: .continuous).strokeBorder(Palette.border, lineWidth: 1))
+        }
+    }
+}
+
+/// One line of a panel: a symbol, what it is, what it is set to, and — when it
+/// leads somewhere — a chevron.
+struct PanelRow: View {
+    let systemImage: String
+    let title: String
+    var value: String?
+    var chevron = true
+    var tint: Color = Palette.mutedForeground
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.system(size: 15))
+                .foregroundStyle(tint)
+                .frame(width: 24)
+            Text(title).font(AppFont.sans(15)).foregroundStyle(Palette.foreground).lineLimit(1)
+            Spacer(minLength: 8)
+            if let value {
+                Text(value).font(AppFont.sans(14)).foregroundStyle(Palette.mutedForeground).lineLimit(1)
+            }
+            if chevron {
+                Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.mutedForeground.opacity(0.7))
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(minHeight: 48)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// The hairline between two rows of a panel, starting where the words do.
+struct PanelDivider: View {
+    var body: some View {
+        Palette.border.frame(height: 1).padding(.leading, 50)
+    }
+}
+
+/// A page pushed inside a sheet to pick one of a few: pick, and it goes back.
+struct ChoicePage<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: (_ done: @escaping () -> Void) -> Content
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) { content { dismiss() } }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(Palette.background)
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
 /// Whether the server is there, said once at the top of a page.
 ///
 /// "You are offline" and "this page is a few seconds stale" deserve different
