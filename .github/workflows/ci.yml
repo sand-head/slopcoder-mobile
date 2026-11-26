@@ -124,72 +124,96 @@ jobs:
           " "$1"
           }
 
-          # simctl is not always steady on a runner that has only just started:
-          # the simulator service is still registering devices, and a command
-          # that connects in the middle of that can abort with an assertion of
-          # its own. That says nothing about the app, so try again.
+          # simctl is not always steady on a hosted runner: the simulator
+          # service can abort with an assertion of its own, or die under a
+          # device mid-boot. One more try covers the first; the second is
+          # handled below by starting the device over.
           sim() {
-            local attempt
-            for attempt in 1 2 3 4; do
-              if xcrun simctl "$@"; then return 0; fi
-              echo "simctl $1 failed (attempt $attempt); waiting before another try"
-              sleep 15
-            done
-            echo "::error::simctl $1 kept failing."
-            return 1
+            if xcrun simctl "$@"; then return 0; fi
+            echo "simctl $1 failed; one more try"
+            sleep 10
+            xcrun simctl "$@"
           }
 
           # An iPhone Duo has two displays, and simctl will not guess between
           # them: it fails and lists them as --display=N. Take one picture per
           # display it names, so both the outer and the inner screen are kept.
           shoot() {
-            local label="$1" udid="$2" display
+            local label="$1" udid="$2" display displays
             if xcrun simctl io "$udid" screenshot "screenshot-$label.png" 2> shoot.err; then
               return 0
             fi
             cat shoot.err
-            local displays
             displays=$(grep -o -- '--display=[0-9A-Za-z]*' shoot.err | sort -u)
-            if [ -z "$displays" ]; then
-              echo "::error::Could not take a screenshot on $label."
-              return 1
-            fi
+            [ -n "$displays" ] || return 1
             for display in $displays; do
-              xcrun simctl io "$udid" screenshot "$display" "screenshot-$label-display${display#--display=}.png"
+              xcrun simctl io "$udid" screenshot "$display" "screenshot-$label-display${display#--display=}.png" || return 1
             done
           }
 
-          smoke() {
-            local label="$1" udid="$2"
-            echo "::group::$label ($udid)"
-            # Boots the device if it is not booted, and waits until it is — one
-            # command, so trying again cannot trip over a half-started boot.
-            sim bootstatus "$udid" -b
-            sim install "$udid" Slopcoder.app
+          # One go at a device. Answers 0 when the app launched and stayed up,
+          # 1 when it launched and died — which is the app's fault and the
+          # thing this job exists to catch — and 2 when the simulator let us
+          # down before that could be found out.
+          attempt() {
+            local label="$1" udid="$2" launched pid
+            # Boots the device if it is not booted, and waits until it is.
+            sim bootstatus "$udid" -b || return 2
+            sim install "$udid" Slopcoder.app || return 2
             # Prints "codes.sand.slopcoder: <pid>"; the pid is a process on this Mac.
-            local launched pid
-            launched=$(sim launch "$udid" codes.sand.slopcoder | tail -1)
+            launched=$(sim launch "$udid" codes.sand.slopcoder | tail -1) || return 2
             pid="${launched##* }"
             case "$pid" in
-              ''|*[!0-9]*) echo "::error::Could not launch on $label: $launched"; exit 1 ;;
+              ''|*[!0-9]*) echo "launch did not give a pid: $launched"; return 2 ;;
             esac
             echo "launched as $pid"
             sleep 15
-            shoot "$label" "$udid"
+            # A picture is worth having, not worth failing for.
+            shoot "$label" "$udid" || echo "::warning::No screenshot on $label."
             if ! kill -0 "$pid" 2>/dev/null; then
               echo "::error::The app exited within 15 seconds of launch on $label."
-              xcrun simctl spawn "$udid" log show --last 1m --predicate 'process == "Slopcoder"' | tail -100
-              exit 1
+              xcrun simctl spawn "$udid" log show --last 1m --predicate 'process == "Slopcoder"' | tail -100 || true
+              return 1
             fi
-            # Tidying up; a failure here is not worth failing the check over.
-            xcrun simctl shutdown "$udid" || true
-            echo "::endgroup::"
+            return 0
           }
 
-          smoke iphone "$(pick plain)"
+          # Up to three goes, starting the device over between them. `required`
+          # says what to do if the simulator never cooperates: fail, or say so
+          # and move on.
+          smoke() {
+            local label="$1" udid="$2" required="$3" try result
+            echo "::group::$label ($udid)"
+            for try in 1 2 3; do
+              result=0
+              attempt "$label" "$udid" || result=$?
+              xcrun simctl shutdown "$udid" > /dev/null 2>&1 || true
+              if [ "$result" -eq 0 ]; then
+                echo "::endgroup::"
+                return 0
+              fi
+              if [ "$result" -eq 1 ]; then
+                echo "::endgroup::"
+                exit 1
+              fi
+              echo "The simulator gave out on $label (go $try of 3); starting it over."
+              sleep 10
+            done
+            echo "::endgroup::"
+            if [ "$required" = required ]; then
+              echo "::error::The $label simulator never got as far as running the app."
+              exit 1
+            fi
+            echo "::warning::The $label simulator never got as far as running the app; nothing was learned about the app there."
+          }
+
+          smoke iphone "$(pick plain)" required
           duo="$(pick duo)"
           if [ -n "$duo" ]; then
-            smoke duo "$duo"
+            # The Duo simulator is the less steady of the two on a hosted
+            # runner. If it will not run, that is a warning, not a failure:
+            # the plain iPhone has already shown whether the app starts.
+            smoke duo "$duo" optional
           else
             echo "::warning::No iPhone Duo simulator on this runner; only the plain iPhone was tried."
           fi
