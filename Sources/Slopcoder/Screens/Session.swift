@@ -151,17 +151,29 @@ struct SessionScreen: View {
         let context = rowContext
         return ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 4) {
+                // Every row is built, not just the ones in view. A lazy stack only
+                // guesses at the height of what it has not built, so the length of
+                // the transcript — and with it the scroll bar — would lurch as the
+                // guesses were corrected. Rows are compared before they are redrawn
+                // (see `DisplayRowView`), which is what keeps this affordable: a
+                // keystroke in the composer redraws none of them.
+                VStack(alignment: .leading, spacing: 4) {
                     if store?.canLoadEarlier == true || store?.loading == true || store == nil {
-                        ProgressView()
-                            .tint(Palette.mutedForeground)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .onAppear { loadEarlier(proxy, anchor: rows.first?.id) }
+                        // In a stack that builds everything, `onAppear` fires at
+                        // once, on screen or not. A lazy stack of one keeps it
+                        // meaning "scrolled into view", so earlier pages load when
+                        // the reader reaches the top and not all at the start.
+                        LazyVStack {
+                            ProgressView()
+                                .tint(Palette.mutedForeground)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .onAppear { loadEarlier(proxy, anchor: rows.first?.id) }
+                        }
                     }
 
                     ForEach(rows) { row in
-                        DisplayRowView(row: row, context: context).id(row.id)
+                        DisplayRowView(row: row, context: context).equatable().id(row.id)
                     }
 
                     // The streaming tail: the turn's text as it arrives, before it
@@ -174,11 +186,15 @@ struct SessionScreen: View {
                         .padding(.top, 6)
                     }
 
-                    Color.clear
-                        .frame(height: 1)
-                        .id(SessionScreen.bottom)
-                        .onAppear { pinned = true }
-                        .onDisappear { pinned = false }
+                    // Lazy for the same reason as the top: this is how the screen
+                    // knows whether the reader is at the end.
+                    LazyVStack {
+                        Color.clear
+                            .frame(height: 1)
+                            .onAppear { pinned = true }
+                            .onDisappear { pinned = false }
+                    }
+                    .id(SessionScreen.bottom)
                 }
                 .padding(.horizontal, Reading.column)
                 .padding(.vertical, 16)
@@ -192,13 +208,7 @@ struct SessionScreen: View {
                     proxy.scrollTo(SessionScreen.bottom, anchor: .bottom)
                 }
             })
-            // No scroll bar. The rows are built as they come into view, so the
-            // transcript's length is an estimate that is corrected as you scroll,
-            // and a bar drawn from an estimate lurches — a full screen's worth for
-            // a small drag. It also sits at the edge of the display rather than
-            // the edge of the text when the system stands its bars on their side.
-            // A bar that misreports where you are is worse than none.
-            .scrollIndicators(.hidden)
+            .modifier(IndicatorBesideText())
             .scrollDismissesKeyboard(.interactively)
             // The composer floats over the transcript; the last lines fade under it.
             .softScrollEdges()
@@ -1005,6 +1015,35 @@ private struct ContextRingImage: View {
             } else {
                 Image(systemName: "chart.pie")
             }
+        }
+    }
+}
+/// Keeps the scroll bar beside the text when the system stands its bars on
+/// their side.
+///
+/// On the outer display of an iPhone Duo the toolbar runs down one edge and the
+/// text is kept clear of it, but the scroll bar is still drawn at the edge of
+/// the display, underneath those controls. This moves it in by the width the
+/// bars take, on the side they are on. Elsewhere it does nothing.
+private struct IndicatorBesideText: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 27.1, *) {
+            content.modifier(Inset())
+        } else {
+            content
+        }
+    }
+
+    @available(iOS 27.1, *)
+    private struct Inset: ViewModifier {
+        @Environment(\.toolbarVerticalEdge) private var edge
+        @State private var safeArea = EdgeInsets()
+
+        func body(content: Content) -> some View {
+            content
+                .contentMargins(.leading, edge == .leading ? safeArea.leading : 0, for: .scrollIndicators)
+                .contentMargins(.trailing, edge == .trailing ? safeArea.trailing : 0, for: .scrollIndicators)
+                .onGeometryChange(for: EdgeInsets.self) { $0.safeAreaInsets } action: { safeArea = $0 }
         }
     }
 }

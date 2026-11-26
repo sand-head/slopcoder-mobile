@@ -71,9 +71,23 @@ struct Collapsible<Mark: View, Content: View>: View {
     }
 }
 
-struct DisplayRowView: View {
+struct DisplayRowView: View, Equatable {
     let row: DisplayRow
     let context: RowContext
+
+    /// The same row in the same circumstances draws the same thing. The
+    /// context's callbacks are left out: they close over the session and do not
+    /// change what is drawn. With this, a transcript that builds every row can
+    /// skip the ones that have not changed instead of laying them all out again
+    /// whenever anything on the screen does.
+    nonisolated static func == (a: DisplayRowView, b: DisplayRowView) -> Bool {
+        a.row == b.row
+            && a.context.parentDriven == b.context.parentDriven
+            && a.context.pendingApprovals == b.context.pendingApprovals
+            && a.context.pendingQuestions == b.context.pendingQuestions
+            && a.context.roster == b.context.roster
+            && a.context.mentions == b.context.mentions
+    }
 
     var body: some View {
         switch row {
