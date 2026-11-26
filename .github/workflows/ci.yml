@@ -124,6 +124,21 @@ jobs:
           " "$1"
           }
 
+          # simctl is not always steady on a runner that has only just started:
+          # the simulator service is still registering devices, and a command
+          # that connects in the middle of that can abort with an assertion of
+          # its own. That says nothing about the app, so try again.
+          sim() {
+            local attempt
+            for attempt in 1 2 3 4; do
+              if xcrun simctl "$@"; then return 0; fi
+              echo "simctl $1 failed (attempt $attempt); waiting before another try"
+              sleep 15
+            done
+            echo "::error::simctl $1 kept failing."
+            return 1
+          }
+
           # An iPhone Duo has two displays, and simctl will not guess between
           # them: it fails and lists them as --display=N. Take one picture per
           # display it names, so both the outer and the inner screen are kept.
@@ -147,12 +162,17 @@ jobs:
           smoke() {
             local label="$1" udid="$2"
             echo "::group::$label ($udid)"
-            xcrun simctl boot "$udid"
-            xcrun simctl bootstatus "$udid" -b
-            xcrun simctl install "$udid" Slopcoder.app
+            # Boots the device if it is not booted, and waits until it is — one
+            # command, so trying again cannot trip over a half-started boot.
+            sim bootstatus "$udid" -b
+            sim install "$udid" Slopcoder.app
             # Prints "codes.sand.slopcoder: <pid>"; the pid is a process on this Mac.
-            local pid
-            pid=$(xcrun simctl launch "$udid" codes.sand.slopcoder | awk '{print $NF}')
+            local launched pid
+            launched=$(sim launch "$udid" codes.sand.slopcoder | tail -1)
+            pid="${launched##* }"
+            case "$pid" in
+              ''|*[!0-9]*) echo "::error::Could not launch on $label: $launched"; exit 1 ;;
+            esac
             echo "launched as $pid"
             sleep 15
             shoot "$label" "$udid"
@@ -161,7 +181,8 @@ jobs:
               xcrun simctl spawn "$udid" log show --last 1m --predicate 'process == "Slopcoder"' | tail -100
               exit 1
             fi
-            xcrun simctl shutdown "$udid"
+            # Tidying up; a failure here is not worth failing the check over.
+            xcrun simctl shutdown "$udid" || true
             echo "::endgroup::"
           }
 
