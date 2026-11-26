@@ -125,10 +125,13 @@ private struct FacetChip: View {
             .font(AppFont.mono(10.5, relativeTo: .caption2))
             .foregroundStyle(color)
             .lineLimit(1)
+            .truncationMode(.middle)
             .padding(.horizontal, 4)
             .padding(.vertical, 1)
             .background(color.opacity(added ? 0.16 : 0.14), in: RoundedRectangle(cornerRadius: 4))
-            .fixedSize()
+            // No fixed size: a chip can be a branch name as easily as "+3", and
+            // one that refuses to shrink pushes the whole card past the edge of
+            // the transcript and under whatever sits beside it.
     }
 }
 
@@ -166,7 +169,9 @@ struct ToolBlockView: View {
             VStack(alignment: .leading, spacing: 1) {
                 ForEach(Array(entries.enumerated()), id: \.offset) { _, entry in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        LinkedText(text: entry.text, font: AppFont.mono(12)).fixedSize(horizontal: true, vertical: false)
+                        // Truncated rather than held at full width: a long path must
+                        // not widen the card it is in.
+                        LinkedText(text: entry.text, font: AppFont.mono(12)).lineLimit(1).truncationMode(.middle).layoutPriority(1)
                         if let detail = entry.detail, !detail.isEmpty {
                             LinkedText(text: detail, font: AppFont.mono(12), color: Palette.mutedForeground).lineLimit(1)
                         }
