@@ -124,6 +124,26 @@ jobs:
           " "$1"
           }
 
+          # An iPhone Duo has two displays, and simctl will not guess between
+          # them: it fails and lists them as --display=N. Take one picture per
+          # display it names, so both the outer and the inner screen are kept.
+          shoot() {
+            local label="$1" udid="$2" display
+            if xcrun simctl io "$udid" screenshot "screenshot-$label.png" 2> shoot.err; then
+              return 0
+            fi
+            cat shoot.err
+            local displays
+            displays=$(grep -o -- '--display=[0-9A-Za-z]*' shoot.err | sort -u)
+            if [ -z "$displays" ]; then
+              echo "::error::Could not take a screenshot on $label."
+              return 1
+            fi
+            for display in $displays; do
+              xcrun simctl io "$udid" screenshot "$display" "screenshot-$label-display${display#--display=}.png"
+            done
+          }
+
           smoke() {
             local label="$1" udid="$2"
             echo "::group::$label ($udid)"
@@ -135,7 +155,7 @@ jobs:
             pid=$(xcrun simctl launch "$udid" codes.sand.slopcoder | awk '{print $NF}')
             echo "launched as $pid"
             sleep 15
-            xcrun simctl io "$udid" screenshot "screenshot-$label.png"
+            shoot "$label" "$udid"
             if ! kill -0 "$pid" 2>/dev/null; then
               echo "::error::The app exited within 15 seconds of launch on $label."
               xcrun simctl spawn "$udid" log show --last 1m --predicate 'process == "Slopcoder"' | tail -100
