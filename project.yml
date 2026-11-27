@@ -23,7 +23,10 @@ packages:
     path: .
 settings:
   base:
-    SWIFT_VERSION: "5.0"
+    # The targets compile one C file, so this is never used: the package's
+    # targets take their language mode from Package.swift. It says 6 so that
+    # nobody reads 5 here as the mode the app is built in.
+    SWIFT_VERSION: "6.0"
     TARGETED_DEVICE_FAMILY: "1"
     # Signing identity comes from the release workflow, which reads the team
     # and the profile names out of the provisioning profiles themselves.

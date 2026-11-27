@@ -200,6 +200,10 @@ None of this has been seen on a device. It compiles against the iOS 27.2 SDK, an
   the list hands the app's objects on to its rows itself — a row that reads one it was not
   given crashes. Where rows go, following the end, keeping the reader's place and which
   rows to redraw are `TranscriptScroll.swift` in the core, with tests.
+- **Swift 6 language mode**, every target. Shared mutable state lives in `Locked`
+  (`SlopcoderCore/Support/Locked.swift`), the one hand-checked lock — `Mutex` needs
+  iOS 18. The only other escape hatches are the QR scanner's capture session, started
+  and stopped on its own queue, and they say so where they are.
 - **Liquid Glass.** The composer and sheets use `glassEffect` on iOS 26 and a plain card
   below it. The fallback is what most of the matrix renders, so it has to look finished.
 - **Artwork** is described in [docs/artwork.md](docs/artwork.md);
