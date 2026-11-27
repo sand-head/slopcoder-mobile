@@ -34,10 +34,7 @@ let package = Package(
     ],
     targets: [
         .target(name: "SlopcoderCore"),
-        .target(
-            name: "SlopcoderPush",
-            swiftSettings: [.swiftLanguageMode(.v5)]
-        ),
+        .target(name: "SlopcoderPush"),
         .target(
             name: "Slopcoder",
             dependencies: ["SlopcoderCore", "SlopcoderPush"],
@@ -48,7 +45,6 @@ let package = Package(
         .target(
             name: "NotificationService",
             dependencies: ["SlopcoderPush"],
-            swiftSettings: [.swiftLanguageMode(.v5)],
             // Nothing in an extension's binary refers to its principal class: the
             // system finds it by name at run time. Without -all_load the linker
             // sees an unreferenced object and leaves the whole class out.
