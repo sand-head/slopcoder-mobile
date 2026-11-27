@@ -17,7 +17,17 @@ private let twoSessions = "[" + summary("a", "Fix the build", running: true) + "
 /// A server for the list, routed by path, with per-test answers ahead of the defaults.
 @MainActor
 final class ListServer {
-    var answers: [(String, Int, String)] = []
+    /// Read on every request, so a test may change them between calls.
+    private let answerBox = Locked<[Answer]>([])
+    struct Answer: Sendable {
+        var fragment: String
+        var status: Int
+        var body: String
+    }
+    var answers: [(String, Int, String)] {
+        get { answerBox.withLock { $0.map { ($0.fragment, $0.status, $0.body) } } }
+        set { answerBox.withLock { $0 = newValue.map { Answer(fragment: $0.0, status: $0.1, body: $0.2) } } }
+    }
     var sessions = twoSessions
     let transport: RoutedTransport
     let felt = Felt()
@@ -28,10 +38,10 @@ final class ListServer {
     init() { transport = RoutedTransport { _ in (204, "") } }
 
     func model(hub: SessionHub? = nil) -> SessionsModel {
-        let answers = self.answers
+        let answers = answerBox
         let sessions = self.sessions
         transport.route { request in
-            for (fragment, status, body) in answers where request.url.contains(fragment) { return (status, body) }
+            for answer in answers.withLock({ $0 }) where request.url.contains(answer.fragment) { return (answer.status, answer.body) }
             if request.url.hasSuffix("/api/seam/sessions/"), request.method == "GET" { return (200, sessions) }
             if request.url.contains("/automations/status") { return (200, #"{"anyRoutines":true,"anyFailed":true,"upcoming":[]}"#) }
             if request.url.contains("/candidates") || request.url.contains("/facets") || request.url.contains("/nodes") { return (200, "[]") }
@@ -159,6 +169,62 @@ final class ListServer {
         #expect(server.router.sessions == [.session(id: "new1")])
         #expect(server.keyboardDismissals == 1)
         #expect(server.felt.names == ["confirm"])
+    }
+
+    /// Creating is one call and starting another. A start that failed after
+    /// the create must not leave the server a second session on the next tap.
+    @Test func aStartThatFailedAfterTheCreateReusesTheSessionOnTheNextTap() async {
+        let server = ListServer()
+        server.answers = [("/approval-mode", 500, ""), ("/api/seam/sessions/", 200, #"{"id":"new1"}"#)]
+        let model = server.model()
+        model.prompt = "go"
+        model.options = TurnOptions(approval: .always)
+        await model.start()
+        #expect(model.startError != nil)
+        #expect(server.calls("/start").isEmpty)
+
+        server.answers = [("/api/seam/sessions/", 200, #"{"id":"new2"}"#)]
+        await model.start()
+        let paths = server.transport.calls.map { "\($0.method) \($0.url.replacingOccurrences(of: "https://s/", with: ""))" }
+        #expect(paths == [
+            "POST api/seam/sessions/",
+            "PUT api/seam/sessions/new1/approval-mode",
+            "PUT api/seam/sessions/new1/approval-mode",
+            "POST api/seam/sessions/new1/start",
+        ])
+        #expect(model.startError == nil)
+        #expect(server.router.sessions == [.session(id: "new1")])
+    }
+
+    @Test func aChangedRequestDropsTheHalfStartedSessionBeforeMakingANewOne() async {
+        let server = ListServer()
+        server.answers = [("/start", -1, ""), ("/api/seam/sessions/", 200, #"{"id":"new1"}"#)]
+        let model = server.model()
+        model.prompt = "go"
+        await model.start()
+        #expect(model.startError == describe(OfflineError()))
+        #expect(model.prompt == "go")
+
+        // The facet rode on the create, so the session made for "go" is not this one.
+        model.options.facet = "review"
+        server.answers = [("/api/seam/sessions/", 200, #"{"id":"new2"}"#)]
+        await model.start()
+        let paths = server.transport.calls.map { "\($0.method) \($0.url.replacingOccurrences(of: "https://s/", with: ""))" }
+        #expect(paths == [
+            "POST api/seam/sessions/",
+            "POST api/seam/sessions/new1/start",
+            "DELETE api/seam/sessions/new1",
+            "POST api/seam/sessions/",
+            "POST api/seam/sessions/new2/start",
+        ])
+        #expect(server.router.sessions == [.session(id: "new2")])
+
+        // Once started, it is a session like any other, and the next prompt makes its own.
+        model.prompt = "again"
+        server.answers = [("/api/seam/sessions/", 200, #"{"id":"new3"}"#)]
+        await model.start()
+        #expect(server.calls("new2", "DELETE").isEmpty)
+        #expect(server.router.sessions == [.session(id: "new3")])
     }
 
     @Test func theDefaultApprovalModeNeedsNoCallOfItsOwn() async {

@@ -66,6 +66,10 @@ public final class SessionsModel {
     /// Why the last change to a session in the list did not happen.
     public private(set) var actionError: String?
 
+    /// A session this launcher created and has not yet started, with what it
+    /// was created from. A retry of the same request starts it rather than
+    /// creating another; a different request deletes it first.
+    @ObservationIgnored private var unstarted: (id: String, request: CreateSessionRequest)?
     @ObservationIgnored private var registry: (@Sendable () -> Void)?
     @ObservationIgnored private var refresh: SerialRefresh?
     @ObservationIgnored private let seam: @MainActor () -> Seam?
@@ -235,19 +239,32 @@ public final class SessionsModel {
         starting = true
         startError = nil
         defer { starting = false }
+        let request = CreateSessionRequest(
+            selection: options.selection,
+            initialPrompt: text,
+            repoUrls: repos.isEmpty ? nil : repos,
+            thinkingLevel: options.thinking,
+            facet: options.facet,
+            nodeIds: nodes.isEmpty ? nil : nodes
+        )
         do {
-            let created = try await seam.createSession(CreateSessionRequest(
-                selection: options.selection,
-                initialPrompt: text,
-                repoUrls: repos.isEmpty ? nil : repos,
-                thinkingLevel: options.thinking,
-                facet: options.facet,
-                nodeIds: nodes.isEmpty ? nil : nodes
-            ))
-            guard let id = created else {
-                feedback.error()
-                startError = "That model selection is no longer available."
-                return
+            let id: String
+            if let pending = unstarted, pending.request == request {
+                id = pending.id
+            } else {
+                if let stale = unstarted {
+                    // Made for something else, and never run: nobody will look
+                    // for it. Best effort — the new session matters more.
+                    unstarted = nil
+                    _ = try? await seam.deleteSession(stale.id)
+                }
+                guard let created = try await seam.createSession(request) else {
+                    feedback.error()
+                    startError = "That model selection is no longer available."
+                    return
+                }
+                id = created
+                unstarted = (created, request)
             }
             // The one setting with no create-time field.
             if options.approval != .dangerous {
@@ -258,6 +275,7 @@ public final class SessionsModel {
                 selection: options.selection,
                 images: pendingImages.isEmpty ? nil : pendingImages.map(\.attachment)
             ))
+            unstarted = nil
             feedback.confirm()
             prompt = ""
             pendingImages = []
