@@ -241,6 +241,20 @@ further and runs a Linux VM on a Mac to mount Xcode directly.
     screenshot of each as an artifact.
   - `xcode` — builds the release's Xcode project unsigned, so a change that breaks a
     release is found when it reaches `main`, not on release day.
+  - `ui-tests` — on a Mac runner, runs the XCUITests in `App/UITests` on a simulated
+    iPhone: the session list, a session opening on its last words, a message sent and
+    coming back, the session panel, and a settings page. The app runs in its stub mode
+    (below), so no account or network is involved. Failed tests get three goes; the
+    result bundle and a screenshot of every step are kept as artifacts. A simulator that
+    never boots is a warning, not a failure; anything after the boot is. Where the runner
+    has an iPhone Duo simulator the same tests run there for pictures only.
+
+**Stub mode.** A debug build launched with `-SlopcoderStub 1` signs in from memory and
+talks to a canned server in process (`Sources/SlopcoderCore/Stub`) through the same
+transport and hub seams the real client uses: two sessions, models, facets, a routine, an
+artifact, and the settings reads. It never touches the Keychain or the network and never
+registers for push; a release build cannot enter it. The stub is tested on Linux by
+walking the UI tests' path through the real screen models.
 - **`release.yml`**, started by hand: runs the tests, stamps the version (the date), the
   build number (the run number), the push relay (`SLOPCODER_PUSH_RELAY`, a repository
   variable) and the production APNs environment with `scripts/stamp.py`, then on a Mac
@@ -249,7 +263,8 @@ further and runs a Linux VM on a Mac to mount Xcode directly.
 
 A release is the one build made by Xcode rather than xtool: distribution signing, a compiled
 asset catalog and the upload are things only a Mac does. It is the same package —
-`project.yml` (for XcodeGen) is two empty targets that link `Package.swift`'s products, and
+`project.yml` (for XcodeGen) is two empty targets that link `Package.swift`'s products, plus
+the UI test target with a scheme of its own (the release's scheme has no test action), and
 the generated project is never committed.
 
 Day-to-day compiling is all on Linux; in `ci.yml` the Mac runners lend files, host the
@@ -259,7 +274,10 @@ None of these has run on a runner yet. The Linux half has been replayed by hand 
 lending script run against a real Xcode 27.2, a slim SDK installed from its output, and the
 `.ipa` and the simulator build made from a clean copy of the tree. The Mac half (finding
 Xcode on the runner, the cross-OS cache, the simulator launch, and the whole Xcode build of
-`project.yml` that a release depends on) is what a first run will test.
+`project.yml` that a release depends on) is what a first run will test. The same goes for
+`ui-tests`: the UI tests have never run anywhere. They type-check in Swift 6 against the
+iOS 27.2 simulator SDK's XCTest, and what they look for is held to the stub by a Linux
+test, but no XCUITest, `xcodebuild test` or `xcresulttool` export has been run.
 
 ## Siri
 
@@ -310,7 +328,10 @@ Verified, on Linux, by `swift test`:
   emulator — replayed against some 4,200 cases recorded from the TypeScript implementation
   (`Tests/SlopcoderCoreTests/Fixtures/*-differential.json`). The recorder needed that
   TypeScript, which is gone from this tree; the fixtures are now the specification.
-- The bundle's plists, entitlements and `xtool.yml` agree with each other and the sources.
+- The bundle's plists, entitlements and `xtool.yml` agree with each other and the sources;
+  `project.yml` keeps the UI tests out of the release's scheme.
+- The stub server answers every request the UI tests' path makes, through the real screen
+  models and seam, and a message sent to it comes back over the hub.
 
 Verified, on Linux, with xtool 1.24 and the iOS 27.2 SDK:
 
@@ -329,6 +350,8 @@ Not verified:
   no React Native counterpart to compare with.
 - Signing with a real identity, and installing on a phone (`xtool dev run`).
 - The dev container image, and the workflows on an actual runner (see [CI](#ci)).
+- The UI tests (`App/UITests`): written and type-checked, never run. Their first run on a
+  Mac runner will be the first time anything has driven the app's screens automatically.
 
 Two deliberate differences from the TypeScript, both of which were bugs there: a schedule
 confirmation never says "Invalid Date" or "null", and U+0085 is trimmed as whitespace, as
