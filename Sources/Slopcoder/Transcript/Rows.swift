@@ -3,7 +3,10 @@ import SlopcoderCore
 import SwiftUI
 
 /// What every row needs from the session it sits in.
-struct RowContext {
+///
+/// Sendable, so that a row can be compared with the last one wherever SwiftUI
+/// does it: the callbacks are the main actor's, which is where rows call them.
+struct RowContext: Sendable {
     /// A sub-session: its prompts come from the parent's agent, not from you.
     var parentDriven = false
     var roster: [SubSessionInfo] = []
@@ -12,9 +15,9 @@ struct RowContext {
     /// a laptop is still sitting in the scrollback here.
     var pendingApprovals: [String] = []
     var pendingQuestions: [String] = []
-    var onApprove: (String, Bool) -> Void = { _, _ in }
-    var onAnswer: (String, [UserQuestionAnswer]?) -> Void = { _, _ in }
-    var onOpenSession: (String) -> Void = { _ in }
+    var onApprove: @MainActor (String, Bool) -> Void = { _, _ in }
+    var onAnswer: @MainActor (String, [UserQuestionAnswer]?) -> Void = { _, _ in }
+    var onOpenSession: @MainActor (String) -> Void = { _ in }
 }
 
 /// ⑂ — a sub-session or subagent.

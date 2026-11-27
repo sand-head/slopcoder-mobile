@@ -491,7 +491,7 @@ private struct TriggerRow: View {
     let trigger: TriggerStats
     let busy: Bool
     let onFire: () -> Void
-    let onToggle: (Bool) -> Void
+    let onToggle: @MainActor (Bool) -> Void
     let onRotate: (() -> Void)?
 
     var body: some View {

@@ -531,7 +531,7 @@ private struct ArtifactWebView: UIViewRepresentable {
 
         func webView(
             _ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
-            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+            decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void
         ) {
             let target = action.request.url?.absoluteString ?? ""
             // A subframe is content, not a person asking to leave, and must never

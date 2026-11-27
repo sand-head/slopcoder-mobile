@@ -112,7 +112,7 @@ private struct Surroundings: ViewModifier, Equatable {
             .tint(Palette.primary)
     }
 
-    static func == (a: Surroundings, b: Surroundings) -> Bool {
+    nonisolated static func == (a: Surroundings, b: Surroundings) -> Bool {
         a.model === b.model && a.auth === b.auth && a.connection === b.connection
             && a.router === b.router && a.routineAlert === b.routineAlert && a.wide == b.wide
     }

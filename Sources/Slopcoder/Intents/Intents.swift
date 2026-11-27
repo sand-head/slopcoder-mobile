@@ -73,7 +73,7 @@ struct SessionEntity: AppEntity {
     /// Stopped on an approval or a question, and going nowhere until answered.
     let waiting: Bool
 
-    static var typeDisplayRepresentation = TypeDisplayRepresentation(
+    static let typeDisplayRepresentation = TypeDisplayRepresentation(
         name: "Session",
         numericFormat: "\(placeholder: .int) sessions"
     )
@@ -89,7 +89,7 @@ struct SessionEntity: AppEntity {
         return isRunning ? "running · \(model)" : "idle · \(model)"
     }
 
-    static var defaultQuery = SessionQuery()
+    static let defaultQuery = SessionQuery()
 
     init(id: String, title: String, model: String, isRunning: Bool, waiting: Bool) {
         self.id = id
@@ -146,12 +146,12 @@ struct SessionQuery: EntityStringQuery {
 /// stopping what you were doing. The session runs in the server's sandbox — the
 /// phone is never an executor — so there is nothing for the app to be present for.
 struct StartSessionIntent: AppIntent {
-    static var title: LocalizedStringResource = "Start a Session"
-    static var description = IntentDescription(
+    static let title: LocalizedStringResource = "Start a Session"
+    static let description = IntentDescription(
         "Starts a slopcoder session on the server and gives it a task.",
         categoryName: "Sessions"
     )
-    static var openAppWhenRun: Bool = false
+    static let openAppWhenRun: Bool = false
 
     @Parameter(title: "Task", requestValueDialog: "What should it work on?")
     var task: String
@@ -206,12 +206,12 @@ struct RecentRepoOptions: DynamicOptionsProvider {
 /// how far into its context each session is, and — the part that matters —
 /// whether anything has stopped to ask you something.
 struct RunningSessionsIntent: AppIntent {
-    static var title: LocalizedStringResource = "Check Running Sessions"
-    static var description = IntentDescription(
+    static let title: LocalizedStringResource = "Check Running Sessions"
+    static let description = IntentDescription(
         "Says what slopcoder is working on, and whether anything is waiting on you.",
         categoryName: "Sessions"
     )
-    static var openAppWhenRun: Bool = false
+    static let openAppWhenRun: Bool = false
 
     /// Fetching per-session state is one call each, so cap it. More than a
     /// handful of simultaneous turns is not a thing you listen to anyway.
@@ -265,8 +265,8 @@ struct RunningSessionsIntent: AppIntent {
 /// Navigation goes through the app's own URL scheme, the same door a tapped
 /// notification and a pasted link use.
 struct OpenSessionIntent: OpenIntent {
-    static var title: LocalizedStringResource = "Open Session"
-    static var description = IntentDescription("Opens a slopcoder session in the app.", categoryName: "Sessions")
+    static let title: LocalizedStringResource = "Open Session"
+    static let description = IntentDescription("Opens a slopcoder session in the app.", categoryName: "Sessions")
 
     @Parameter(title: "Session")
     var target: SessionEntity

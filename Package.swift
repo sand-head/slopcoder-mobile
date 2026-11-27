@@ -39,7 +39,6 @@ let package = Package(
             name: "Slopcoder",
             dependencies: ["SlopcoderCore", "SlopcoderPush"],
             resources: [.process("Resources")],
-            swiftSettings: [.swiftLanguageMode(.v5)],
             linkerSettings: signable
         ),
         .target(

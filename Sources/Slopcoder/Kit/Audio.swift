@@ -79,9 +79,13 @@ struct InlineAudio: View {
         let item = AVPlayerItem(asset: asset)
         let player = AVPlayer(playerItem: item)
         self.player = player
+        // Observed on the main queue, so the end of playback is handled where
+        // the rest of this view's state lives.
         ended = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { _ in
-            player.seek(to: .zero)
-            phase = .idle
+            MainActor.assumeIsolated {
+                player.seek(to: .zero)
+                phase = .idle
+            }
         }
         Task {
             // Loading the duration is what proves the file is there and is audio.

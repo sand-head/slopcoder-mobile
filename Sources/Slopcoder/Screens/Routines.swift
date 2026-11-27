@@ -309,7 +309,7 @@ private struct RoutineTile: View {
     let card: RoutineCard
     let busy: Bool
     let onOpen: () -> Void
-    let onToggle: (Bool) -> Void
+    let onToggle: @MainActor (Bool) -> Void
 
     var body: some View {
         let paused = !card.enabled || !card.scheduleEnabled
@@ -360,7 +360,7 @@ private struct HeartbeatTile: View {
     let beat: HeartbeatStatus
     let busy: Bool
     let onOpen: () -> Void
-    let onToggle: (Bool) -> Void
+    let onToggle: @MainActor (Bool) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
