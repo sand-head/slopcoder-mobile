@@ -73,8 +73,8 @@ struct Brain: View {
 
     var body: some View {
         ZStack {
-            Image("brain-body", bundle: .module).resizable().renderingMode(.template).foregroundStyle(color.opacity(0.35))
-            Image("brain-folds", bundle: .module).resizable().renderingMode(.template).foregroundStyle(color)
+            BundledImage.image("brain-body", template: true).resizable().foregroundStyle(color.opacity(0.35))
+            BundledImage.image("brain-folds", template: true).resizable().foregroundStyle(color)
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
@@ -95,9 +95,8 @@ struct GitMark: View {
     }
 
     var body: some View {
-        Image(name, bundle: .module)
+        BundledImage.image(name, template: true)
             .resizable()
-            .renderingMode(.template)
             .foregroundStyle(color)
             .frame(width: size, height: size)
             .accessibilityHidden(true)
@@ -109,7 +108,7 @@ struct GitMark: View {
 enum Glyph: String {
     case sessions, routines, artifacts, usage, settings
 
-    var image: Image { Image(rawValue, bundle: .module).renderingMode(.template) }
+    @MainActor var image: Image { BundledImage.image(rawValue, template: true) }
 }
 
 /// A glyph at a fixed size, in one colour.

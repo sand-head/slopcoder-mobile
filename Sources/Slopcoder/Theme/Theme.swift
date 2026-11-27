@@ -231,6 +231,39 @@ enum Reading {
     static let dateSize: CGFloat = 10
 }
 
+/// A PNG from this package's resource bundle, read from its file.
+///
+/// Not `Image(_:bundle:)`: that asks the bundle's asset catalog by name, and
+/// the bundle a Linux build ships has neither a catalog nor an Info.plist —
+/// SwiftPM copies the PNGs in loose — so every lookup comes back empty and the
+/// image draws nothing. The fonts are found the same way, by URL, for the same
+/// reason. The sharpest cut is taken and labelled with its scale, so a 24px
+/// mark at @3x still lays out at 24pt.
+@MainActor
+enum BundledImage {
+    private static var cache: [String: UIImage] = [:]
+
+    static func uiImage(_ name: String) -> UIImage? {
+        if let hit = cache[name] { return hit }
+        for (suffix, scale) in [("@3x", 3.0), ("@2x", 2.0), ("", 1.0)] {
+            guard let url = Bundle.module.url(forResource: name + suffix, withExtension: "png"),
+                  let data = try? Data(contentsOf: url),
+                  let image = UIImage(data: data, scale: scale) else { continue }
+            cache[name] = image
+            return image
+        }
+        return nil
+    }
+
+    /// The image, or an empty one if the bundle lacks it.
+    static func image(_ name: String, template: Bool = false) -> Image {
+        guard let image = uiImage(name) else { return Image(uiImage: UIImage()) }
+        return template
+            ? Image(uiImage: image.withRenderingMode(.alwaysTemplate)).renderingMode(.template)
+            : Image(uiImage: image)
+    }
+}
+
 /// An image from this package's bundle, in its day or night cut.
 struct ThemedImage: View {
     @Environment(\.colorScheme) private var scheme
@@ -238,7 +271,7 @@ struct ThemedImage: View {
     let night: String
 
     var body: some View {
-        Image(scheme == .dark ? night : day, bundle: .module).resizable().scaledToFit()
+        BundledImage.image(scheme == .dark ? night : day).resizable().scaledToFit()
     }
 }
 extension View {
