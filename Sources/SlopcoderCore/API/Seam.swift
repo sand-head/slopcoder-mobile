@@ -51,7 +51,7 @@ public func describe(_ error: Error) -> String {
     (error as? LocalizedError)?.errorDescription ?? String(describing: error)
 }
 
-public final class Seam: @unchecked Sendable {
+public final class Seam: Sendable {
     public let baseUrl: String
     public let apiKey: String
     private let transport: HTTPTransport

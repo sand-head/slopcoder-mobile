@@ -124,7 +124,7 @@ private func image(_ key: String) -> PendingImage {
 
         model.close()
         #expect(model.store == nil)
-        #expect(await eventually { server.connector.last.targets == ["Subscribe", "Unsubscribe"] })
+        #expect(await settled { server.connector.last.targets == ["Subscribe", "Unsubscribe"] })
         server.hub.stop()
     }
 

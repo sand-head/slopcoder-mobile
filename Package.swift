@@ -33,10 +33,7 @@ let package = Package(
         .library(name: "NotificationService", targets: ["NotificationService"]),
     ],
     targets: [
-        .target(
-            name: "SlopcoderCore",
-            swiftSettings: [.swiftLanguageMode(.v5)]
-        ),
+        .target(name: "SlopcoderCore"),
         .target(
             name: "SlopcoderPush",
             swiftSettings: [.swiftLanguageMode(.v5)]
@@ -60,8 +57,7 @@ let package = Package(
         .testTarget(
             name: "SlopcoderCoreTests",
             dependencies: ["SlopcoderCore"],
-            resources: [.copy("Fixtures")],
-            swiftSettings: [.swiftLanguageMode(.v5)]
+            resources: [.copy("Fixtures")]
         ),
     ]
 )
