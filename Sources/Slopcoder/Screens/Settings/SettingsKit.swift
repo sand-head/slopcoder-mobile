@@ -86,23 +86,28 @@ struct ListRow<Extra: View>: View {
     var chevron = false
     var menu: [RowAction] = []
     var onTap: (() -> Void)?
+    /// A forge's mark before the title, for a row that is a git account.
+    var mark: GitMark?
     @ViewBuilder var extra: () -> Extra
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
             Button { onTap?() } label: {
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 8) {
-                        BodyText(title, size: 14.5, medium: true).lineLimit(1)
-                        if let tag { SettingsTag(text: tag, tone: tagTone) }
+                HStack(alignment: .top, spacing: 10) {
+                    if let mark { mark.padding(.top, 2) }
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 8) {
+                            BodyText(title, size: 14.5, medium: true).lineLimit(1)
+                            if let tag { SettingsTag(text: tag, tone: tagTone) }
+                        }
+                        if let subtitle, !subtitle.isEmpty {
+                            Text(subtitle).font(AppFont.sans(12.5)).foregroundStyle(Palette.mutedForeground).lineLimit(2)
+                        }
+                        if let warn, !warn.isEmpty {
+                            Text(warn).font(AppFont.sans(12.5)).foregroundStyle(Palette.destructive).lineLimit(2)
+                        }
+                        extra()
                     }
-                    if let subtitle, !subtitle.isEmpty {
-                        Text(subtitle).font(AppFont.sans(12.5)).foregroundStyle(Palette.mutedForeground).lineLimit(2)
-                    }
-                    if let warn, !warn.isEmpty {
-                        Text(warn).font(AppFont.sans(12.5)).foregroundStyle(Palette.destructive).lineLimit(2)
-                    }
-                    extra()
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
@@ -151,12 +156,12 @@ extension ListRow where Extra == EmptyView {
     init(
         title: String, subtitle: String? = nil, tag: String? = nil, tagTone: TagTone = .muted, warn: String? = nil,
         switchValue: Bool? = nil, onSwitch: ((Bool) -> Void)? = nil, disabled: Bool = false, dimmed: Bool = false,
-        chevron: Bool = false, menu: [RowAction] = [], onTap: (() -> Void)? = nil
+        chevron: Bool = false, menu: [RowAction] = [], onTap: (() -> Void)? = nil, mark: GitMark? = nil
     ) {
         self.init(
             title: title, subtitle: subtitle, tag: tag, tagTone: tagTone, warn: warn, switchValue: switchValue,
             onSwitch: onSwitch, disabled: disabled, dimmed: dimmed, chevron: chevron, menu: menu, onTap: onTap,
-            extra: { EmptyView() }
+            mark: mark, extra: { EmptyView() }
         )
     }
 }

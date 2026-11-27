@@ -12,3 +12,12 @@ The app icons are generated from the high-resolution source in `assets/brand/`
 by `scripts/generate-fold-icons.py`: the full set (light, dark, tinted) into
 `App/Assets.xcassets`, and the single opaque PNG a Linux build can ship into
 `App/AppIcon.png`. Native visual verification is still owed.
+
+## Glyphs
+
+`Sources/Slopcoder/Resources/Images/{sessions,routines,artifacts,usage,settings}*.png`
+and `{github,forgejo,git}*.png` are 24/48/72px renders of `assets/icons/*.svg` (the
+forge marks are the simple-icons paths the web's `GitServiceIcon.razor` draws).
+They are template images: `Glyph`/`GlyphMark` and `GitMark` in `Kit/Controls.swift`
+tint them at render. The tab bar, the session list, artifact tiles and the git
+accounts in Settings → Connections draw them, as the web and the React Native app did.

@@ -303,9 +303,7 @@ private struct ArtifactBlock: View {
                 if let artifactId { router.show(.artifact(id: artifactId, version: nil)) }
             } label: {
                 HStack(spacing: 10) {
-                    Image(systemName: "doc.text")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Palette.primary)
+                    GlyphMark(glyph: .artifacts, size: 15, color: Palette.primary)
                         .frame(width: 30, height: 30)
                         .background(Palette.primary.opacity(0.16), in: RoundedRectangle(cornerRadius: Radius.sm))
                     VStack(alignment: .leading, spacing: 1) {

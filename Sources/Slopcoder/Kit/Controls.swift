@@ -104,6 +104,30 @@ struct GitMark: View {
     }
 }
 
+/// The app's own glyphs, one per tab — the same bitmaps the web and the
+/// Android app draw, rendered from `assets/icons/*.svg` and tinted at render.
+enum Glyph: String {
+    case sessions, routines, artifacts, usage, settings
+
+    var image: Image { Image(rawValue, bundle: .module).renderingMode(.template) }
+}
+
+/// A glyph at a fixed size, in one colour.
+struct GlyphMark: View {
+    var glyph: Glyph
+    var size: CGFloat = 20
+    var color: Color = Palette.mutedForeground
+
+    var body: some View {
+        glyph.image
+            .resizable()
+            .scaledToFit()
+            .foregroundStyle(color)
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
+    }
+}
+
 /// The one geometry every transcript line shares — a tool call, a group of
 /// them, a thinking row, a note. Its mark sits centred in a 12-wide gutter at
 /// the same inset, so the dots and chevrons down the left edge form one column,

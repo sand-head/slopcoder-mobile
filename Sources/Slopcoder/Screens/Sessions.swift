@@ -265,10 +265,7 @@ private struct SessionRow: View {
         HStack(alignment: .top, spacing: 10) {
             Button(action: onOpen) {
                 HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "bubble.left.and.bubble.right")
-                        .font(.system(size: 15))
-                        .foregroundStyle(Palette.mutedForeground)
-                        .frame(width: 20, height: 20)
+                    GlyphMark(glyph: .sessions, size: 20)
                         .padding(.top, 2)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(session.title).font(AppFont.sansMedium(13)).foregroundStyle(Palette.foreground).lineLimit(1)

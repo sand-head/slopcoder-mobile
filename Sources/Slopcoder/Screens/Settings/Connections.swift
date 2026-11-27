@@ -49,7 +49,8 @@ struct ConnectionsPage: View {
                         tag: account.trouble == nil ? nil : "reconnect",
                         tagTone: .warn,
                         warn: account.trouble,
-                        menu: [RowAction(title: "Disconnect", symbol: "trash", destructive: true) { disconnect(account) }]
+                        menu: [RowAction(title: "Disconnect", symbol: "trash", destructive: true) { disconnect(account) }],
+                        mark: GitMark(kind: account.kind, size: 18, color: Palette.foreground)
                     )
                 }
                 Group {

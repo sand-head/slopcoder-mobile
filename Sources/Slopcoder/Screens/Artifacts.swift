@@ -96,26 +96,32 @@ private struct ArtifactListCard: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Button(action: onOpen) {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        Text(artifact.title).font(AppFont.sansMedium(15)).foregroundStyle(Palette.foreground).lineLimit(2)
-                        if artifact.shared { Chip("shared", color: Palette.primary, filled: true) }
+                HStack(alignment: .top, spacing: 10) {
+                    // The Artifacts tab's own glyph, on a tile — as in the transcript.
+                    GlyphMark(glyph: .artifacts, size: 15, color: Palette.primary)
+                        .frame(width: 30, height: 30)
+                        .background(Palette.primary.opacity(0.16), in: RoundedRectangle(cornerRadius: Radius.sm))
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 8) {
+                            Text(artifact.title).font(AppFont.sansMedium(15)).foregroundStyle(Palette.foreground).lineLimit(2)
+                            if artifact.shared { Chip("shared", color: Palette.primary, filled: true) }
+                        }
+                        Meta("\(artifact.format.rawValue) · \(ArtifactPresentation.meta(artifact))")
+                        if !artifact.description.isEmpty {
+                            Text(artifact.description).font(AppFont.sans(13)).foregroundStyle(Palette.mutedForeground).lineLimit(2)
+                        }
+                        if !artifact.preview.isEmpty {
+                            Text(artifact.preview)
+                                .font(AppFont.mono(11))
+                                .foregroundStyle(Palette.mutedForeground)
+                                .lineLimit(3)
+                                .padding(8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Palette.muted.opacity(0.35), in: RoundedRectangle(cornerRadius: Radius.sm))
+                        }
+                        let source = artifact.sessionTitle.map { "from \($0)" } ?? artifact.routineName.map { "from the \($0) routine" }
+                        if let source { Mono(source, size: 11).lineLimit(1) }
                     }
-                    Meta("\(artifact.format.rawValue) · \(ArtifactPresentation.meta(artifact))")
-                    if !artifact.description.isEmpty {
-                        Text(artifact.description).font(AppFont.sans(13)).foregroundStyle(Palette.mutedForeground).lineLimit(2)
-                    }
-                    if !artifact.preview.isEmpty {
-                        Text(artifact.preview)
-                            .font(AppFont.mono(11))
-                            .foregroundStyle(Palette.mutedForeground)
-                            .lineLimit(3)
-                            .padding(8)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Palette.muted.opacity(0.35), in: RoundedRectangle(cornerRadius: Radius.sm))
-                    }
-                    let source = artifact.sessionTitle.map { "from \($0)" } ?? artifact.routineName.map { "from the \($0) routine" }
-                    if let source { Mono(source, size: 11).lineLimit(1) }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())

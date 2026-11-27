@@ -106,30 +106,30 @@ struct MainTabs: View {
         @Bindable var router = router
         if #available(iOS 18.0, *) {
             TabView(selection: $router.tab) {
-                Tab("Sessions", systemImage: "bubble.left.and.bubble.right", value: AppTab.sessions) { page(.sessions) }
-                Tab("Routines", systemImage: "clock", value: AppTab.routines) { page(.routines) }
+                Tab(value: AppTab.sessions) { page(.sessions) } label: { Label { Text("Sessions") } icon: { Glyph.sessions.image } }
+                Tab(value: AppTab.routines) { page(.routines) } label: { Label { Text("Routines") } icon: { Glyph.routines.image } }
                     .badge(alert.anyFailed ? Text("!") : nil)
-                Tab("Artifacts", systemImage: "doc.text", value: AppTab.artifacts) { page(.artifacts) }
-                Tab("Usage", systemImage: "chart.bar", value: AppTab.usage) { page(.usage) }
-                Tab("Settings", systemImage: "gearshape", value: AppTab.settings) { page(.settings) }
+                Tab(value: AppTab.artifacts) { page(.artifacts) } label: { Label { Text("Artifacts") } icon: { Glyph.artifacts.image } }
+                Tab(value: AppTab.usage) { page(.usage) } label: { Label { Text("Usage") } icon: { Glyph.usage.image } }
+                Tab(value: AppTab.settings) { page(.settings) } label: { Label { Text("Settings") } icon: { Glyph.settings.image } }
             }
         } else {
             TabView(selection: $router.tab) {
                 page(.sessions)
-                    .tabItem { Label("Sessions", systemImage: "bubble.left.and.bubble.right") }
+                    .tabItem { Label { Text("Sessions") } icon: { Glyph.sessions.image } }
                     .tag(AppTab.sessions)
                 page(.routines)
-                    .tabItem { Label("Routines", systemImage: "clock") }
+                    .tabItem { Label { Text("Routines") } icon: { Glyph.routines.image } }
                     .badge(alert.anyFailed ? "!" : nil)
                     .tag(AppTab.routines)
                 page(.artifacts)
-                    .tabItem { Label("Artifacts", systemImage: "doc.text") }
+                    .tabItem { Label { Text("Artifacts") } icon: { Glyph.artifacts.image } }
                     .tag(AppTab.artifacts)
                 page(.usage)
-                    .tabItem { Label("Usage", systemImage: "chart.bar") }
+                    .tabItem { Label { Text("Usage") } icon: { Glyph.usage.image } }
                     .tag(AppTab.usage)
                 page(.settings)
-                    .tabItem { Label("Settings", systemImage: "gearshape") }
+                    .tabItem { Label { Text("Settings") } icon: { Glyph.settings.image } }
                     .tag(AppTab.settings)
             }
         }
