@@ -516,8 +516,28 @@ final class TranscriptCollectionView: UIView, UICollectionViewDelegate {
 
     // MARK: the reader
 
+    /// A cell that left the screen and comes straight back — as every visible
+    /// one does when a page of history lands above and the offset follows it —
+    /// is shown again without being configured again: UIKit keeps it, prefetched,
+    /// and skips the cell provider. Its row went back to parking when it left,
+    /// so without this it comes back empty and the transcript goes blank until
+    /// the reader scrolls far enough for fresh cells.
+    func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
+        guard let cell = cell as? HostCell, let entry = dataSource.itemIdentifier(for: indexPath) else { return }
+        cell.hold(host(for: entry), parking: parking)
+    }
+
+    /// Not at once. A snapshot applied without animation can hand the cell of a
+    /// row that left — the streaming tail, as its reply lands — to the row that
+    /// replaced it before saying the first has ended; releasing then empties
+    /// the new row, which stays blank until it scrolls away and back. Once
+    /// UIKit is done, a cell still on screen is showing something, and keeps it.
     func collectionView(_ collectionView: UICollectionView, didEndDisplaying cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
-        (cell as? HostCell)?.release(to: parking)
+        guard let cell = cell as? HostCell else { return }
+        DispatchQueue.main.async { [weak self, weak cell] in
+            guard let self, let cell, self.collection.indexPath(for: cell) == nil else { return }
+            cell.release(to: self.parking)
+        }
     }
 
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {

@@ -132,8 +132,17 @@ public enum TranscriptScroll {
 
     /// The row at the top of what the reader can see: the one to hold still
     /// when anything above or around it changes.
+    ///
+    /// Never the spinner above the history: a page arriving goes in below it,
+    /// so holding it still would leave the reader at the top of the new page —
+    /// looking at rows they never scrolled to, and near enough the top to ask
+    /// for the page after that.
     public static func anchor(_ entries: [TranscriptEntry], _ stack: TranscriptStack, _ viewport: ScrollViewport) -> ScrollAnchor? {
-        guard entries.count == stack.count, let index = stack.first(endingBelow: viewport.visibleTop) else { return nil }
+        guard entries.count == stack.count, var index = stack.first(endingBelow: viewport.visibleTop) else { return nil }
+        if entries[index] == .earlier {
+            guard index + 1 < stack.count else { return nil }
+            index += 1
+        }
         return ScrollAnchor(entry: entries[index], distance: stack.tops[index] - viewport.visibleTop)
     }
 

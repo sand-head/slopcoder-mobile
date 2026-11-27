@@ -186,14 +186,24 @@ enum Reading {
     static let formWidth: CGFloat = 460
     /// Space either side of the transcript column.
     static let column: CGFloat = 21
-    static let proseSize: CGFloat = 14
-    /// Extra leading that takes Allo 14 to the web's 24pt line.
+    static let proseSize: CGFloat = 16
+    /// Extra leading on Allo 16: a line of about 26pt, open enough to read a
+    /// long reply on a phone.
     static let proseLineSpacing: CGFloat = 6
     static let proseSmallSize: CGFloat = 13
     static let proseSmallLineSpacing: CGFloat = 4
-    /// Between two paragraphs.
-    static let paragraphGap: CGFloat = 8
-    static let userSize: CGFloat = 14
+    /// Between two paragraphs: most of a blank line, so a reply reads as
+    /// paragraphs and not as one block.
+    static let paragraphGap: CGFloat = 14
+    /// Between two paragraphs in a card, which is denser on purpose.
+    static let paragraphSmallGap: CGFloat = 8
+    /// Between two items of a list: less than a paragraph, more than a line.
+    static let listItemGap: CGFloat = 8
+    static let listItemSmallGap: CGFloat = 4
+    /// A list stands in from the text around it, as the bullet does on the web.
+    static let listIndent: CGFloat = 6
+    /// The same size as a reply, so the two sides of a conversation match.
+    static let userSize: CGFloat = 16
     static let userLineSpacing: CGFloat = 4
     /// Disclosure rows — thinking, plan, tool activity — and their meta.
     static let summarySize: CGFloat = 12

@@ -12,6 +12,8 @@ enum ProseSize {
 
     var fontSize: CGFloat { self == .small ? Reading.proseSmallSize : Reading.proseSize }
     var lineSpacing: CGFloat { self == .small ? Reading.proseSmallLineSpacing : Reading.proseLineSpacing }
+    var paragraphGap: CGFloat { self == .small ? Reading.paragraphSmallGap : Reading.paragraphGap }
+    var listItemGap: CGFloat { self == .small ? Reading.listItemSmallGap : Reading.listItemGap }
 }
 
 /// Prose, rendered the one way.
@@ -49,7 +51,7 @@ struct MarkdownBlocks: View {
     let mentions: [SubSessionMention]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Reading.paragraphGap) {
+        VStack(alignment: .leading, spacing: size.paragraphGap) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 MarkdownBlockView(block: block, size: size, mentions: mentions)
             }
@@ -80,14 +82,15 @@ private struct MarkdownBlockView: View {
                 .padding(.leading, 12)
                 .overlay(alignment: .leading) { Palette.border.frame(width: 2) }
         case .list(let ordered, let start, let items):
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: size.listItemGap) {
                 ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
                         marker(ordered: ordered, number: start + index, checked: item.checked)
                         MarkdownBlocks(blocks: item.blocks, size: size, mentions: mentions)
                     }
                 }
             }
+            .padding(.leading, Reading.listIndent)
         case .table(let header, let alignments, let rows):
             TableBlock(header: header, alignments: alignments, rows: rows, size: size, mentions: mentions)
         case .rule:
@@ -113,10 +116,10 @@ private struct MarkdownBlockView: View {
     /// with `# Summary` should not shout. A document keeps its hierarchy.
     private func headingFont(_ level: Int) -> Font {
         if size == .document {
-            let sizes: [CGFloat] = [22, 19, 17, 15, 14, 13]
+            let sizes: [CGFloat] = [24, 21, 19, 17, 16, 15]
             return AppFont.sansMedium(sizes[max(0, min(5, level - 1))], relativeTo: .headline)
         }
-        return AppFont.sansMedium(level <= 4 ? 15 : level == 5 ? 14 : 13, relativeTo: .headline)
+        return AppFont.sansMedium(level <= 4 ? 17 : level == 5 ? 16 : 15, relativeTo: .headline)
     }
 }
 

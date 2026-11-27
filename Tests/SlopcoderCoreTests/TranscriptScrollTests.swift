@@ -123,6 +123,23 @@ private func user(_ key: String) -> Item {
         #expect(after.tops[grown.firstIndex(of: anchor!.entry)!] - offset == onScreen)
     }
 
+    @Test func aPageArrivingWhileTheSpinnerShowsKeepsTheFirstRowInPlace() {
+        let withSpinner: [TranscriptEntry] = [.earlier] + entries
+        let before = TranscriptStack(heights: [40, 100, 100, 100, 100], spacing: 4, padding: 16)
+        // At the very top: the spinner is the first thing in view.
+        let viewport = ScrollViewport(offset: -50, height: 300, insetTop: 50, insetBottom: 0, contentHeight: before.contentHeight)
+        let anchor = TranscriptScroll.anchor(withSpinner, before, viewport)
+        #expect(anchor?.entry == .row("a"))
+        let onScreen = before.tops[1] - viewport.offset
+
+        let grown: [TranscriptEntry] = [.earlier, .row("x"), .row("y")] + entries
+        let after = TranscriptStack(heights: [40, 300, 120, 100, 100, 100, 100], spacing: 4, padding: 16)
+        var next = viewport
+        next.contentHeight = after.contentHeight
+        let offset = TranscriptScroll.offset(following: false, anchor: anchor, entries: grown, stack: after, before: viewport, after: next)
+        #expect(after.tops[grown.firstIndex(of: .row("a"))!] - offset == onScreen)
+    }
+
     @Test func aRowAboveGrowingMovesNothingInView() {
         let before = TranscriptStack(heights: [100, 100, 100, 100], spacing: 0, padding: 0)
         let viewport = ScrollViewport(offset: 150, height: 200, insetTop: 0, insetBottom: 0, contentHeight: 400)

@@ -168,24 +168,6 @@ private struct SessionView: View {
 
     @ViewBuilder private var footer: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if !pinned {
-                HStack {
-                    Spacer()
-                    Button {
-                        scroller.toEnd()
-                    } label: {
-                        Image(systemName: "arrow.down")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(Palette.foreground)
-                            .frame(width: 36, height: 36)
-                            .glassSurface(cornerRadius: 18, interactive: true)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Jump to the latest")
-                    Spacer()
-                }
-            }
-
             if archived {
                 ArchivedNote(at: state?.archivedAt) {
                     router.reset()
@@ -225,6 +207,25 @@ private struct SessionView: View {
         .padding(.horizontal, 10)
         .padding(.top, 4)
         .padding(.bottom, 10)
+        // Floats above the footer rather than standing in it: the footer is the
+        // list's bottom inset, and a taller inset pushes the transcript up — so
+        // the button appearing under a reader's finger would scroll them.
+        .overlay(alignment: .top) {
+            if !pinned {
+                Button {
+                    scroller.toEnd()
+                } label: {
+                    Image(systemName: "arrow.down")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Palette.foreground)
+                        .frame(width: 36, height: 36)
+                        .glassSurface(cornerRadius: 18, interactive: true)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Jump to the latest")
+                .alignmentGuide(.top) { $0[.bottom] + 2 }
+            }
+        }
         // The same measure as the transcript above it, so the two share an edge.
         .readingWidth()
     }
@@ -234,15 +235,17 @@ private struct SessionView: View {
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
         ToolbarItem(placement: .principal) {
             Button { sheet = .context } label: {
-                VStack(spacing: 1) {
-                    Text(title).font(AppFont.sansMedium(15)).foregroundStyle(Palette.foreground).lineLimit(1)
-                    Text(subtitle).font(AppFont.sans(11)).foregroundStyle(Palette.mutedForeground).lineLimit(1)
+                VStack(spacing: 2) {
+                    Text(title).font(AppFont.sansMedium(15, relativeTo: .headline)).foregroundStyle(Palette.foreground)
+                    Text(subtitle).font(AppFont.sans(13, relativeTo: .subheadline)).foregroundStyle(Palette.mutedForeground)
                 }
-                .padding(.horizontal, 6)
+                .lineLimit(1)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 2)
             }
-            // On iOS 26 a bar gives a button its glass capsule; left plain, the
-            // title would be bare text beside everything else that floats.
-            .modifier(PlainBeforeGlass())
+            // A bar gives glass to the buttons at its edges but not to the one in
+            // its centre, so the title asks for the system's glass button itself.
+            .modifier(TitleCapsule())
             .accessibilityLabel("\(title). \(subtitle). \(archived ? "archived · read-only. " : "")Session settings")
             .accessibilityIdentifier("session.title")
         }
@@ -642,13 +645,20 @@ private struct SubSessionNote: View {
         .glassSurface(cornerRadius: Radius.xl)
     }
 }
-/// Before iOS 26 a button in a bar is drawn plain; from 26 the bar draws it.
-private struct PlainBeforeGlass: ViewModifier {
+
+/// The system's glass capsule button from iOS 26; before it, the same capsule
+/// in material, as the app's other floating surfaces fall back.
+private struct TitleCapsule: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
-            content
+            content.buttonStyle(.glass).buttonBorderShape(.capsule)
         } else {
-            content.buttonStyle(.plain)
+            content
+                .buttonStyle(.plain)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(.regularMaterial, in: Capsule())
+                .overlay(Capsule().strokeBorder(Palette.border, lineWidth: 1))
         }
     }
 }
