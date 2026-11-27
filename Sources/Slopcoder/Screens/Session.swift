@@ -137,12 +137,37 @@ private struct SessionView: View {
             )
             .ignoresSafeArea()
         }
+        // Only the list ignores the safe area, so the reader itself ends where
+        // the footer begins, and this sits just above it. Floating here, the
+        // button is no part of the footer — whose height is the list's bottom
+        // inset — and it is always there, only faded: its coming and going
+        // changes no layout, so it cannot move the transcript.
+        .overlay(alignment: .bottom) { jumpToLatest }
         // A different session is a different list: nothing a row held, and no
         // measurement, carries over.
         .id(sessionId)
         .safeAreaInset(edge: .top) { ConnectionBanner().padding(.horizontal, 10) }
         .safeAreaInset(edge: .bottom) { footer }
         .onChange(of: state?.pendingApprovalIds.count ?? 0) { _, _ in screen.approvalsChanged() }
+    }
+
+    private var jumpToLatest: some View {
+        Button {
+            scroller.toEnd()
+        } label: {
+            Image(systemName: "arrow.down")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Palette.foreground)
+                .frame(width: 36, height: 36)
+                .glassSurface(cornerRadius: 18, interactive: true)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Jump to the latest")
+        .padding(.bottom, 8)
+        .opacity(pinned ? 0 : 1)
+        .allowsHitTesting(!pinned)
+        .accessibilityHidden(pinned)
+        .animation(.easeOut(duration: 0.15), value: pinned)
     }
 
     private var rowContext: RowContext {
@@ -207,25 +232,6 @@ private struct SessionView: View {
         .padding(.horizontal, 10)
         .padding(.top, 4)
         .padding(.bottom, 10)
-        // Floats above the footer rather than standing in it: the footer is the
-        // list's bottom inset, and a taller inset pushes the transcript up — so
-        // the button appearing under a reader's finger would scroll them.
-        .overlay(alignment: .top) {
-            if !pinned {
-                Button {
-                    scroller.toEnd()
-                } label: {
-                    Image(systemName: "arrow.down")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Palette.foreground)
-                        .frame(width: 36, height: 36)
-                        .glassSurface(cornerRadius: 18, interactive: true)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Jump to the latest")
-                .alignmentGuide(.top) { $0[.bottom] + 2 }
-            }
-        }
         // The same measure as the transcript above it, so the two share an edge.
         .readingWidth()
     }
