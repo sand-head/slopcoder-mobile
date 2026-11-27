@@ -1018,33 +1018,18 @@ private struct ContextRingImage: View {
         }
     }
 }
-/// Keeps the scroll bar beside the text when the system stands its bars on
-/// their side.
+/// Keeps the scroll bar beside the text rather than at the edge of the display.
 ///
-/// On the outer display of an iPhone Duo the toolbar runs down one edge and the
-/// text is kept clear of it, but the scroll bar is still drawn at the edge of
-/// the display, underneath those controls. This moves it in by the width the
-/// bars take, on the side they are on. Elsewhere it does nothing.
+/// A scroll view's bar is drawn at the edge of the screen by default, which on
+/// an iPhone Duo is underneath the toolbar the system stands on its side. Giving
+/// the bar a margin of its own changes what it is measured from: content
+/// margins are added *to the safe area*, and the vertical toolbar is part of
+/// the safe area. So the margin wanted is the small gap between text and bar,
+/// not the width of the toolbar — adding that as well puts the bar a toolbar's
+/// width into the text, which is what an earlier version of this did.
 private struct IndicatorBesideText: ViewModifier {
     func body(content: Content) -> some View {
-        if #available(iOS 27.1, *) {
-            content.modifier(Inset())
-        } else {
-            content
-        }
-    }
-
-    @available(iOS 27.1, *)
-    private struct Inset: ViewModifier {
-        @Environment(\.toolbarVerticalEdge) private var edge
-        @State private var safeArea = EdgeInsets()
-
-        func body(content: Content) -> some View {
-            content
-                .contentMargins(.leading, edge == .leading ? safeArea.leading : 0, for: .scrollIndicators)
-                .contentMargins(.trailing, edge == .trailing ? safeArea.trailing : 0, for: .scrollIndicators)
-                .onGeometryChange(for: EdgeInsets.self) { $0.safeAreaInsets } action: { safeArea = $0 }
-        }
+        content.contentMargins(.horizontal, 2, for: .scrollIndicators)
     }
 }
 #endif
