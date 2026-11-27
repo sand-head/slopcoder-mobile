@@ -138,6 +138,10 @@ import Testing
         #expect(!app.contains("testTargets"))
         #expect(!app.contains("UITests"))
         #expect(try text(".github/workflows/release.yml").contains("-scheme SlopcoderApp -configuration Release"))
+        // CI runs them through their own scheme, in the configuration with the stub.
+        let ci = try text(".github/workflows/ci.yml")
+        #expect(ci.contains("-scheme SlopcoderUITests -configuration Debug"))
+        #expect(ci.contains("-retry-tests-on-failure"))
 
         let sources = try FileManager.default.contentsOfDirectory(atPath: PackagingTests.root.appendingPathComponent("App/UITests").path)
         #expect(sources.contains("SmokeTests.swift"))

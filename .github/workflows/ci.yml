@@ -247,3 +247,156 @@ jobs:
             -destination generic/platform=iOS \
             CODE_SIGNING_ALLOWED=NO \
             build
+
+  # The app walked by a person, as near as CI gets: XCUITests (App/UITests)
+  # launch a debug build with -SlopcoderStub 1, which signs in from memory and
+  # talks to a canned server in process (Sources/SlopcoderCore/Stub), and go
+  # from the session list into a session, send a message, open the session's
+  # panel and open a settings page. Every step keeps a screenshot, pass or
+  # fail; they are extracted below as plain PNGs.
+  #
+  # A simulator that never boots is not a failure of the app, and the owner
+  # should not be woken by one; but a job that cannot fail tells nobody
+  # anything. So the line is drawn at the boot, which is checked on its own
+  # before any test runs, with three goes and the device started over between
+  # them. A device that never boots is a warning and a note in the run's
+  # summary. Once one has booted, anything that goes wrong — a build that
+  # fails, an app that will not launch, a test that fails three times running
+  # — fails the job. A flaky test gets three goes (-retry-tests-on-failure);
+  # a broken one fails all three.
+  ui-tests:
+    runs-on: xcode-27
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '27.2'
+      - name: Generate the Xcode project
+        run: |
+          python3 scripts/xcode-plists.py
+          command -v xcodegen >/dev/null || brew install xcodegen
+          xcodegen generate
+      - name: Boot a simulated iPhone
+        id: boot
+        run: |
+          # The newest available device whose name matches: "duo" for an iPhone
+          # Duo, "plain" for any other iPhone.
+          pick() {
+            xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          want = sys.argv[1]
+          devices = json.load(sys.stdin)['devices']
+          for runtime in sorted(devices, reverse=True):
+              if 'iOS' not in runtime:
+                  continue
+              for device in devices[runtime]:
+                  name = device['name']
+                  if name.startswith('iPhone') and (('Duo' in name) == (want == 'duo')):
+                      print(device['udid'])
+                      sys.exit()
+          " "$1"
+          }
+
+          # Boots the device and waits until it is up; three goes, starting it
+          # over between them. Answers 0 once it is up.
+          boot() {
+            local udid="$1" try
+            for try in 1 2 3; do
+              if xcrun simctl bootstatus "$udid" -b; then return 0; fi
+              echo "The simulator did not boot (go $try of 3); starting it over."
+              xcrun simctl shutdown "$udid" > /dev/null 2>&1 || true
+              sleep 10
+            done
+            return 1
+          }
+
+          iphone="$(pick plain)"
+          if [ -z "$iphone" ]; then
+            echo "::warning::No iPhone simulator on this runner; the UI tests did not run."
+            echo "The UI tests did not run: no iPhone simulator on this runner." >> "$GITHUB_STEP_SUMMARY"
+            echo "iphone=" >> "$GITHUB_OUTPUT"
+          elif boot "$iphone"; then
+            echo "iphone=$iphone" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::The iPhone simulator never booted; the UI tests did not run, and nothing was learned about the app."
+            echo "The UI tests did not run: the iPhone simulator never booted (three goes)." >> "$GITHUB_STEP_SUMMARY"
+            echo "iphone=" >> "$GITHUB_OUTPUT"
+          fi
+          echo "duo=$(pick duo)" >> "$GITHUB_OUTPUT"
+      # Signed ad hoc, as the simulator wants and as needs no Apple account.
+      # Debug, because only a debug build has the stub mode the tests use.
+      - name: UI tests on the iPhone
+        if: steps.boot.outputs.iphone != ''
+        run: |
+          xcodebuild test \
+            -project Slopcoder.xcodeproj \
+            -scheme SlopcoderUITests -configuration Debug \
+            -destination "id=${{ steps.boot.outputs.iphone }}" \
+            -resultBundlePath build/ui-iphone.xcresult \
+            -retry-tests-on-failure -test-iterations 3 \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER=
+      # The same tests on the iPhone Duo, for pictures of the layout with the
+      # toolbar standing on its side. Its simulator is the less steady of the
+      # two on a hosted runner, so nothing here can fail the job.
+      - name: UI tests on the iPhone Duo
+        if: always() && steps.boot.outputs.duo != ''
+        continue-on-error: true
+        run: |
+          duo="${{ steps.boot.outputs.duo }}"
+          if ! xcrun simctl bootstatus "$duo" -b; then
+            echo "::warning::The iPhone Duo simulator did not boot; no Duo screenshots this time."
+            exit 0
+          fi
+          xcodebuild test \
+            -project Slopcoder.xcodeproj \
+            -scheme SlopcoderUITests -configuration Debug \
+            -destination "id=$duo" \
+            -resultBundlePath build/ui-duo.xcresult \
+            -retry-tests-on-failure -test-iterations 3 \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER=
+      # The screenshots, out of the result bundles and under the names the
+      # tests gave them. Best effort: a missing picture is not a failure.
+      - name: Extract the screenshots
+        if: always()
+        run: |
+          mkdir -p screenshots
+          for bundle in build/ui-*.xcresult; do
+            [ -d "$bundle" ] || continue
+            device="$(basename "$bundle" .xcresult)"
+            out="exported-$device"
+            rm -rf "$out"
+            if ! xcrun xcresulttool export attachments --path "$bundle" --output-path "$out"; then
+              echo "::warning::Could not export the attachments of $bundle."
+              continue
+            fi
+            # The files are exported under generated names; manifest.json says
+            # which is which.
+            python3 - "$out" "$device" <<'PY'
+          import json, pathlib, re, shutil, sys
+          out, device = pathlib.Path(sys.argv[1]), sys.argv[2]
+          for test in json.loads((out / "manifest.json").read_text()):
+              for attachment in test.get("attachments", []):
+                  source = out / attachment["exportedFileName"]
+                  name = attachment.get("suggestedHumanReadableName") or source.stem
+                  name = re.sub(r"[^A-Za-z0-9 ._-]", "", name).strip() or source.stem
+                  target = pathlib.Path("screenshots") / f"{device} - {name}{source.suffix or '.png'}"
+                  shutil.copyfile(source, target)
+                  print(target)
+          PY
+          done
+          ls screenshots
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-screenshots
+          path: screenshots/
+          if-no-files-found: ignore
+          retention-days: 14
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-results
+          path: build/ui-*.xcresult
+          if-no-files-found: ignore
+          retention-days: 14
