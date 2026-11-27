@@ -301,7 +301,17 @@ public final class SessionsModel {
     public func rename(_ session: SessionSummary, to name: String) async {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard let seam = seam(), !trimmed.isEmpty, trimmed != session.title else { return }
-        try? await seam.rename(session.id, name: trimmed)
+        actionError = nil
+        do {
+            try await seam.rename(session.id, name: trimmed)
+        } catch is CancellationError {
+            return
+        } catch {
+            // The list still has the old name, which is the truth.
+            feedback.error()
+            actionError = Self.notDone("renamed", "rename", session.title, error)
+            return
+        }
         await load()
     }
 
@@ -317,7 +327,7 @@ public final class SessionsModel {
             // Nothing was deleted, so nothing is closed or re-read: the row is
             // still there, and the page says why.
             feedback.error()
-            actionError = Self.notDeleted(session.title, error)
+            actionError = Self.notDone("deleted", "delete", session.title, error)
             return
         }
         if answer == .running {
@@ -333,15 +343,16 @@ public final class SessionsModel {
         await load()
     }
 
-    /// Why a delete did not happen: no server to ask, or a server that would not.
-    static func notDeleted(_ title: String, _ error: Error) -> String {
+    /// Why a change to a session did not happen: no server to ask, or a
+    /// server that would not.
+    static func notDone(_ done: String, _ doing: String, _ title: String, _ error: Error) -> String {
         if error is OfflineError {
-            return "Could not reach the server, so “\(title)” was not deleted. Try again once you are back online."
+            return "Could not reach the server, so “\(title)” was not \(done). Try again once you are back online."
         }
         if let refused = error as? SeamError {
-            return "The server could not delete “\(title)” just now (it answered \(refused.status)). Try again in a moment."
+            return "The server could not \(doing) “\(title)” just now (it answered \(refused.status)). Try again in a moment."
         }
-        return "“\(title)” was not deleted: \(describe(error))"
+        return "“\(title)” was not \(done): \(describe(error))"
     }
 
     public func retryRoutine(_ routineId: String, _ runId: String) async {

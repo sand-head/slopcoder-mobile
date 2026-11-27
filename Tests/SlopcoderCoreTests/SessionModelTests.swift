@@ -291,6 +291,76 @@ private func image(_ key: String) -> PendingImage {
         server.finish(model)
     }
 
+    @Test func aDialTheServerRefusedGoesBackAndSaysWhy() async throws {
+        let server = SessionServer()
+        server.thinking = "2"
+        server.answers = [("/thinking", 500, "")]
+        let model = try await server.model()
+        #expect(model.turnOptions.thinking == .medium)
+
+        var next = model.turnOptions
+        next.thinking = .high
+        model.apply(next)
+        #expect(model.turnOptions.thinking == .high)
+        #expect(await settled { model.dialError != nil })
+        #expect(model.turnOptions.thinking == .medium)
+        #expect(model.dialError == "Thinking was not changed: the server answered 500. It is still Medium.")
+        #expect(server.felt.names == ["error"])
+        server.finish(model)
+    }
+
+    @Test func anApprovalModeThatNeverReachedTheServerGoesBack() async throws {
+        let server = SessionServer()
+        server.answers = [("/approval-mode", -1, "")]
+        let model = try await server.model()
+        var next = model.turnOptions
+        next.approval = .always
+        model.apply(next)
+        #expect(await settled { model.dialError != nil })
+        #expect(model.turnOptions.approval == .dangerous)
+        #expect(model.dialError == "Approvals were not changed: the server could not be reached. They are still Dangerous only.")
+        server.finish(model)
+    }
+
+    @Test func aFacetThatFailedGoesBackAndAGoodChangeClearsTheNote() async throws {
+        let server = SessionServer()
+        server.answers = [("s1/facet", 500, "")]
+        let model = try await server.model()
+        var next = model.turnOptions
+        next.facet = "review"
+        model.apply(next)
+        #expect(await settled { model.dialError != nil })
+        #expect(model.turnOptions.facet == nil)
+        #expect(model.dialError == "The facet was not changed: the server answered 500. It is still Default.")
+
+        next = model.turnOptions
+        next.thinking = .low
+        model.apply(next)
+        #expect(model.dialError == nil)
+        #expect(await settled { server.calls("/thinking").count == 1 })
+        try await Task.sleep(nanoseconds: 30_000_000)
+        #expect(model.dialError == nil)
+        #expect(model.turnOptions.thinking == .low)
+        server.finish(model)
+    }
+
+    /// The model is chosen for the next turn and travels with it, so picking
+    /// one sends nothing and has nothing to undo.
+    @Test func choosingAModelSendsNothingUntilTheNextTurn() async throws {
+        let server = SessionServer()
+        let model = try await server.model()
+        let before = server.transport.calls.count
+        var next = model.turnOptions
+        next.selection = ModelSelection(auto: false, connectionId: "c9", modelId: "m9")
+        model.apply(next)
+        try await Task.sleep(nanoseconds: 30_000_000)
+        #expect(server.transport.calls.count == before)
+        model.draft = "go"
+        await model.send()
+        #expect(server.body("/start")["selection"]["modelId"] == "m9")
+        server.finish(model)
+    }
+
     @Test func aDialChangedBeforeTheSessionLoadedIsHeldButNotSent() {
         let model = SessionModel(sessionId: "s1", seam: { nil }, hub: { nil })
         model.apply(TurnOptions(thinking: .max))

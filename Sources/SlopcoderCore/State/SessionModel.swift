@@ -58,6 +58,8 @@ public final class SessionModel {
     public private(set) var commands: [SlashCommandInfo] = []
     /// What the dials say since the screen last opened, ahead of the server.
     public private(set) var options: TurnOptions?
+    /// Why the last dial change did not take, said in the panel it was made from.
+    public private(set) var dialError: String?
     public private(set) var loadingEarlier = false
 
     public private(set) var repoDetails: [WorkspaceRepo]?
@@ -191,15 +193,53 @@ public final class SessionModel {
     public func apply(_ next: TurnOptions) {
         let previous = options ?? state.map(TranscriptLayout.turnOptions)
         options = next
+        dialError = nil
         guard let seam = seam(), let previous else { return }
         let sessionId = self.sessionId
+        // The model is not among these: it is chosen for the next turn and
+        // travels with it (see `send`), so there is nothing to send or undo.
         Task {
-            if next.thinking != previous.thinking { try? await seam.setThinking(sessionId, level: next.thinking) }
-            if next.approval != previous.approval {
-                try? await seam.setApprovalMode(sessionId, SetApprovalRequest(mode: next.approval, useClassifier: true))
+            if next.thinking != previous.thinking {
+                do { try await seam.setThinking(sessionId, level: next.thinking) } catch { refused(.thinking, next, previous, error) }
             }
-            if next.facet != previous.facet { try? await seam.setFacet(sessionId, facetName: next.facet) }
+            if next.approval != previous.approval {
+                do {
+                    try await seam.setApprovalMode(sessionId, SetApprovalRequest(mode: next.approval, useClassifier: true))
+                } catch {
+                    refused(.approval, next, previous, error)
+                }
+            }
+            if next.facet != previous.facet {
+                do { try await seam.setFacet(sessionId, facetName: next.facet) } catch { refused(.facet, next, previous, error) }
+            }
         }
+    }
+
+    private enum Dial { case thinking, approval, facet }
+
+    /// A dial the server did not take goes back to what the server last said —
+    /// unless it has been moved again since — and the panel says so.
+    private func refused(_ dial: Dial, _ tried: TurnOptions, _ previous: TurnOptions, _ error: Error) {
+        if error is CancellationError { return }
+        let server = state.map(TranscriptLayout.turnOptions) ?? previous
+        var current = options ?? server
+        let why = error is OfflineError ? "the server could not be reached"
+            : (error as? SeamError).map { "the server answered \($0.status)" } ?? describe(error)
+        switch dial {
+        case .thinking:
+            if current.thinking == tried.thinking { current.thinking = server.thinking }
+            options = current
+            dialError = "Thinking was not changed: \(why). It is still \(dials.thinkingLabel)."
+        case .approval:
+            if current.approval == tried.approval { current.approval = server.approval }
+            options = current
+            dialError = "Approvals were not changed: \(why). They are still \(dials.approvalLabel)."
+        case .facet:
+            if current.facet == tried.facet { current.facet = server.facet }
+            options = current
+            dialError = "The facet was not changed: \(why). It is still \(current.facet ?? "Default")."
+        }
+        feedback.error()
     }
 
     public func send() async {

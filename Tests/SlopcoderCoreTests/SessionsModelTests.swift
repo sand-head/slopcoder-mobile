@@ -286,6 +286,29 @@ final class ListServer {
         #expect(server.listReads == 2)
     }
 
+    @Test func aRenameThatFailedSaysSoAndKeepsTheOldName() async throws {
+        let server = ListServer()
+        server.answers = [("/name", -1, "")]
+        let model = server.model()
+        await model.load()
+        let session = try #require(model.sessions?.first)
+        await model.rename(session, to: "Fix CI")
+
+        #expect(model.actionError == "Could not reach the server, so “Fix the build” was not renamed. Try again once you are back online.")
+        #expect(model.sessions?.first?.title == "Fix the build")
+        #expect(server.felt.names == ["error"])
+        #expect(server.listReads == 1)
+
+        server.answers = [("/name", 500, "")]
+        await model.rename(session, to: "Fix CI")
+        #expect(model.actionError == "The server could not rename “Fix the build” just now (it answered 500). Try again in a moment.")
+
+        server.answers = []
+        await model.rename(session, to: "Fix CI")
+        #expect(model.actionError == nil)
+        #expect(server.listReads == 2)
+    }
+
     @Test func aRunningSessionIsNotDeletedAndThePageSaysSo() async throws {
         let server = ListServer()
         server.answers = [("/api/seam/sessions/a", 200, #"{"result":2}"#)]

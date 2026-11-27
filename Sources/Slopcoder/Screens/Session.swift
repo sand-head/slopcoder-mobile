@@ -314,6 +314,7 @@ private struct SessionView: View {
             }
             .padding(.bottom, 4)
 
+            if let dialError = screen.dialError { ErrorText(dialError) }
             if !archived, !parentDriven {
                 PanelSection(label: "runs as") {
                     NavigationLink {
