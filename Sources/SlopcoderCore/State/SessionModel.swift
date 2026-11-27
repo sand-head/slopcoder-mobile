@@ -14,7 +14,7 @@ import Observation
 @Observable
 public final class SessionModel {
     /// One repository in the session's workspace, as `workspace/changes` lists it.
-    public struct WorkspaceRepo: Decodable, Hashable, Sendable {
+    public struct WorkspaceRepo: Codable, Hashable, Sendable {
         public var repo: String
         public var branch: String?
         public var detached: Bool?

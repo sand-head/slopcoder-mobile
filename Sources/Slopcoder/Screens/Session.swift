@@ -243,6 +243,7 @@ private struct SessionView: View {
             // title would be bare text beside everything else that floats.
             .modifier(PlainBeforeGlass())
             .accessibilityLabel("\(title). \(subtitle). \(archived ? "archived · read-only. " : "")Session settings")
+            .accessibilityIdentifier("session.title")
         }
         ToolbarItem(placement: .topBarTrailing) {
             Button { sheet = .usage } label: {

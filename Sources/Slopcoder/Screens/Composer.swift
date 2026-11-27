@@ -140,6 +140,7 @@ struct Composer: View {
                 .foregroundStyle(Palette.foreground)
                 .lineLimit(launcher ? 3...12 : 1...8)
                 .focused($focused)
+                .accessibilityIdentifier("composer.field")
                 .padding(.vertical, 4)
                 .accessibilityLabel(placeholder)
 
@@ -182,6 +183,7 @@ struct Composer: View {
                     .foregroundStyle(Palette.foreground)
                     .lineLimit(1...8)
                     .focused($focused)
+                    .accessibilityIdentifier("composer.field")
                     .padding(.vertical, 11)
                     .padding(.horizontal, 4)
                     .accessibilityLabel(placeholder)
@@ -189,6 +191,7 @@ struct Composer: View {
                     SendButton(mode: .stop, busy: stopping, disabled: !connection.reachable, label: stopping ? "Stopping" : "Stop", action: onStop)
                 }
                 SendButton(mode: .send, busy: busy, disabled: disabled || !connection.reachable, label: action, action: onAction)
+                    .accessibilityIdentifier("composer.send")
             }
             .padding(.horizontal, 4)
             .padding(.vertical, 3)
@@ -299,6 +302,7 @@ struct Composer: View {
                 SendButton(mode: .stop, busy: stopping, disabled: !connection.reachable, label: stopping ? "Stopping" : "Stop", action: onStop)
             }
             SendButton(mode: .send, busy: busy, disabled: disabled || !connection.reachable, label: action, action: onAction)
+                .accessibilityIdentifier("composer.send")
         }
     }
 

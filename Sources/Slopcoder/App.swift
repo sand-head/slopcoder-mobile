@@ -278,6 +278,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        // The stub is for UI tests; it never registers for or answers a push.
+        if AppModel.shared.stubbed { return true }
         UNUserNotificationCenter.current().delegate = self
         // Permission is asked for right after sign-in. This only re-registers when
         // it was granted in an earlier session, because APNs tokens rotate and a

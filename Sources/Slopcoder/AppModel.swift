@@ -22,12 +22,32 @@ final class AppModel {
     private(set) var artifactInfo: ArtifactInfoCache?
     /// A link that arrived before the key was read, opened once it has been.
     private var pendingURL: URL?
+    /// Running against the stub server, for a UI test: see `StubMode`.
+    let stubbed: Bool
 
     private init() {
-        auth = AuthStore(vault: KeychainVault(), connection: connection, deviceName: "iPhone (slopcoder)")
-        hubs = HubCenter(connection: connection)
-        auth.onSignedIn = { PushRegistrar.enable() }
-        auth.beforeSignOut = { await PushSubscriber.unsubscribe() }
+        // Only a debug build can be asked for the stub, and only by a launch
+        // argument, which is how a UI test starts the app and nothing else
+        // does. A release build has no way in.
+        #if DEBUG
+        let stub = StubMode.requested(in: ProcessInfo.processInfo.arguments) ? StubServer() : nil
+        #else
+        let stub: StubServer? = nil
+        #endif
+        stubbed = stub != nil
+
+        if let stub {
+            // Signed in from memory, talking to the stub in process, and never
+            // asking for notifications: nothing leaves the phone, and nothing
+            // a real sign-in left in the Keychain is read or touched.
+            auth = AuthStore(vault: MemoryVault(StubMode.credential), connection: connection, transport: stub, deviceName: "iPhone (slopcoder)")
+            hubs = HubCenter(connection: connection, makeHub: { SessionHub($0, connector: stub) })
+        } else {
+            auth = AuthStore(vault: KeychainVault(), connection: connection, deviceName: "iPhone (slopcoder)")
+            hubs = HubCenter(connection: connection)
+            auth.onSignedIn = { PushRegistrar.enable() }
+            auth.beforeSignOut = { await PushSubscriber.unsubscribe() }
+        }
     }
 
     var seam: Seam? { auth.seam }
