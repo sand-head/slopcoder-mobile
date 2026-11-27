@@ -10,9 +10,10 @@ a compiled asset catalog and the upload are things only a Mac does. It builds
 the same Swift package — `project.yml` is two empty targets that link
 `Package.swift`'s products.
 
-**This path has not run yet.** It was written without a Mac to try it on;
-`ci.yml`'s `xcode` job builds the same project unsigned on every push to
-`main`, so that is where a mistake in it will show first.
+**This path has not run yet.** It was written without a Mac to try it on.
+`ci.yml`'s `ui-tests` job generates the same project and builds it (Debug, for
+the simulator) on every push to `main`, so a broken project shows there first;
+a mistake only a Release device build makes will show on the day of a release.
 
 **If you set this up for the React Native app, one thing changed:** the app now
 shares its push keys with the notification extension through an App Group, so
