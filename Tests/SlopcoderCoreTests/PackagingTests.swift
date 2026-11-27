@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+@testable import SlopcoderCore
 
 /// The bundle's plists and xtool.yml are not compiled by anything, so a typo in
 /// one is found on a phone, or by App Store Connect. These read them the way
@@ -107,6 +108,73 @@ import Testing
         #expect(project.contains("iOS: \"17.0\"") && package.contains(".iOS(.v17)"))
         for path in ["App/Xcode/empty.c", "App/Assets.xcassets/AppIcon.appiconset/Contents.json", "scripts/xcode-plists.py"] {
             #expect(FileManager.default.fileExists(atPath: PackagingTests.root.appendingPathComponent(path).path), "\(path)")
+        }
+    }
+
+    /// The section of project.yml under `targets:` for one target.
+    func target(_ name: String, in project: String) throws -> String {
+        let start = try #require(project.range(of: "\n  \(name):\n"))
+        let rest = project[start.upperBound...]
+        let end = rest.range(of: "\n  [A-Za-z]", options: .regularExpression)?.lowerBound ?? rest.endIndex
+        return String(rest[..<end])
+    }
+
+    /// The UI tests are a target of their own with a scheme of their own, and
+    /// the scheme a release archives knows nothing of them.
+    @Test func theUITestsAreTheirOwnTargetAndStayOutOfTheRelease() throws {
+        let project = try text("project.yml")
+        let tests = try target("SlopcoderUITests", in: project)
+        #expect(tests.contains("type: bundle.ui-testing"))
+        #expect(tests.contains("- path: App/UITests"))
+        #expect(tests.contains("- target: SlopcoderApp"))
+        #expect(tests.contains("TEST_TARGET_NAME: SlopcoderApp"))
+        #expect(tests.contains("PRODUCT_BUNDLE_IDENTIFIER: codes.sand.slopcoder.UITests"))
+        let schemes = try #require(project.range(of: "\nschemes:\n"))
+        #expect(project[schemes.upperBound...].contains("\n  SlopcoderUITests:\n    build:\n"))
+        #expect(project.contains("      config: Debug\n"))
+
+        let app = try target("SlopcoderApp", in: project)
+        #expect(app.contains("scheme: {}"))
+        #expect(!app.contains("testTargets"))
+        #expect(!app.contains("UITests"))
+        #expect(try text(".github/workflows/release.yml").contains("-scheme SlopcoderApp -configuration Release"))
+
+        let sources = try FileManager.default.contentsOfDirectory(atPath: PackagingTests.root.appendingPathComponent("App/UITests").path)
+        #expect(sources.contains("SmokeTests.swift"))
+        // Nothing in the package builds them: they are Xcode's alone.
+        #expect(try !text("Package.swift").contains("UITests"))
+    }
+
+    /// The UI tests cannot be compiled here, so what they look for is held to
+    /// what the stub serves.
+    @Test func theUITestsLookForWhatTheStubServes() throws {
+        let tests = try text("App/UITests/SmokeTests.swift")
+        #expect(tests.contains("[\"\(StubMode.argument)\", \"1\"]"))
+        #expect(StubMode.requested(in: ["app", StubMode.argument, "1"]))
+        for line in [StubWorld.idleTitle, StubWorld.runningTitle, StubWorld.lastWords, StubWorld.reply] {
+            #expect(tests.contains("\"\(line)\""), "\(line)")
+        }
+        #expect(tests.contains("\"Stub Person\""))
+        #expect(StubWorld.idleEvents.last { $0.kind == "AssistantText" }?.payloadJson.contains(StubWorld.lastWords) == true)
+        // The identifiers they find things by exist in the app.
+        let composer = try text("Sources/Slopcoder/Screens/Composer.swift")
+        let session = try text("Sources/Slopcoder/Screens/Session.swift")
+        for identifier in ["composer.field", "composer.send"] {
+            #expect(tests.contains("\"\(identifier)\""))
+            #expect(composer.contains(".accessibilityIdentifier(\"\(identifier)\")"))
+        }
+        #expect(tests.contains("\"session.title\""))
+        #expect(session.contains(".accessibilityIdentifier(\"session.title\")"))
+    }
+
+    /// Stub mode is a debug build's, and asks for nothing a release would carry.
+    @Test func stubModeIsReachableOnlyFromADebugBuildsLaunchArgument() throws {
+        let model = try text("Sources/Slopcoder/AppModel.swift")
+        let gate = try #require(model.range(of: "#if DEBUG\n        let stub = StubMode.requested(in: ProcessInfo.processInfo.arguments) ? StubServer() : nil\n        #else\n        let stub: StubServer? = nil\n        #endif"))
+        _ = gate
+        #expect(model.components(separatedBy: "StubServer()").count == 2)
+        for file in ["App/Info.plist", "App/Slopcoder.entitlements", "App/NotificationService.entitlements", "xtool.yml"] {
+            #expect(try !text(file).lowercased().contains("stub"), "\(file)")
         }
     }
 }
