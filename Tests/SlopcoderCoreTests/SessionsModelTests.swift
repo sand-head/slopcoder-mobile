@@ -251,6 +251,41 @@ final class ListServer {
         #expect(server.listReads == 2)
     }
 
+    @Test func aDeleteThatNeverReachedTheServerSaysSoAndChangesNothing() async throws {
+        let server = ListServer()
+        server.answers = [("/api/seam/sessions/a", -1, "")]
+        let model = server.model()
+        await model.load()
+        server.router.select(.session(id: "a"))
+        await model.remove(try #require(model.sessions?.first))
+
+        #expect(model.actionError == "Could not reach the server, so “Fix the build” was not deleted. Try again once you are back online.")
+        #expect(server.felt.names == ["error"])
+        #expect(server.router.sessions == [.session(id: "a")])
+        #expect(model.stillRunning == false)
+        #expect(server.listReads == 1)
+    }
+
+    @Test func aDeleteTheServerRefusedSaysSoAndChangesNothing() async throws {
+        let server = ListServer()
+        server.answers = [("/api/seam/sessions/a", 500, "")]
+        let model = server.model()
+        await model.load()
+        server.router.select(.session(id: "a"))
+        await model.remove(try #require(model.sessions?.first))
+
+        #expect(model.actionError == "The server could not delete “Fix the build” just now (it answered 500). Try again in a moment.")
+        #expect(server.felt.names == ["error"])
+        #expect(server.router.sessions == [.session(id: "a")])
+
+        // The next delete that lands clears it.
+        server.answers = [("/api/seam/sessions/a", 200, #"{"result":0}"#)]
+        let again = server.model()
+        await again.load()
+        await again.remove(try #require(again.sessions?.first))
+        #expect(again.actionError == nil)
+    }
+
     @Test func deletingAnotherSessionLeavesTheOpenOneOpen() async throws {
         let server = ListServer()
         server.answers = [("/api/seam/sessions/b", 200, #"{"result":0}"#)]

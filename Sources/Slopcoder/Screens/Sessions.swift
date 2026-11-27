@@ -73,6 +73,7 @@ private struct SessionsView: View {
 
                 if let startError = screen.startError { retryable(startError) { Task { await screen.start() } } }
                 if let error = screen.error { retryable(error) { Task { await screen.load() } } }
+                if let actionError = screen.actionError { ErrorText(actionError) }
 
                 listState
                 recallSection

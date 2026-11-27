@@ -63,6 +63,8 @@ public final class SessionsModel {
     public private(set) var ownedError: String?
     /// The server would not delete a session mid-turn; the page says so.
     public var stillRunning = false
+    /// Why the last change to a session in the list did not happen.
+    public private(set) var actionError: String?
 
     @ObservationIgnored private var registry: (@Sendable () -> Void)?
     @ObservationIgnored private var refresh: SerialRefresh?
@@ -287,7 +289,19 @@ public final class SessionsModel {
 
     public func remove(_ session: SessionSummary) async {
         guard let seam = seam() else { return }
-        let answer = try? await seam.deleteSession(session.id)
+        actionError = nil
+        let answer: DeleteResult?
+        do {
+            answer = try await seam.deleteSession(session.id)
+        } catch is CancellationError {
+            return
+        } catch {
+            // Nothing was deleted, so nothing is closed or re-read: the row is
+            // still there, and the page says why.
+            feedback.error()
+            actionError = Self.notDeleted(session.title, error)
+            return
+        }
         if answer == .running {
             // The server refuses to delete a session mid-turn rather than pull it
             // out from under the harness. Silence here read as a tap that did nothing.
@@ -299,6 +313,17 @@ public final class SessionsModel {
         // Beside the list, the session just deleted may be the one on show.
         if router.selection(on: .sessions) == .session(id: session.id) { router.sessions = [] }
         await load()
+    }
+
+    /// Why a delete did not happen: no server to ask, or a server that would not.
+    static func notDeleted(_ title: String, _ error: Error) -> String {
+        if error is OfflineError {
+            return "Could not reach the server, so “\(title)” was not deleted. Try again once you are back online."
+        }
+        if let refused = error as? SeamError {
+            return "The server could not delete “\(title)” just now (it answered \(refused.status)). Try again in a moment."
+        }
+        return "“\(title)” was not deleted: \(describe(error))"
     }
 
     public func retryRoutine(_ routineId: String, _ runId: String) async {
