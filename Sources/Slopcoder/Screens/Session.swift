@@ -41,10 +41,9 @@ struct SessionScreen: View {
     @State private var commands: [SlashCommandInfo] = []
     @State private var commandsAsked = false
     @State private var options: TurnOptions?
+    /// The reader is at the end of the transcript; the list says so.
     @State private var pinned = true
-    /// Bumped to send the transcript to its end: `jump` at once, `glide` with a move.
-    @State private var jump = 0
-    @State private var glide = 0
+    @State private var scroller = TranscriptScroller()
     @State private var sheet: SheetKind?
     @State private var loadingEarlier = false
 
@@ -56,8 +55,6 @@ struct SessionScreen: View {
     @State private var directory: [SessionSummary]?
     @State private var directoryError: String?
     @State private var directoryQuery = ""
-
-    private static let bottom = "transcript-bottom"
 
     private var state: SessionState? { store?.state }
     private var running: Bool { state?.status == .running }
@@ -149,80 +146,27 @@ struct SessionScreen: View {
     private var transcript: some View {
         let rows = self.rows
         let context = rowContext
-        return ScrollViewReader { proxy in
-            ScrollView {
-                // Every row is built, not just the ones in view. A lazy stack only
-                // guesses at the height of what it has not built, so the length of
-                // the transcript — and with it the scroll bar — would lurch as the
-                // guesses were corrected. Rows are compared before they are redrawn
-                // (see `DisplayRowView`), which is what keeps this affordable: a
-                // keystroke in the composer redraws none of them.
-                VStack(alignment: .leading, spacing: 4) {
-                    if store?.canLoadEarlier == true || store?.loading == true || store == nil {
-                        // In a stack that builds everything, `onAppear` fires at
-                        // once, on screen or not. A lazy stack of one keeps it
-                        // meaning "scrolled into view", so earlier pages load when
-                        // the reader reaches the top and not all at the start.
-                        LazyVStack {
-                            ProgressView()
-                                .tint(Palette.mutedForeground)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .onAppear { loadEarlier(proxy, anchor: rows.first?.id) }
-                        }
-                    }
-
-                    ForEach(rows) { row in
-                        DisplayRowView(row: row, context: context).equatable().id(row.id)
-                    }
-
-                    // The streaming tail: the turn's text as it arrives, before it
-                    // lands as an event.
-                    if let live = store?.live {
-                        VStack(alignment: .leading, spacing: 6) {
-                            if !live.thinking.isEmpty { LiveThinking(text: live.thinking) }
-                            if !live.text.isEmpty { Prose(live.text, mentions: context.mentions) }
-                        }
-                        .padding(.top, 6)
-                    }
-
-                    // Lazy for the same reason as the top: this is how the screen
-                    // knows whether the reader is at the end.
-                    LazyVStack {
-                        Color.clear
-                            .frame(height: 1)
-                            .onAppear { pinned = true }
-                            .onDisappear { pinned = false }
-                    }
-                    .id(SessionScreen.bottom)
-                }
-                .padding(.horizontal, Reading.column)
-                .padding(.vertical, 16)
-                .readingWidth()
-            }
-            .defaultScrollAnchor(.bottom)
-            .modifier(EndOfTranscript(jump: jump, glide: glide) { animated in
-                if animated {
-                    withAnimation { proxy.scrollTo(SessionScreen.bottom, anchor: .bottom) }
-                } else {
-                    proxy.scrollTo(SessionScreen.bottom, anchor: .bottom)
-                }
-            })
-            .modifier(IndicatorBesideText())
-            .scrollDismissesKeyboard(.interactively)
-            // The composer floats over the transcript; the last lines fade under it.
-            .softScrollEdges()
-            // A lazy stack that starts at its end can come up blank until it is
-            // scrolled: the rows arrive after the first layout, and nothing asks
-            // for the ones now in view. Going to the end once they are there asks.
-            .onChange(of: rows.isEmpty) { _, empty in if !empty { settle() } }
-            .onAppear { if !rows.isEmpty { settle() } }
-            // While the reader is at the end, stay there as the turn grows.
-            .onChange(of: rows.last?.id) { _, _ in if pinned { jump += 1 } }
-            .safeAreaInset(edge: .top) { ConnectionBanner().padding(.horizontal, 10) }
-            .safeAreaInset(edge: .bottom) { footer(proxy, rows: rows) }
-            .onChange(of: state?.pendingApprovalIds.count ?? 0) { _, _ in jumpNotice = nil }
+        return GeometryReader { proxy in
+            // The list runs under the bars, the banner, the composer and the
+            // keyboard, and is told how much of it each covers.
+            TranscriptList(
+                rows: rows,
+                context: context,
+                live: store?.live,
+                showsEarlier: store?.canLoadEarlier == true || store?.loading == true || store == nil,
+                insets: proxy.safeAreaInsets,
+                scroller: scroller,
+                onPinned: { pinned = $0 },
+                onNearTop: loadEarlier
+            )
+            .ignoresSafeArea()
         }
+        // A different session is a different list: nothing a row held, and no
+        // measurement, carries over.
+        .id(sessionId)
+        .safeAreaInset(edge: .top) { ConnectionBanner().padding(.horizontal, 10) }
+        .safeAreaInset(edge: .bottom) { footer }
+        .onChange(of: state?.pendingApprovalIds.count ?? 0) { _, _ in jumpNotice = nil }
     }
 
     private var rowContext: RowContext {
@@ -244,37 +188,26 @@ struct SessionScreen: View {
         )
     }
 
-    /// Go to the end of a transcript that has just arrived — now, and once more
-    /// after the rows have been measured, since the first pass works from guesses.
-    private func settle() {
-        jump += 1
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(120))
-            jump += 1
-        }
-    }
-
-    private func loadEarlier(_ proxy: ScrollViewProxy, anchor: String?) {
+    /// The list keeps the reader on the row they were reading while the page
+    /// arrives above it.
+    private func loadEarlier() {
         guard let store, store.canLoadEarlier, !loadingEarlier else { return }
         loadingEarlier = true
         Task {
-            let result = await store.loadEarlier()
-            // The page arrived above what was on screen; put the reader back on
-            // the row they were looking at rather than at the new top.
-            if result.progress, let anchor { proxy.scrollTo(anchor, anchor: .top) }
+            _ = await store.loadEarlier()
             loadingEarlier = false
         }
     }
 
     // MARK: under the transcript
 
-    @ViewBuilder private func footer(_ proxy: ScrollViewProxy, rows: [DisplayRow]) -> some View {
+    @ViewBuilder private var footer: some View {
         VStack(alignment: .leading, spacing: 6) {
             if !pinned {
                 HStack {
                     Spacer()
                     Button {
-                        glide += 1
+                        scroller.toEnd()
                     } label: {
                         Image(systemName: "arrow.down")
                             .font(.system(size: 14, weight: .semibold))
@@ -322,7 +255,7 @@ struct SessionScreen: View {
                     ),
                     commands: ComposerCommands(list: commands, onNeeded: loadCommands),
                     sessionStatus: TranscriptLayout.statusLine(state),
-                    onStatusTap: waiting && !jumpSearching ? { Task { await jumpToCurrentRequest(proxy) } } : nil
+                    onStatusTap: waiting && !jumpSearching ? { Task { await jumpToCurrentRequest() } } : nil
                 )
             }
         }
@@ -744,7 +677,7 @@ struct SessionScreen: View {
 
     /// Scroll to the approval or question that is holding the turn — paging back
     /// through earlier messages if it is above what is loaded.
-    private func jumpToCurrentRequest(_ proxy: ScrollViewProxy) async {
+    private func jumpToCurrentRequest() async {
         guard let store, !jumpSearching else { return }
         jumpNotice = nil
 
@@ -759,7 +692,7 @@ struct SessionScreen: View {
         }
 
         if let id = target() {
-            withAnimation { proxy.scrollTo(id, anchor: .center) }
+            scroller.reveal(id)
             return
         }
         guard store.canLoadEarlier else {
@@ -783,7 +716,7 @@ struct SessionScreen: View {
                 return
             }
             if let id = target() {
-                withAnimation { proxy.scrollTo(id, anchor: .center) }
+                scroller.reveal(id)
                 return
             }
             if !result.hasMore {
@@ -847,21 +780,6 @@ struct SessionScreen: View {
         // Replace, not push: switching sessions is not going deeper.
         router.pop()
         router.push(.session(id: id))
-    }
-}
-
-/// The turn's thinking as it streams, folded away unless asked for.
-private struct LiveThinking: View {
-    let text: String
-    @State private var open = false
-
-    var body: some View {
-        Collapsible(name: "Thinking…", open: $open) {
-            Brain(color: Palette.mutedForeground)
-        } content: {
-            Text(text).font(AppFont.sans(13)).foregroundStyle(Palette.foreground).textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-        }
     }
 }
 
@@ -950,41 +868,6 @@ private struct SubSessionNote: View {
         .glassSurface(cornerRadius: Radius.xl)
     }
 }
-/// Sends a scroll view to its end when asked.
-///
-/// On iOS 18 this is the scroll view's own position, which knows where the end
-/// of lazy content is without the last row having been built. Before that, the
-/// caller's way of getting there.
-private struct EndOfTranscript: ViewModifier {
-    let jump: Int
-    let glide: Int
-    let fallback: (_ animated: Bool) -> Void
-
-    func body(content: Content) -> some View {
-        if #available(iOS 18.0, *) {
-            content.modifier(Positioned(jump: jump, glide: glide))
-        } else {
-            content
-                .onChange(of: jump) { _, _ in fallback(false) }
-                .onChange(of: glide) { _, _ in fallback(true) }
-        }
-    }
-
-    @available(iOS 18.0, *)
-    private struct Positioned: ViewModifier {
-        let jump: Int
-        let glide: Int
-        @State private var position = ScrollPosition(edge: .bottom)
-
-        func body(content: Content) -> some View {
-            content
-                .scrollPosition($position)
-                .onChange(of: jump) { _, _ in position.scrollTo(edge: .bottom) }
-                .onChange(of: glide) { _, _ in withAnimation { position.scrollTo(edge: .bottom) } }
-        }
-    }
-}
-
 /// Before iOS 26 a button in a bar is drawn plain; from 26 the bar draws it.
 private struct PlainBeforeGlass: ViewModifier {
     func body(content: Content) -> some View {
@@ -1016,20 +899,6 @@ private struct ContextRingImage: View {
                 Image(systemName: "chart.pie")
             }
         }
-    }
-}
-/// Keeps the scroll bar beside the text rather than at the edge of the display.
-///
-/// A scroll view's bar is drawn at the edge of the screen by default, which on
-/// an iPhone Duo is underneath the toolbar the system stands on its side. Giving
-/// the bar a margin of its own changes what it is measured from: content
-/// margins are added *to the safe area*, and the vertical toolbar is part of
-/// the safe area. So the margin wanted is the small gap between text and bar,
-/// not the width of the toolbar — adding that as well puts the bar a toolbar's
-/// width into the text, which is what an earlier version of this did.
-private struct IndicatorBesideText: ViewModifier {
-    func body(content: Content) -> some View {
-        content.contentMargins(.horizontal, 2, for: .scrollIndicators)
     }
 }
 #endif

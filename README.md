@@ -192,6 +192,13 @@ None of this has been seen on a device. It compiles against the iOS 27.2 SDK, an
 - **Fonts.** Allo (sans) and Geist Mono, static cuts under SIL OFL 1.1, in
   `Sources/Slopcoder/Resources/Fonts/` and registered at launch — see
   [docs/fonts.md](docs/fonts.md). Pick a family from `AppFont`, never a weight.
+- **The transcript is a `UICollectionView`** (`Transcript/TranscriptList.swift`) of
+  SwiftUI rows, each measured exactly so that nothing about the list's length is a guess.
+  Each row keeps its hosted view for as long as it is in the transcript; it hangs off a
+  window-less view while off screen. The SwiftUI environment does not cross into UIKit, so
+  the list hands the app's objects on to its rows itself — a row that reads one it was not
+  given crashes. Where rows go, following the end, keeping the reader's place and which
+  rows to redraw are `TranscriptScroll.swift` in the core, with tests.
 - **Liquid Glass.** The composer and sheets use `glassEffect` on iOS 26 and a plain card
   below it. The fallback is what most of the matrix renders, so it has to look finished.
 - **Artwork** is described in [docs/artwork.md](docs/artwork.md);
