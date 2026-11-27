@@ -66,7 +66,8 @@ Sources/
       Transcript.swift          folding events into renderable items
     Presentation/             what each screen says: tool cards, routines, reviews, settings, markdown
     Terminal/                 a VT emulator for the session terminal
-    State/                    auth, the hub connection, one session's live view, navigation
+    State/                    auth, the hub connection, one session's live view, navigation,
+                              and the models behind the session, sessions and routine-editor screens
   SlopcoderPush/              Web Push decryption (RFC 8291), shared by the app and the extension
   Slopcoder/                  the app: SwiftUI. Compiles only against Apple's SDK.
     Kit/ Theme/               the design system
