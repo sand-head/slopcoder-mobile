@@ -61,9 +61,6 @@ struct Composer: View {
     var attachments: Attachments?
     var images: ComposerImages?
     var commands: ComposerCommands?
-    var sessionStatus: String?
-    /// A tap on the status line: go to whatever the turn is waiting on.
-    var onStatusTap: (() -> Void)?
 
     @Environment(ConnectionStatus.self) private var connection
     @State private var sheet: ComposerSheet?
@@ -123,15 +120,6 @@ struct Composer: View {
     /// The launcher: a card with room to write a brief, and its dials on show.
     private var card: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let sessionStatus {
-                if let onStatusTap {
-                    Button(action: onStatusTap) { Mono(sessionStatus, color: Status.running) }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("\(sessionStatus). Jump to current request")
-                } else {
-                    Mono(sessionStatus)
-                }
-            }
             chips
             if let error = images?.error { Text(error).font(AppFont.sans(12)).foregroundStyle(Palette.destructive) }
 
@@ -158,19 +146,6 @@ struct Composer: View {
     /// title.
     private var pill: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // "Idle" is the absence of news; only say what is happening.
-            if let sessionStatus, sessionStatus != "Idle" {
-                Group {
-                    if let onStatusTap {
-                        Button(action: onStatusTap) { Mono(sessionStatus, color: Status.running) }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("\(sessionStatus). Jump to current request")
-                    } else {
-                        Mono(sessionStatus)
-                    }
-                }
-                .padding(.horizontal, 14)
-            }
             chips
             if let error = images?.error {
                 Text(error).font(AppFont.sans(12)).foregroundStyle(Palette.destructive).padding(.horizontal, 14)

@@ -375,7 +375,7 @@ public final class SessionModel {
                 return nil
             }
         }
-        jumpNotice = "Request not found in three earlier pages. Tap status to search further."
+        jumpNotice = "Request not found in three earlier pages. Choose Go to current request again to search further."
         return nil
     }
 

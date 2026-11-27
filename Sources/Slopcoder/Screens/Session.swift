@@ -223,9 +223,7 @@ private struct SessionView: View {
                         onAdd: { added, problem in withAnimation { screen.addImages(added, problem: problem) } },
                         onRemove: { key in withAnimation { screen.removeImage(key) } }
                     ),
-                    commands: ComposerCommands(list: screen.commands, onNeeded: screen.loadCommands),
-                    sessionStatus: screen.statusLine,
-                    onStatusTap: screen.waiting && !screen.jumpSearching ? { Task { await jumpToCurrentRequest() } } : nil
+                    commands: ComposerCommands(list: screen.commands, onNeeded: screen.loadCommands)
                 )
             }
         }
@@ -285,6 +283,14 @@ private struct SessionView: View {
     }
 
     @ViewBuilder private var menuItems: some View {
+        // What the composer's status line used to lead to: the approval or
+        // question the turn is waiting on.
+        if screen.waiting {
+            Button { Task { await jumpToCurrentRequest() } } label: {
+                Label("Go to current request", systemImage: "arrow.up.message")
+            }
+            .disabled(screen.jumpSearching)
+        }
         if !archived {
             Button { sheet = .terminal } label: { Label("Open terminal", systemImage: "terminal") }
         }

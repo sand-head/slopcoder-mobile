@@ -499,7 +499,7 @@ private func image(_ key: String) -> PendingImage {
         server.pendingApprovals = ["deep"]
         let model = try await server.model()
         #expect(await model.findCurrentRequest() == nil)
-        #expect(model.jumpNotice == "Request not found in three earlier pages. Tap status to search further.")
+        #expect(model.jumpNotice == "Request not found in three earlier pages. Choose Go to current request again to search further.")
         server.finish(model)
     }
 }
