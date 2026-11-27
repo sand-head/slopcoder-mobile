@@ -29,14 +29,17 @@ private let never: SessionHub.Sleep = { _ in try await Task.sleep(nanoseconds: 6
 //   banner on every navigation.
 @MainActor
 @Suite struct HubCenterTests {
-    final class Built: @unchecked Sendable {
-        var connectors: [FakeConnector] = []
+    /// Every connector a center built, from whatever thread built it.
+    final class Built: Sendable {
+        private let made = Locked<[FakeConnector]>([])
+        var connectors: [FakeConnector] { made.withLock { $0 } }
+        func append(_ connector: FakeConnector) { made.withLock { $0.append(connector) } }
     }
 
     func center(_ status: ConnectionStatus, _ built: Built, grace: @escaping SessionHub.Sleep) -> HubCenter {
         HubCenter(connection: status, idleGraceMs: 5_000, sleep: grace) { options in
             let connector = FakeConnector()
-            built.connectors.append(connector)
+            built.append(connector)
             return SessionHub(options, connector: connector, sleep: never, pingIntervalMs: 999_999)
         }
     }
@@ -206,7 +209,7 @@ private let never: SessionHub.Sleep = { _ in try await Task.sleep(nanoseconds: 6
 // One session's live view, and the two ways a push goes missing.
 @MainActor
 @Suite struct SessionStoreTests {
-    static func events(_ range: Range<Int>) -> String {
+    nonisolated static func events(_ range: Range<Int>) -> String {
         "[" + range.map { #"{"ordinal":\#($0),"kind":"AssistantText","payloadJson":"{\"text\":\"t\#($0)\"}"}"# }.joined(separator: ",") + "]"
     }
 
@@ -339,7 +342,7 @@ private let never: SessionHub.Sleep = { _ in try await Task.sleep(nanoseconds: 6
     @Test func stopsWatchingWhenTheScreenGoes() async throws {
         let (store, connector, hub) = try await open(Self.server(total: 1), total: 1)
         store.stop()
-        #expect(await eventually { connector.last.targets == ["Subscribe", "Unsubscribe"] })
+        #expect(await settled { connector.last.targets == ["Subscribe", "Unsubscribe"] })
         connector.last.push(delta(2, 1..<2))
         try await Task.sleep(nanoseconds: 30_000_000)
         #expect(store.items.count == 1)
@@ -348,13 +351,24 @@ private let never: SessionHub.Sleep = { _ in try await Task.sleep(nanoseconds: 6
 }
 
 @Suite struct ArtifactInfoCacheTests {
-    final class Counter: @unchecked Sendable {
-        private let lock = NSLock()
-        private var running = 0
-        private(set) var peak = 0
-        private(set) var asked: [String] = []
-        func begin(_ id: String) { lock.withLock { running += 1; peak = max(peak, running); asked.append(id) } }
-        func end() { lock.withLock { running -= 1 } }
+    final class Counter: Sendable {
+        private struct State: Sendable {
+            var running = 0
+            var peak = 0
+            var asked: [String] = []
+        }
+
+        private let state = Locked(State())
+        var peak: Int { state.withLock { $0.peak } }
+        var asked: [String] { state.withLock { $0.asked } }
+        func begin(_ id: String) {
+            state.withLock { state in
+                state.running += 1
+                state.peak = max(state.peak, state.running)
+                state.asked.append(id)
+            }
+        }
+        func end() { state.withLock { $0.running -= 1 } }
     }
 
     @Test func everyCardForOneArtifactSharesOneRequestAndNoMoreThanTwoRunAtOnce() async throws {

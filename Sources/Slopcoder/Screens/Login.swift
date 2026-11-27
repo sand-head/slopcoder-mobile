@@ -141,8 +141,11 @@ struct ScanScreen: View {
                         BodyText("slopcoder needs the camera to scan a pairing code.")
                         if permission == .notDetermined {
                             AppButton("Allow camera") {
-                                AVCaptureDevice.requestAccess(for: .video) { _ in
-                                    DispatchQueue.main.async { permission = AVCaptureDevice.authorizationStatus(for: .video) }
+                                // The answer comes back on whatever queue AVFoundation
+                                // likes; awaiting it brings this back to the main actor.
+                                Task {
+                                    _ = await AVCaptureDevice.requestAccess(for: .video)
+                                    permission = AVCaptureDevice.authorizationStatus(for: .video)
                                 }
                             }
                         } else {
@@ -229,7 +232,7 @@ struct QRScanner: UIViewControllerRepresentable {
             applyRotation(coordinator.videoRotationAngleForHorizonLevelPreview)
             rotationObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: [.new]) { [weak self] _, change in
                 guard let angle = change.newValue else { return }
-                DispatchQueue.main.async { self?.applyRotation(angle) }
+                Task { @MainActor in self?.applyRotation(angle) }
             }
         }
 
@@ -246,26 +249,36 @@ struct QRScanner: UIViewControllerRepresentable {
         override func viewWillAppear(_ animated: Bool) {
             super.viewWillAppear(animated)
             // Starting the session blocks, and must not do it on the main thread.
-            let session = self.session
+            // AVCaptureSession is not Sendable, but starting and stopping it from
+            // one serial queue of its own is what AVFoundation asks for, and the
+            // session is configured once, in viewDidLoad, before it first starts.
+            nonisolated(unsafe) let session = self.session
             queue.async { if !session.isRunning { session.startRunning() } }
         }
 
         override func viewDidDisappear(_ animated: Bool) {
             super.viewDidDisappear(animated)
-            let session = self.session
+            // As above: only started and stopped, and only on `queue`.
+            nonisolated(unsafe) let session = self.session
             queue.async { if session.isRunning { session.stopRunning() } }
         }
 
-        func metadataOutput(
+        /// The delegate protocol is not the main actor's, but this one is
+        /// registered on the main queue (`setMetadataObjectsDelegate(self, queue:
+        /// .main)` above), so it always arrives there. The codes are read out
+        /// first, as plain strings, and then handled on the main actor.
+        nonisolated func metadataOutput(
             _ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection
         ) {
+            let values = metadataObjects.compactMap { ($0 as? AVMetadataMachineReadableCodeObject)?.stringValue }
+            MainActor.assumeIsolated { found(values) }
+        }
+
+        private func found(_ values: [String]) {
             if handled { return }
-            for object in metadataObjects {
-                guard let code = object as? AVMetadataMachineReadableCodeObject, let value = code.stringValue else { continue }
-                if onCode?(value) == true {
-                    handled = true
-                    return
-                }
+            for value in values where onCode?(value) == true {
+                handled = true
+                return
             }
         }
     }

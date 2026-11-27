@@ -31,15 +31,14 @@ public protocol CredentialVault: Sendable {
     func clear()
 }
 
-public final class MemoryVault: CredentialVault, @unchecked Sendable {
-    private let lock = NSLock()
-    private var credential: Credential?
+public final class MemoryVault: CredentialVault {
+    private let credential: Locked<Credential?>
 
-    public init(_ credential: Credential? = nil) { self.credential = credential }
+    public init(_ credential: Credential? = nil) { self.credential = Locked(credential) }
 
-    public func load() -> Credential? { lock.withLock { credential } }
-    public func save(_ credential: Credential) throws { lock.withLock { self.credential = credential } }
-    public func clear() { lock.withLock { credential = nil } }
+    public func load() -> Credential? { credential.withLock { $0 } }
+    public func save(_ credential: Credential) throws { self.credential.withLock { $0 = credential } }
+    public func clear() { credential.withLock { $0 = nil } }
 }
 
 @MainActor

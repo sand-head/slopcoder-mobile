@@ -44,6 +44,7 @@ struct SlopcoderApp: App {
 }
 
 /// The app's type on the platform's bars.
+@MainActor
 enum Appearance {
     static func apply() {
         let title = UIFont(name: AppFont.sansMediumName, size: 17) ?? .systemFont(ofSize: 17, weight: .semibold)
@@ -277,6 +278,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        // The stub is for UI tests; it never registers for or answers a push.
+        if AppModel.shared.stubbed { return true }
         UNUserNotificationCenter.current().delegate = self
         // Permission is asked for right after sign-in. This only re-registers when
         // it was granted in an earlier session, because APNs tokens rotate and a
@@ -305,9 +308,14 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         NSLog("slopcoder: APNs registration failed — %@", error.localizedDescription)
     }
 
+    // The notification centre's delegate is not the main actor's: nothing in the
+    // header promises which thread these arrive on. Neither touches the app's
+    // state directly — the tap hops to the main actor to route — so they are
+    // nonisolated, and right on whichever thread they come.
+
     /// Show the banner even with the app open, because the thing being announced
     /// is usually a turn that has stopped and is waiting.
-    func userNotificationCenter(
+    nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
@@ -317,7 +325,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 
     /// A tap opens the session it came from. The payload carries the server's own
     /// path (`/session/<id>`); this turns it into the URL the router routes.
-    func userNotificationCenter(
+    nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void

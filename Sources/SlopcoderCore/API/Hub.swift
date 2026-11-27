@@ -115,7 +115,7 @@ public func steadyRetryDelayMs(previousRetryCount: Int) -> Int {
     }
 }
 
-public final class SessionHub: @unchecked Sendable {
+public final class SessionHub: Sendable {
     public struct Options: Sendable {
         public var baseUrl: String
         public var apiKey: String
@@ -147,22 +147,28 @@ public final class SessionHub: @unchecked Sendable {
     private let sleep: Sleep
     private let pingIntervalMs: Int
 
-    private let lock = NSLock()
-    private var socket: HubSocket?
-    private var connecting = false
-    private var isConnected = false
-    /// Why the last attempt failed, for a UI that would otherwise say nothing.
-    private var failure: String?
-    private var attempts = 0
-    private var stopped = false
-    private var retryTask: Task<Void, Never>?
-    private var pumpTask: Task<Void, Never>?
-    private var pingTask: Task<Void, Never>?
-    private var nextInvocation = 0
-    private var pending: [String: CheckedContinuation<JSONValue, Error>] = [:]
-    /// Per-session handlers. A session with none left is unsubscribed.
-    private var listeners: [String: [UUID: DeltaHandler]] = [:]
-    private var registryListeners: [UUID: @Sendable () -> Void] = [:]
+    /// Everything that changes, read and written only under one lock — the
+    /// same critical sections the hub has always had, now with the compiler
+    /// checking that nothing escapes them.
+    private struct State: Sendable {
+        var socket: HubSocket?
+        var connecting = false
+        var isConnected = false
+        /// Why the last attempt failed, for a UI that would otherwise say nothing.
+        var failure: String?
+        var attempts = 0
+        var stopped = false
+        var retryTask: Task<Void, Never>?
+        var pumpTask: Task<Void, Never>?
+        var pingTask: Task<Void, Never>?
+        var nextInvocation = 0
+        var pending: [String: CheckedContinuation<JSONValue, Error>] = [:]
+        /// Per-session handlers. A session with none left is unsubscribed.
+        var listeners: [String: [UUID: DeltaHandler]] = [:]
+        var registryListeners: [UUID: @Sendable () -> Void] = [:]
+    }
+
+    private let state = Locked(State())
 
     public init(
         _ options: Options,
@@ -176,17 +182,17 @@ public final class SessionHub: @unchecked Sendable {
         self.pingIntervalMs = pingIntervalMs
     }
 
-    public var connected: Bool { lock.withLock { isConnected } }
+    public var connected: Bool { state.withLock { $0.isConnected } }
 
     /// What went wrong last, or nil if nothing has.
-    public var lastFailure: String? { lock.withLock { failure } }
+    public var lastFailure: String? { state.withLock { $0.failure } }
 
     /// Connects. Throws when the attempt fails — and has already scheduled the
     /// next one by then, so a caller may ignore the error.
     public func start() async throws {
-        let proceed: Bool = lock.withLock {
-            if socket != nil || connecting || stopped { return false }
-            connecting = true
+        let proceed: Bool = state.withLock { state in
+            if state.socket != nil || state.connecting || state.stopped { return false }
+            state.connecting = true
             return true
         }
         guard proceed else { return }
@@ -195,12 +201,12 @@ public final class SessionHub: @unchecked Sendable {
             let socket = try await connector.connect(baseUrl: trimTrailingSlashes(options.baseUrl), apiKey: options.apiKey)
             try await handshake(socket)
 
-            let abandon: Bool = lock.withLock {
-                connecting = false
-                if stopped { return true }
-                self.socket = socket
-                isConnected = true
-                attempts = 0
+            let abandon: Bool = state.withLock { state in
+                state.connecting = false
+                if state.stopped { return true }
+                state.socket = socket
+                state.isConnected = true
+                state.attempts = 0
                 return false
             }
             if abandon {
@@ -212,7 +218,7 @@ public final class SessionHub: @unchecked Sendable {
             // the life of the process: every later `start()` would return at the
             // guard above. The app then sits behind "Reconnecting to live
             // updates…" forever.
-            lock.withLock { connecting = false }
+            state.withLock { $0.connecting = false }
             note(error)
             options.onStateChange?(false)
             scheduleRetry()
@@ -236,7 +242,7 @@ public final class SessionHub: @unchecked Sendable {
     }
 
     private func startPump() {
-        guard let socket = lock.withLock({ self.socket }) else { return }
+        guard let socket = state.withLock({ $0.socket }) else { return }
 
         let pump = Task { [weak self] in
             var reason: Error?
@@ -267,9 +273,9 @@ public final class SessionHub: @unchecked Sendable {
             }
         }
 
-        lock.withLock {
-            pumpTask = pump
-            pingTask = ping
+        state.withLock { state in
+            state.pumpTask = pump
+            state.pingTask = ping
         }
     }
 
@@ -280,7 +286,7 @@ public final class SessionHub: @unchecked Sendable {
         case .invocation(let target, let arguments):
             invoked(target, arguments)
         case .completion(let id, let result, let error):
-            let waiting = lock.withLock { pending.removeValue(forKey: id) }
+            let waiting = state.withLock { $0.pending.removeValue(forKey: id) }
             if let error {
                 waiting?.resume(throwing: HubError(error))
             } else {
@@ -304,7 +310,7 @@ public final class SessionHub: @unchecked Sendable {
             else { return }
             let events = arguments[2].decoded([AgentEventEnvelope].self) ?? []
             let patch = arguments[3].isNull ? nil : arguments[3].decoded(LivePatch.self)
-            let handlers = lock.withLock { Array((listeners[sessionId] ?? [:]).values) }
+            let handlers = self.state.withLock { Array(($0.listeners[sessionId] ?? [:]).values) }
             for handler in handlers { handler(sessionId, state, events, patch) }
         case "RegistryChanged":
             announceRegistryChanged()
@@ -315,21 +321,21 @@ public final class SessionHub: @unchecked Sendable {
 
     private func announceRegistryChanged() {
         options.onRegistryChanged?()
-        let registry = lock.withLock { Array(registryListeners.values) }
+        let registry = state.withLock { Array($0.registryListeners.values) }
         for listener in registry { listener() }
     }
 
     /// The socket went away without `stop()` asking it to.
     private func dropped(_ socket: HubSocket, reason: Error?) {
-        let (ours, waiting): (Bool, [CheckedContinuation<JSONValue, Error>]) = lock.withLock {
-            guard self.socket === socket else { return (false, []) }
-            self.socket = nil
-            isConnected = false
-            pingTask?.cancel()
-            pingTask = nil
-            pumpTask = nil
-            let waiting = Array(pending.values)
-            pending.removeAll()
+        let (ours, waiting): (Bool, [CheckedContinuation<JSONValue, Error>]) = state.withLock { state in
+            guard state.socket === socket else { return (false, []) }
+            state.socket = nil
+            state.isConnected = false
+            state.pingTask?.cancel()
+            state.pingTask = nil
+            state.pumpTask = nil
+            let waiting = Array(state.pending.values)
+            state.pending.removeAll()
             return (true, waiting)
         }
         guard ours else { return }
@@ -348,7 +354,7 @@ public final class SessionHub: @unchecked Sendable {
     /// nobody can read on a phone.
     private func note(_ error: Error?) {
         let reason = error.map(describe)
-        lock.withLock { failure = reason }
+        state.withLock { $0.failure = reason }
         options.onTrouble?(reason)
     }
 
@@ -356,20 +362,20 @@ public final class SessionHub: @unchecked Sendable {
     /// the cadence answers 0 for a first retry, which is right when the socket
     /// was up a moment ago and a busy loop when the server is simply down.
     private func scheduleRetry(afterDrop: Bool = false) {
-        lock.withLock {
-            if stopped || retryTask != nil || socket != nil { return }
-            let delay = steadyRetryDelayMs(previousRetryCount: attempts)
-            attempts += 1
+        let sleep = self.sleep
+        state.withLock { state in
+            if state.stopped || state.retryTask != nil || state.socket != nil { return }
+            let delay = steadyRetryDelayMs(previousRetryCount: state.attempts)
+            state.attempts += 1
             let wait = afterDrop ? delay : max(delay, 1_000)
-            let sleep = self.sleep
-            retryTask = Task { [weak self] in
+            state.retryTask = Task { [weak self] in
                 do {
                     if wait > 0 { try await sleep(wait) }
                 } catch {
                     return
                 }
                 guard let self else { return }
-                self.lock.withLock { self.retryTask = nil }
+                self.state.withLock { $0.retryTask = nil }
                 do {
                     try await self.start()
                 } catch {
@@ -387,10 +393,10 @@ public final class SessionHub: @unchecked Sendable {
     @discardableResult
     public func addRegistryListener(_ listener: @escaping @Sendable () -> Void) -> @Sendable () -> Void {
         let id = UUID()
-        lock.withLock { registryListeners[id] = listener }
+        state.withLock { $0.registryListeners[id] = listener }
         return { [weak self] in
             guard let self else { return }
-            self.lock.withLock { _ = self.registryListeners.removeValue(forKey: id) }
+            self.state.withLock { _ = $0.registryListeners.removeValue(forKey: id) }
         }
     }
 
@@ -398,32 +404,32 @@ public final class SessionHub: @unchecked Sendable {
     @discardableResult
     public func addListener(_ sessionId: String, _ handler: @escaping DeltaHandler) -> UUID {
         let id = UUID()
-        lock.withLock { listeners[sessionId, default: [:]][id] = handler }
+        state.withLock { $0.listeners[sessionId, default: [:]][id] = handler }
         return id
     }
 
     public func removeListener(_ sessionId: String, _ token: UUID) {
-        lock.withLock {
-            guard var existing = listeners[sessionId] else { return }
+        state.withLock { state in
+            guard var existing = state.listeners[sessionId] else { return }
             existing.removeValue(forKey: token)
-            listeners[sessionId] = existing.isEmpty ? nil : existing
+            state.listeners[sessionId] = existing.isEmpty ? nil : existing
         }
     }
 
     private func invoke(_ target: String, _ arguments: [JSONValue]) async throws -> JSONValue {
-        let (socket, id): (HubSocket?, String) = lock.withLock {
-            nextInvocation += 1
-            return (isConnected ? self.socket : nil, String(nextInvocation))
+        let (socket, id): (HubSocket?, String) = state.withLock { state in
+            state.nextInvocation += 1
+            return (state.isConnected ? state.socket : nil, String(state.nextInvocation))
         }
         guard let socket else { throw HubError("Not connected.") }
 
         return try await withCheckedThrowingContinuation { continuation in
-            lock.withLock { pending[id] = continuation }
+            state.withLock { $0.pending[id] = continuation }
             Task {
                 do {
                     try await socket.send(HubProtocol.invocation(id: id, target: target, arguments: arguments))
                 } catch {
-                    let waiting = self.lock.withLock { self.pending.removeValue(forKey: id) }
+                    let waiting = self.state.withLock { $0.pending.removeValue(forKey: id) }
                     waiting?.resume(throwing: error)
                 }
             }
@@ -438,7 +444,7 @@ public final class SessionHub: @unchecked Sendable {
 
     public func unsubscribe(_ sessionId: String) async {
         // Someone else on this screen stack may still be watching.
-        let stillWatched = lock.withLock { listeners[sessionId] != nil }
+        let stillWatched = state.withLock { $0.listeners[sessionId] != nil }
         guard !stillWatched, connected else { return }
         // A connection that dropped has already forgotten the group.
         _ = try? await invoke("Unsubscribe", [.string(sessionId)])
@@ -449,33 +455,33 @@ public final class SessionHub: @unchecked Sendable {
     /// delta, which is exactly what drives the gap machinery to heal the hole the
     /// disconnection left.
     private func resubscribeAll() async {
-        let sessionIds = lock.withLock { Array(listeners.keys) }
+        let sessionIds = self.state.withLock { Array($0.listeners.keys) }
         for sessionId in sessionIds {
             // The next reconnect will try again.
             guard let value = try? await invoke("Subscribe", [.string(sessionId)]),
                   let state = value.decoded(SessionState.self)
             else { continue }
-            let handlers = lock.withLock { Array((listeners[sessionId] ?? [:]).values) }
+            let handlers = self.state.withLock { Array(($0.listeners[sessionId] ?? [:]).values) }
             for handler in handlers { handler(sessionId, state, [], nil) }
         }
     }
 
     public func stop() {
-        let (socket, waiting): (HubSocket?, [CheckedContinuation<JSONValue, Error>]) = lock.withLock {
-            stopped = true
-            retryTask?.cancel()
-            retryTask = nil
-            pumpTask?.cancel()
-            pumpTask = nil
-            pingTask?.cancel()
-            pingTask = nil
-            let socket = self.socket
-            self.socket = nil
-            isConnected = false
-            listeners.removeAll()
-            registryListeners.removeAll()
-            let waiting = Array(pending.values)
-            pending.removeAll()
+        let (socket, waiting): (HubSocket?, [CheckedContinuation<JSONValue, Error>]) = state.withLock { state in
+            state.stopped = true
+            state.retryTask?.cancel()
+            state.retryTask = nil
+            state.pumpTask?.cancel()
+            state.pumpTask = nil
+            state.pingTask?.cancel()
+            state.pingTask = nil
+            let socket = state.socket
+            state.socket = nil
+            state.isConnected = false
+            state.listeners.removeAll()
+            state.registryListeners.removeAll()
+            let waiting = Array(state.pending.values)
+            state.pending.removeAll()
             return (socket, waiting)
         }
         for continuation in waiting { continuation.resume(throwing: CancellationError()) }
@@ -542,7 +548,7 @@ public struct HubConnector: HubConnecting {
     }
 }
 
-final class WebSocketHubSocket: HubSocket, @unchecked Sendable {
+final class WebSocketHubSocket: HubSocket {
     private let task: URLSessionWebSocketTask
 
     private init(task: URLSessionWebSocketTask) {
@@ -597,12 +603,11 @@ final class WebSocketHubSocket: HubSocket, @unchecked Sendable {
 
 /// SignalR long polling: a GET that hangs until there is something to say, a
 /// POST per send, a DELETE to hang up.
-final class LongPollingHubSocket: HubSocket, @unchecked Sendable {
+final class LongPollingHubSocket: HubSocket {
     private let url: String
     private let headers: [String: String]
     private let transport: HTTPTransport
-    private let lock = NSLock()
-    private var closed = false
+    private let closed = Locked(false)
 
     init(url: String, headers: [String: String], transport: HTTPTransport) {
         self.url = url
@@ -619,7 +624,7 @@ final class LongPollingHubSocket: HubSocket, @unchecked Sendable {
 
     func receive() async throws -> String {
         while true {
-            if lock.withLock({ closed }) { throw HubError("The connection was closed.") }
+            if closed.withLock({ $0 }) { throw HubError("The connection was closed.") }
             let stamp = Int(Date().timeIntervalSince1970 * 1000)
             let response = try await transport.send(HTTPRequest(method: "GET", url: "\(url)&_=\(stamp)", headers: headers))
             // 204 is the server ending the poll for good; 200 with nothing is a
@@ -631,7 +636,7 @@ final class LongPollingHubSocket: HubSocket, @unchecked Sendable {
     }
 
     func close() {
-        let already = lock.withLock { () -> Bool in
+        let already = closed.withLock { closed -> Bool in
             let was = closed
             closed = true
             return was

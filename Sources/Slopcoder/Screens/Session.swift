@@ -10,79 +10,55 @@ import SwiftUI
 struct SessionScreen: View {
     let sessionId: String
 
+    @Environment(AppModel.self) private var app
+    /// The screen's data and work: made the first time the screen is drawn and
+    /// kept for as long as SwiftUI keeps this view — one session, since a
+    /// route's screen is identified by its route. Its live store is opened on
+    /// each appearance and stopped on each disappearance; see `SessionView`.
+    @State private var kept = Kept<SessionModel>()
+
+    var body: some View {
+        let app = self.app
+        let sessionId = self.sessionId
+        SessionView(sessionId: sessionId, screen: kept.model {
+            SessionModel(
+                sessionId: sessionId,
+                seam: { app.seam },
+                hub: { app.hub },
+                isActive: { UIApplication.shared.applicationState == .active },
+                feedback: .haptics
+            )
+        })
+    }
+}
+
+private struct SessionView: View {
+    let sessionId: String
+    @Bindable var screen: SessionModel
+
     private enum SheetKind: String, Identifiable {
         case context, usage, switcher, terminal
         var id: String { rawValue }
     }
 
-    private struct WorkspaceRepo: Decodable, Hashable {
-        var repo: String
-        var branch: String?
-        var detached: Bool?
-        var sandboxDown: Bool?
-        var notARepository: Bool?
-        var error: String?
-    }
-
-    @Environment(AppModel.self) private var model
     @Environment(Router.self) private var router
     @Environment(\.scenePhase) private var scenePhase
 
-    @State private var store: SessionStore?
-    @State private var draft = ""
-    @State private var pendingImages: [PendingImage] = []
-    @State private var imageError: String?
-    @State private var sending = false
-    @State private var sendError: String?
-    @State private var jumpNotice: String?
-    @State private var jumpSearching = false
-    @State private var models: [ModelCandidate] = []
-    @State private var facets: [FacetOption] = []
-    @State private var commands: [SlashCommandInfo] = []
-    @State private var commandsAsked = false
-    @State private var options: TurnOptions?
+    /// The reader is at the end of the transcript; the list says so.
     @State private var pinned = true
-    /// Bumped to send the transcript to its end: `jump` at once, `glide` with a move.
-    @State private var jump = 0
-    @State private var glide = 0
+    @State private var scroller = TranscriptScroller()
     @State private var sheet: SheetKind?
-    @State private var loadingEarlier = false
 
-    @State private var repoDetails: [WorkspaceRepo]?
-    @State private var repoError: String?
-    @State private var repoUrl = ""
-    @State private var addingRepo = false
-    @State private var repoMessage: String?
-    @State private var directory: [SessionSummary]?
-    @State private var directoryError: String?
-    @State private var directoryQuery = ""
-
-    private static let bottom = "transcript-bottom"
-
-    private var state: SessionState? { store?.state }
-    private var running: Bool { state?.status == .running }
-    private var archived: Bool { state?.archivedAt != nil }
-    private var parentDriven: Bool { state?.parentSessionId != nil }
-    private var title: String { state?.title ?? "Session" }
-    private var contextPercent: Int? { TranscriptLayout.contextPercent(state?.lastUsage) }
-    /// Something is holding the turn until a person answers.
-    private var waiting: Bool {
-        !(state?.pendingApprovalIds.isEmpty ?? true) || !(state?.pendingQuestionIds.isEmpty ?? true)
-    }
-
-    private var subtitle: String {
-        var branches: [String: String] = [:]
-        for repo in repoDetails ?? [] { if let branch = repo.branch { branches[repo.repo] = branch } }
-        return Captions.sessionSubtitle(state?.repoNames ?? [], branches: branches)
-    }
-
-    private var rows: [DisplayRow] {
-        TranscriptLayout.rows(store?.items ?? [])
-    }
+    private var state: SessionState? { screen.state }
+    private var archived: Bool { screen.archived }
+    private var parentDriven: Bool { screen.parentDriven }
+    private var title: String { screen.title }
+    private var subtitle: String { screen.subtitle }
+    private var contextPercent: Int? { screen.contextPercent }
 
     var body: some View {
         Group {
-            if let error = store?.error {
+            if let error = screen.store?.error {
                 VStack(alignment: .leading) {
                     ErrorText(error)
                     Spacer()
@@ -96,11 +72,8 @@ struct SessionScreen: View {
         .pageBackground()
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
-        .task(id: sessionId) { await open() }
-        .onDisappear {
-            store?.stop()
-            store = nil
-        }
+        .task(id: sessionId) { await screen.open() }
+        .onDisappear { screen.close() }
         // Shake for the terminal: the machine itself, wanted exactly when the
         // agent's account of what it did stops being enough.
         .onShake(enabled: sheet == nil && !archived && scenePhase == .active) {
@@ -130,16 +103,16 @@ struct SessionScreen: View {
 
     private var sheetBinding: Binding<SheetKind?> {
         Binding(
-            get: { sheet == .terminal && SessionScreen.terminalTakesTheWindow ? nil : sheet },
+            get: { sheet == .terminal && SessionView.terminalTakesTheWindow ? nil : sheet },
             // A sheet finishing its own dismissal must not close a terminal
             // that was opened from it.
-            set: { next in if next != nil || !(sheet == .terminal && SessionScreen.terminalTakesTheWindow) { sheet = next } }
+            set: { next in if next != nil || !(sheet == .terminal && SessionView.terminalTakesTheWindow) { sheet = next } }
         )
     }
 
     private var terminalCover: Binding<Bool> {
         Binding(
-            get: { sheet == .terminal && SessionScreen.terminalTakesTheWindow },
+            get: { sheet == .terminal && SessionView.terminalTakesTheWindow },
             set: { shown in if !shown, sheet == .terminal { sheet = nil } }
         )
     }
@@ -147,134 +120,59 @@ struct SessionScreen: View {
     // MARK: the transcript
 
     private var transcript: some View {
-        let rows = self.rows
+        let rows = screen.rows
         let context = rowContext
-        return ScrollViewReader { proxy in
-            ScrollView {
-                // Every row is built, not just the ones in view. A lazy stack only
-                // guesses at the height of what it has not built, so the length of
-                // the transcript — and with it the scroll bar — would lurch as the
-                // guesses were corrected. Rows are compared before they are redrawn
-                // (see `DisplayRowView`), which is what keeps this affordable: a
-                // keystroke in the composer redraws none of them.
-                VStack(alignment: .leading, spacing: 4) {
-                    if store?.canLoadEarlier == true || store?.loading == true || store == nil {
-                        // In a stack that builds everything, `onAppear` fires at
-                        // once, on screen or not. A lazy stack of one keeps it
-                        // meaning "scrolled into view", so earlier pages load when
-                        // the reader reaches the top and not all at the start.
-                        LazyVStack {
-                            ProgressView()
-                                .tint(Palette.mutedForeground)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .onAppear { loadEarlier(proxy, anchor: rows.first?.id) }
-                        }
-                    }
-
-                    ForEach(rows) { row in
-                        DisplayRowView(row: row, context: context).equatable().id(row.id)
-                    }
-
-                    // The streaming tail: the turn's text as it arrives, before it
-                    // lands as an event.
-                    if let live = store?.live {
-                        VStack(alignment: .leading, spacing: 6) {
-                            if !live.thinking.isEmpty { LiveThinking(text: live.thinking) }
-                            if !live.text.isEmpty { Prose(live.text, mentions: context.mentions) }
-                        }
-                        .padding(.top, 6)
-                    }
-
-                    // Lazy for the same reason as the top: this is how the screen
-                    // knows whether the reader is at the end.
-                    LazyVStack {
-                        Color.clear
-                            .frame(height: 1)
-                            .onAppear { pinned = true }
-                            .onDisappear { pinned = false }
-                    }
-                    .id(SessionScreen.bottom)
-                }
-                .padding(.horizontal, Reading.column)
-                .padding(.vertical, 16)
-                .readingWidth()
-            }
-            .defaultScrollAnchor(.bottom)
-            .modifier(EndOfTranscript(jump: jump, glide: glide) { animated in
-                if animated {
-                    withAnimation { proxy.scrollTo(SessionScreen.bottom, anchor: .bottom) }
-                } else {
-                    proxy.scrollTo(SessionScreen.bottom, anchor: .bottom)
-                }
-            })
-            .modifier(IndicatorBesideText())
-            .scrollDismissesKeyboard(.interactively)
-            // The composer floats over the transcript; the last lines fade under it.
-            .softScrollEdges()
-            // A lazy stack that starts at its end can come up blank until it is
-            // scrolled: the rows arrive after the first layout, and nothing asks
-            // for the ones now in view. Going to the end once they are there asks.
-            .onChange(of: rows.isEmpty) { _, empty in if !empty { settle() } }
-            .onAppear { if !rows.isEmpty { settle() } }
-            // While the reader is at the end, stay there as the turn grows.
-            .onChange(of: rows.last?.id) { _, _ in if pinned { jump += 1 } }
-            .safeAreaInset(edge: .top) { ConnectionBanner().padding(.horizontal, 10) }
-            .safeAreaInset(edge: .bottom) { footer(proxy, rows: rows) }
-            .onChange(of: state?.pendingApprovalIds.count ?? 0) { _, _ in jumpNotice = nil }
+        return GeometryReader { proxy in
+            // The list runs under the bars, the banner, the composer and the
+            // keyboard, and is told how much of it each covers.
+            TranscriptList(
+                rows: rows,
+                context: context,
+                live: screen.store?.live,
+                showsEarlier: screen.showsEarlier,
+                insets: proxy.safeAreaInsets,
+                scroller: scroller,
+                onPinned: { pinned = $0 },
+                onNearTop: screen.loadEarlier
+            )
+            .ignoresSafeArea()
         }
+        // A different session is a different list: nothing a row held, and no
+        // measurement, carries over.
+        .id(sessionId)
+        .safeAreaInset(edge: .top) { ConnectionBanner().padding(.horizontal, 10) }
+        .safeAreaInset(edge: .bottom) { footer }
+        .onChange(of: state?.pendingApprovalIds.count ?? 0) { _, _ in screen.approvalsChanged() }
     }
 
     private var rowContext: RowContext {
         RowContext(
             parentDriven: parentDriven,
             roster: state?.subSessions ?? [],
-            mentions: TranscriptLayout.mentions(store?.items ?? []),
+            mentions: screen.mentions,
             pendingApprovals: state?.pendingApprovalIds ?? [],
             pendingQuestions: state?.pendingQuestionIds ?? [],
-            onApprove: { requestId, approved in
-                if approved { Haptics.confirm() } else { Haptics.refuse() }
-                Task { _ = try? await model.seam?.approve(sessionId, ResolveApprovalRequest(requestId: requestId, approved: approved)) }
-            },
-            onAnswer: { requestId, answers in
-                Haptics.confirm()
-                Task { _ = try? await model.seam?.answer(sessionId, ResolveQuestionRequest(requestId: requestId, answers: answers)) }
-            },
-            onOpenSession: { id in router.push(.session(id: id)) }
+            onApprove: { [screen] requestId, approved in screen.approve(requestId, approved) },
+            onAnswer: { [screen] requestId, answers in screen.answer(requestId, answers) },
+            onOpenSession: { [router] id in router.push(.session(id: id)) }
         )
     }
 
-    /// Go to the end of a transcript that has just arrived — now, and once more
-    /// after the rows have been measured, since the first pass works from guesses.
-    private func settle() {
-        jump += 1
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(120))
-            jump += 1
-        }
-    }
-
-    private func loadEarlier(_ proxy: ScrollViewProxy, anchor: String?) {
-        guard let store, store.canLoadEarlier, !loadingEarlier else { return }
-        loadingEarlier = true
-        Task {
-            let result = await store.loadEarlier()
-            // The page arrived above what was on screen; put the reader back on
-            // the row they were looking at rather than at the new top.
-            if result.progress, let anchor { proxy.scrollTo(anchor, anchor: .top) }
-            loadingEarlier = false
-        }
+    /// Scroll to the approval or question that is holding the turn, once the
+    /// model has found it.
+    private func jumpToCurrentRequest() async {
+        if let id = await screen.findCurrentRequest() { scroller.reveal(id) }
     }
 
     // MARK: under the transcript
 
-    @ViewBuilder private func footer(_ proxy: ScrollViewProxy, rows: [DisplayRow]) -> some View {
+    @ViewBuilder private var footer: some View {
         VStack(alignment: .leading, spacing: 6) {
             if !pinned {
                 HStack {
                     Spacer()
                     Button {
-                        glide += 1
+                        scroller.toEnd()
                     } label: {
                         Image(systemName: "arrow.down")
                             .font(.system(size: 14, weight: .semibold))
@@ -295,34 +193,32 @@ struct SessionScreen: View {
             } else if parentDriven {
                 SubSessionNote(closed: state?.closed == true)
             } else {
-                if let sendError { ErrorText(sendError) }
-                if let jumpNotice { BodyText(jumpNotice, size: 13, color: Palette.mutedForeground) }
+                if let sendError = screen.sendError { ErrorText(sendError) }
+                if let jumpNotice = screen.jumpNotice { BodyText(jumpNotice, size: 13, color: Palette.mutedForeground) }
+                if let photosHeld = screen.photosHeld { BodyText(photosHeld, size: 13, color: Palette.mutedForeground) }
                 Composer(
-                    text: $draft,
-                    placeholder: running ? "Steer this conversation…" : "Message \(title)…",
-                    action: running ? "Steer" : "Send",
-                    onAction: { Task { await send() } },
-                    busy: sending,
-                    disabled: draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                    running: running,
-                    onStop: stop,
+                    text: $screen.draft,
+                    placeholder: screen.composerPlaceholder,
+                    action: screen.composerAction,
+                    onAction: { Task { await screen.send() } },
+                    busy: screen.sending,
+                    disabled: screen.draftIsEmpty,
+                    running: screen.running,
+                    onStop: screen.stop,
                     stopping: state?.stopRequested ?? false,
                     options: turnOptions,
-                    models: models,
-                    routed: state?.autoRoute == true ? (state?.connectionId, state?.selectedModel) : nil,
-                    facets: facets,
+                    models: screen.models,
+                    routed: screen.routed,
+                    facets: screen.facets,
                     images: ComposerImages(
-                        pending: pendingImages,
-                        error: imageError,
-                        onAdd: { added, problem in
-                            withAnimation { pendingImages = Array((pendingImages + added).prefix(ImageRules.maxImages)) }
-                            imageError = problem
-                        },
-                        onRemove: { key in withAnimation { pendingImages.removeAll { $0.key == key } } }
+                        pending: screen.pendingImages,
+                        error: screen.imageError,
+                        onAdd: { added, problem in withAnimation { screen.addImages(added, problem: problem) } },
+                        onRemove: { key in withAnimation { screen.removeImage(key) } }
                     ),
-                    commands: ComposerCommands(list: commands, onNeeded: loadCommands),
-                    sessionStatus: TranscriptLayout.statusLine(state),
-                    onStatusTap: waiting && !jumpSearching ? { Task { await jumpToCurrentRequest(proxy) } } : nil
+                    commands: ComposerCommands(list: screen.commands, onNeeded: screen.loadCommands),
+                    sessionStatus: screen.statusLine,
+                    onStatusTap: screen.waiting && !screen.jumpSearching ? { Task { await jumpToCurrentRequest() } } : nil
                 )
             }
         }
@@ -348,6 +244,7 @@ struct SessionScreen: View {
             // title would be bare text beside everything else that floats.
             .modifier(PlainBeforeGlass())
             .accessibilityLabel("\(title). \(subtitle). \(archived ? "archived · read-only. " : "")Session settings")
+            .accessibilityIdentifier("session.title")
         }
         ToolbarItem(placement: .topBarTrailing) {
             Button { sheet = .usage } label: {
@@ -391,18 +288,10 @@ struct SessionScreen: View {
 
     /// The session's dials: what it is running as, and the way to change that.
     private var turnOptions: Binding<TurnOptions> {
-        Binding(
-            get: { options ?? state.map(TranscriptLayout.turnOptions) ?? TurnOptions() },
-            set: { apply($0) }
-        )
+        Binding(get: { screen.turnOptions }, set: { screen.apply($0) })
     }
 
-    private var dials: TurnDials {
-        TurnDials(
-            options: turnOptions.wrappedValue, models: models,
-            routed: state?.autoRoute == true ? (state?.connectionId, state?.selectedModel) : nil
-        )
-    }
+    private var dials: TurnDials { screen.dials }
 
     /// Everything about the session that is not the conversation: what it runs
     /// as, what it works on, how full it is, and the ways out of it.
@@ -416,7 +305,7 @@ struct SessionScreen: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(title).font(AppFont.sansMedium(22)).foregroundStyle(Palette.foreground)
                 HStack(spacing: 8) {
-                    StatusDot(running: running)
+                    StatusDot(running: screen.running)
                     Mono(archived ? "archived · read-only" : status.lowercased())
                     if let handle = state?.chatHandle, !handle.isEmpty {
                         Mono("· @\(handle)").textSelection(.enabled)
@@ -425,11 +314,12 @@ struct SessionScreen: View {
             }
             .padding(.bottom, 4)
 
+            if let dialError = screen.dialError { ErrorText(dialError) }
             if !archived, !parentDriven {
                 PanelSection(label: "runs as") {
                     NavigationLink {
                         ChoicePage(title: "Model") { done in
-                            ModelPicker(options: turnOptions, models: models, onPicked: done)
+                            ModelPicker(options: turnOptions, models: screen.models, onPicked: done)
                         }
                     } label: { PanelRow(systemImage: "cpu", title: "Model", value: dials.modelLabel) }
                     PanelDivider()
@@ -440,7 +330,7 @@ struct SessionScreen: View {
                     NavigationLink { approvalsPage } label: {
                         PanelRow(systemImage: "hand.raised", title: "Approvals", value: dials.approvalLabel)
                     }
-                    if !facets.isEmpty {
+                    if !screen.facets.isEmpty {
                         PanelDivider()
                         NavigationLink { facetPage } label: {
                             PanelRow(systemImage: "theatermasks", title: "Facet", value: turnOptions.wrappedValue.facet ?? "Default")
@@ -477,29 +367,29 @@ struct SessionScreen: View {
 
             PanelSection(label: "workspace") {
                 let names = state?.repoNames ?? []
-                if names.isEmpty, (repoDetails ?? []).isEmpty {
+                if names.isEmpty, (screen.repoDetails ?? []).isEmpty {
                     Mono("No repositories.").padding(14)
                 }
-                if let details = repoDetails {
+                if let details = screen.repoDetails {
                     ForEach(Array(details.enumerated()), id: \.element.repo) { index, repo in
                         if index > 0 { PanelDivider() }
-                        workspaceRow(repo.repo, detail: repoLine(repo))
+                        workspaceRow(repo.repo, detail: repo.line)
                     }
                 } else {
                     ForEach(Array(names.enumerated()), id: \.element) { index, name in
                         if index > 0 { PanelDivider() }
-                        workspaceRow(name, detail: repoError ?? "loading…")
+                        workspaceRow(name, detail: screen.repoError ?? "loading…")
                     }
                 }
             }
             if !archived {
                 HStack(spacing: 8) {
-                    AppField(placeholder: "Add a repository URL", text: $repoUrl, keyboard: .URL)
-                    AppButton("Add", busy: addingRepo, disabled: repoUrl.trimmingCharacters(in: .whitespaces).isEmpty) {
-                        Task { await addRepository() }
+                    AppField(placeholder: "Add a repository URL", text: $screen.repoUrl, keyboard: .URL)
+                    AppButton("Add", busy: screen.addingRepo, disabled: screen.repoUrl.trimmingCharacters(in: .whitespaces).isEmpty) {
+                        Task { await screen.addRepository() }
                     }
                 }
-                if let repoMessage { BodyText(repoMessage, size: 13) }
+                if let repoMessage = screen.repoMessage { BodyText(repoMessage, size: 13) }
             }
 
             PanelSection {
@@ -513,7 +403,7 @@ struct SessionScreen: View {
             }
             .buttonStyle(.plain)
         }
-        .task(id: repoMessage) { await loadWorkspace() }
+        .task(id: screen.repoMessage) { await screen.loadWorkspace() }
     }
 
     private func workspaceRow(_ name: String, detail: String) -> some View {
@@ -564,7 +454,7 @@ struct SessionScreen: View {
         ChoicePage(title: "Facet") { done in
             SheetGroup(
                 options: [SheetOption(key: "", label: "Default")]
-                    + facets.map { SheetOption(key: $0.name, label: $0.name, description: $0.description) },
+                    + screen.facets.map { SheetOption(key: $0.name, label: $0.name, description: $0.description) },
                 selected: turnOptions.wrappedValue.facet ?? ""
             ) { key in
                 var next = turnOptions.wrappedValue
@@ -573,14 +463,6 @@ struct SessionScreen: View {
                 done()
             }
         }
-    }
-
-    private func repoLine(_ repo: WorkspaceRepo) -> String {
-        if repo.sandboxDown == true { return "Workspace unavailable" }
-        if repo.notARepository == true { return "Not a repository" }
-        if let error = repo.error, !error.isEmpty { return error }
-        if let branch = repo.branch, !branch.isEmpty { return "\(repo.detached == true ? "Detached · " : "Branch · ")\(branch)" }
-        return "Branch unknown"
     }
 
     private var usageSheet: some View {
@@ -631,13 +513,13 @@ struct SessionScreen: View {
     }
 
     private var switcherSheet: some View {
-        let visible = directory?.filter { matchesSession($0, query: directoryQuery) }
+        let visible = screen.visibleDirectory
         return AppSheet(title: "Sessions", detents: [.large]) {
-            if let directoryError { Mono(directoryError, color: Palette.destructive) }
-            AppField(placeholder: "Search sessions", text: $directoryQuery)
-            if directory == nil { Skeleton(rows: 3) }
-            if let directory, directory.isEmpty { Hint("No sessions yet.") }
-            if let visible, visible.isEmpty, !directoryQuery.trimmingCharacters(in: .whitespaces).isEmpty { Hint("No matching sessions.") }
+            if let directoryError = screen.directoryError { Mono(directoryError, color: Palette.destructive) }
+            AppField(placeholder: "Search sessions", text: $screen.directoryQuery)
+            if screen.directory == nil { Skeleton(rows: 3) }
+            if let directory = screen.directory, directory.isEmpty { Hint("No sessions yet.") }
+            if let visible, visible.isEmpty, !screen.directoryQuery.trimmingCharacters(in: .whitespaces).isEmpty { Hint("No matching sessions.") }
             ForEach(visible ?? []) { session in
                 Button { switchTo(session.id) } label: {
                     HStack(spacing: 10) {
@@ -661,185 +543,10 @@ struct SessionScreen: View {
                 .topBorder()
             }
         }
-        .task { await loadDirectory() }
+        .task { await screen.loadDirectory() }
     }
 
-    // MARK: work
-
-    private func open() async {
-        guard let seam = model.seam, let hub = model.hub else { return }
-        store?.stop()
-        options = nil
-        let opened = SessionStore(seam: seam, hub: hub, id: sessionId, isActive: { UIApplication.shared.applicationState == .active })
-        store = opened
-        async let modelList = try? seam.models()
-        async let facetList = try? seam.facets()
-        await opened.start()
-        models = await modelList ?? []
-        facets = await facetList ?? []
-        if options == nil, let state = opened.state { options = TranscriptLayout.turnOptions(state) }
-    }
-
-    private func loadCommands() {
-        guard !commandsAsked, let seam = model.seam else { return }
-        commandsAsked = true
-        Task { commands = (try? await seam.slashCommands(sessionId)) ?? [] }
-    }
-
-    /// Each dial is its own call: changing the thinking level must not also
-    /// re-send an approval mode somebody changed on another device.
-    private func apply(_ next: TurnOptions) {
-        let previous = options ?? state.map(TranscriptLayout.turnOptions)
-        options = next
-        guard let seam = model.seam, let previous else { return }
-        Task {
-            if next.thinking != previous.thinking { try? await seam.setThinking(sessionId, level: next.thinking) }
-            if next.approval != previous.approval {
-                try? await seam.setApprovalMode(sessionId, SetApprovalRequest(mode: next.approval, useClassifier: true))
-            }
-            if next.facet != previous.facet { try? await seam.setFacet(sessionId, facetName: next.facet) }
-        }
-    }
-
-    private func send() async {
-        guard let seam = model.seam, let state, !sending else { return }
-        let typed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        if typed.isEmpty { return }
-        sending = true
-        sendError = nil
-        defer { sending = false }
-        do {
-            draft = ""
-            Haptics.confirm()
-            var prompt = typed
-            if parseSlashCommand(prompt) != nil {
-                // The command ran there; only a repo template leaves a prompt to send.
-                guard let expanded = try await seam.runSlashCommand(sessionId, input: prompt)?.promptToSend, !expanded.isEmpty else { return }
-                prompt = expanded
-            }
-            // Steering is refused when the turn has just ended; start one instead.
-            if running, try await seam.steer(sessionId, SteerRequest(prompt: prompt)) { return }
-            let sent = pendingImages
-            let started = try await seam.start(sessionId, StartSessionRequest(
-                prompt: prompt,
-                selection: options?.selection ?? TranscriptLayout.turnOptions(state).selection,
-                images: sent.isEmpty ? nil : sent.map(\.attachment)
-            ))
-            if !started { throw SeamError(status: 404, message: "The session did not accept the message.") }
-            let keys = Set(sent.map(\.key))
-            pendingImages.removeAll { keys.contains($0.key) }
-            imageError = nil
-        } catch {
-            // What was typed comes back, ahead of anything typed since.
-            draft = draft.isEmpty ? typed : "\(typed)\n\n\(draft)"
-            sendError = describe(error)
-            Haptics.error()
-        }
-    }
-
-    private func stop() {
-        Haptics.refuse()
-        Task { _ = try? await model.seam?.stop(sessionId) }
-    }
-
-    /// Scroll to the approval or question that is holding the turn — paging back
-    /// through earlier messages if it is above what is loaded.
-    private func jumpToCurrentRequest(_ proxy: ScrollViewProxy) async {
-        guard let store, !jumpSearching else { return }
-        jumpNotice = nil
-
-        func target() -> String? {
-            TranscriptLayout.rows(store.items).last { row in
-                guard let request = row.requestId else { return false }
-                return store.isPending(approval: request) || store.isPending(question: request)
-            }?.id
-        }
-        func stillWaiting() -> Bool {
-            !(store.state?.pendingApprovalIds.isEmpty ?? true) || !(store.state?.pendingQuestionIds.isEmpty ?? true)
-        }
-
-        if let id = target() {
-            withAnimation { proxy.scrollTo(id, anchor: .center) }
-            return
-        }
-        guard store.canLoadEarlier else {
-            jumpNotice = "Current request was not found in the available transcript."
-            return
-        }
-        jumpSearching = true
-        defer { jumpSearching = false }
-        for _ in 0..<3 {
-            let result = await store.loadEarlier()
-            if !stillWaiting() {
-                jumpNotice = "The request is no longer pending."
-                return
-            }
-            if let error = result.error {
-                jumpNotice = "Could not load earlier messages: \(error)"
-                return
-            }
-            if !result.progress {
-                jumpNotice = "Could not find the request in earlier messages."
-                return
-            }
-            if let id = target() {
-                withAnimation { proxy.scrollTo(id, anchor: .center) }
-                return
-            }
-            if !result.hasMore {
-                jumpNotice = "Current request was not found in the available transcript."
-                return
-            }
-        }
-        jumpNotice = "Request not found in three earlier pages. Tap status to search further."
-    }
-
-    private func loadWorkspace() async {
-        guard let seam = model.seam else { return }
-        do {
-            let rows = try await seam.get([WorkspaceRepo].self, "api/seam/sessions/\(encodeURIComponent(sessionId))/workspace/changes")
-            if let rows {
-                repoDetails = rows
-                repoError = nil
-            } else {
-                repoError = "Workspace is unavailable."
-            }
-        } catch is CancellationError {
-            return
-        } catch {
-            repoError = "Could not load workspace details."
-        }
-    }
-
-    private func addRepository() async {
-        guard let seam = model.seam, !addingRepo else { return }
-        let url = repoUrl.trimmingCharacters(in: .whitespaces)
-        if url.isEmpty { return }
-        addingRepo = true
-        defer { addingRepo = false }
-        do {
-            if let problem = try await seam.addSessionRepository(sessionId, url: url) {
-                repoMessage = problem
-            } else {
-                repoUrl = ""
-                repoMessage = "Repository added."
-            }
-        } catch {
-            repoMessage = describe(error)
-        }
-    }
-
-    private func loadDirectory() async {
-        guard let seam = model.seam else { return }
-        do {
-            directory = try await seam.sessions()
-            directoryError = nil
-        } catch is CancellationError {
-            return
-        } catch {
-            directoryError = describe(error)
-        }
-    }
+    // MARK: navigation
 
     private func switchTo(_ id: String) {
         sheet = nil
@@ -847,21 +554,6 @@ struct SessionScreen: View {
         // Replace, not push: switching sessions is not going deeper.
         router.pop()
         router.push(.session(id: id))
-    }
-}
-
-/// The turn's thinking as it streams, folded away unless asked for.
-private struct LiveThinking: View {
-    let text: String
-    @State private var open = false
-
-    var body: some View {
-        Collapsible(name: "Thinking…", open: $open) {
-            Brain(color: Palette.mutedForeground)
-        } content: {
-            Text(text).font(AppFont.sans(13)).foregroundStyle(Palette.foreground).textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-        }
     }
 }
 
@@ -950,41 +642,6 @@ private struct SubSessionNote: View {
         .glassSurface(cornerRadius: Radius.xl)
     }
 }
-/// Sends a scroll view to its end when asked.
-///
-/// On iOS 18 this is the scroll view's own position, which knows where the end
-/// of lazy content is without the last row having been built. Before that, the
-/// caller's way of getting there.
-private struct EndOfTranscript: ViewModifier {
-    let jump: Int
-    let glide: Int
-    let fallback: (_ animated: Bool) -> Void
-
-    func body(content: Content) -> some View {
-        if #available(iOS 18.0, *) {
-            content.modifier(Positioned(jump: jump, glide: glide))
-        } else {
-            content
-                .onChange(of: jump) { _, _ in fallback(false) }
-                .onChange(of: glide) { _, _ in fallback(true) }
-        }
-    }
-
-    @available(iOS 18.0, *)
-    private struct Positioned: ViewModifier {
-        let jump: Int
-        let glide: Int
-        @State private var position = ScrollPosition(edge: .bottom)
-
-        func body(content: Content) -> some View {
-            content
-                .scrollPosition($position)
-                .onChange(of: jump) { _, _ in position.scrollTo(edge: .bottom) }
-                .onChange(of: glide) { _, _ in withAnimation { position.scrollTo(edge: .bottom) } }
-        }
-    }
-}
-
 /// Before iOS 26 a button in a bar is drawn plain; from 26 the bar draws it.
 private struct PlainBeforeGlass: ViewModifier {
     func body(content: Content) -> some View {
@@ -1016,20 +673,6 @@ private struct ContextRingImage: View {
                 Image(systemName: "chart.pie")
             }
         }
-    }
-}
-/// Keeps the scroll bar beside the text rather than at the edge of the display.
-///
-/// A scroll view's bar is drawn at the edge of the screen by default, which on
-/// an iPhone Duo is underneath the toolbar the system stands on its side. Giving
-/// the bar a margin of its own changes what it is measured from: content
-/// margins are added *to the safe area*, and the vertical toolbar is part of
-/// the safe area. So the margin wanted is the small gap between text and bar,
-/// not the width of the toolbar — adding that as well puts the bar a toolbar's
-/// width into the text, which is what an earlier version of this did.
-private struct IndicatorBesideText: ViewModifier {
-    func body(content: Content) -> some View {
-        content.contentMargins(.horizontal, 2, for: .scrollIndicators)
     }
 }
 #endif

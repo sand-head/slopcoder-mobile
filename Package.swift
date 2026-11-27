@@ -33,25 +33,17 @@ let package = Package(
         .library(name: "NotificationService", targets: ["NotificationService"]),
     ],
     targets: [
-        .target(
-            name: "SlopcoderCore",
-            swiftSettings: [.swiftLanguageMode(.v5)]
-        ),
-        .target(
-            name: "SlopcoderPush",
-            swiftSettings: [.swiftLanguageMode(.v5)]
-        ),
+        .target(name: "SlopcoderCore"),
+        .target(name: "SlopcoderPush"),
         .target(
             name: "Slopcoder",
             dependencies: ["SlopcoderCore", "SlopcoderPush"],
             resources: [.process("Resources")],
-            swiftSettings: [.swiftLanguageMode(.v5)],
             linkerSettings: signable
         ),
         .target(
             name: "NotificationService",
             dependencies: ["SlopcoderPush"],
-            swiftSettings: [.swiftLanguageMode(.v5)],
             // Nothing in an extension's binary refers to its principal class: the
             // system finds it by name at run time. Without -all_load the linker
             // sees an unreferenced object and leaves the whole class out.
@@ -60,8 +52,7 @@ let package = Package(
         .testTarget(
             name: "SlopcoderCoreTests",
             dependencies: ["SlopcoderCore"],
-            resources: [.copy("Fixtures")],
-            swiftSettings: [.swiftLanguageMode(.v5)]
+            resources: [.copy("Fixtures")]
         ),
     ]
 )

@@ -12,6 +12,11 @@
 # .xcodeproj is never committed.
 #
 # scripts/xcode-plists.py writes the two Info.plists under build/xcode first.
+#
+# SlopcoderUITests is the one target with code of its own: XCUITests that walk
+# the app against its stub server (see App/UITests). Only its own scheme tests
+# it. The SlopcoderApp scheme, which the release archives, has no test action
+# and never builds it.
 name: Slopcoder
 options:
   deploymentTarget:
@@ -23,7 +28,9 @@ packages:
     path: .
 settings:
   base:
-    SWIFT_VERSION: "5.0"
+    # The app and its extension compile one C file and take their language
+    # mode from Package.swift; this is the UI tests' only, which are Swift 6.
+    SWIFT_VERSION: "6.0"
     TARGETED_DEVICE_FAMILY: "1"
     # Signing identity comes from the release workflow, which reads the team
     # and the profile names out of the provisioning profiles themselves.
@@ -80,3 +87,28 @@ targets:
           CODE_SIGN_STYLE: Manual
           "CODE_SIGN_IDENTITY[sdk=iphoneos*]": Apple Distribution
           PROVISIONING_PROFILE_SPECIFIER: $(SLOPCODER_EXTENSION_PROFILE)
+  # The UI smoke tests. Built and run only by the SlopcoderUITests scheme below.
+  SlopcoderUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: App/UITests
+    dependencies:
+      - target: SlopcoderApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: codes.sand.slopcoder.UITests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: SlopcoderApp
+schemes:
+  # Debug, so the app has its stub mode; the tests launch it with -SlopcoderStub 1.
+  SlopcoderUITests:
+    build:
+      targets:
+        SlopcoderApp: all
+        SlopcoderUITests: [test]
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets:
+        - SlopcoderUITests

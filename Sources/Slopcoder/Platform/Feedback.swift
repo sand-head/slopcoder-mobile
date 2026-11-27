@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import SlopcoderCore
 import SwiftUI
 import UIKit
 
@@ -20,6 +21,17 @@ enum Haptics {
     static func error() { UINotificationFeedbackGenerator().notificationOccurred(.error) }
     /// A selection changed: a segment, a row in a picker.
     static func select() { UISelectionFeedbackGenerator().selectionChanged() }
+}
+
+extension Feedback {
+    /// What a screen's model feels like on the phone.
+    static let haptics = Feedback(
+        confirm: { Haptics.confirm() },
+        refuse: { Haptics.refuse() },
+        success: { Haptics.success() },
+        error: { Haptics.error() },
+        select: { Haptics.select() }
+    )
 }
 
 /// Copying, with the tap you feel when it lands.

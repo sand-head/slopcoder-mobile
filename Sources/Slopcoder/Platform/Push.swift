@@ -20,7 +20,7 @@ enum PushRegistrar {
             // Registering must happen on the main thread, and only after the user
             // has said yes — otherwise iOS hands back a token for an app that
             // cannot show anything.
-            DispatchQueue.main.async { UIApplication.shared.registerForRemoteNotifications() }
+            Task { @MainActor in UIApplication.shared.registerForRemoteNotifications() }
         }
     }
 
@@ -29,7 +29,7 @@ enum PushRegistrar {
     static func refreshIfAlreadyAllowed() {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             guard settings.authorizationStatus == .authorized else { return }
-            DispatchQueue.main.async { UIApplication.shared.registerForRemoteNotifications() }
+            Task { @MainActor in UIApplication.shared.registerForRemoteNotifications() }
         }
     }
 }

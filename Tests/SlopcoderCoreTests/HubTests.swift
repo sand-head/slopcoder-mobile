@@ -11,29 +11,40 @@ import Testing
 @testable import SlopcoderCore
 
 /// A socket a test drives by hand.
-final class FakeSocket: HubSocket, @unchecked Sendable {
-    private let lock = NSLock()
-    private var inbox: [Result<String, Error>] = []
-    private var waiter: CheckedContinuation<String, Error>?
-    private(set) var sent: [String] = []
-    private(set) var closed = false
+final class FakeSocket: HubSocket {
+    private struct State: Sendable {
+        var inbox: [Result<String, Error>] = []
+        var waiter: CheckedContinuation<String, Error>?
+        var sent: [String] = []
+        var closed = false
+        var seed: String? = #"{"id":"s1","nextOrdinal":7}"#
+    }
+
+    private let state = Locked(State())
+
     /// Answers `Subscribe` with this state, as the hub would.
-    var seed: String? = #"{"id":"s1","nextOrdinal":7}"#
+    var seed: String? {
+        get { state.withLock { $0.seed } }
+        set { state.withLock { $0.seed = newValue } }
+    }
+
+    var sent: [String] { state.withLock { $0.sent } }
+    var closed: Bool { state.withLock { $0.closed } }
 
     func push(_ frame: String) { deliver(.success(frame)) }
     func drop(_ error: Error = HubError("socket reset")) { deliver(.failure(error)) }
 
     private func deliver(_ result: Result<String, Error>) {
-        let waiting: CheckedContinuation<String, Error>? = lock.withLock {
-            if let waiter { self.waiter = nil; return waiter }
-            inbox.append(result)
+        let waiting: CheckedContinuation<String, Error>? = state.withLock { state in
+            if let waiter = state.waiter { state.waiter = nil; return waiter }
+            state.inbox.append(result)
             return nil
         }
         waiting?.resume(with: result)
     }
 
     func send(_ text: String) async throws {
-        lock.withLock { sent.append(text) }
+        state.withLock { $0.sent.append(text) }
         if text == HubProtocol.handshake { push("{}\u{1e}"); return }
         guard let json = JSONValue.parse(String(text.dropLast())), json["type"].int == 1 else { return }
         let id = json["invocationId"].stringValue
@@ -46,39 +57,49 @@ final class FakeSocket: HubSocket, @unchecked Sendable {
 
     func receive() async throws -> String {
         try await withCheckedThrowingContinuation { continuation in
-            let ready: Result<String, Error>? = lock.withLock {
-                if inbox.isEmpty { waiter = continuation; return nil }
-                return inbox.removeFirst()
+            let ready: Result<String, Error>? = state.withLock { state in
+                if state.inbox.isEmpty { state.waiter = continuation; return nil }
+                return state.inbox.removeFirst()
             }
             if let ready { continuation.resume(with: ready) }
         }
     }
 
-    func close() { lock.withLock { closed = true } }
+    func close() { state.withLock { $0.closed = true } }
 
     var targets: [String] {
-        lock.withLock { sent.compactMap { JSONValue.parse(String($0.dropLast()))?["target"].string } }
+        sent.compactMap { JSONValue.parse(String($0.dropLast()))?["target"].string }
     }
 }
 
-final class FakeConnector: HubConnecting, @unchecked Sendable {
-    private let lock = NSLock()
-    var failNext: Error?
-    private(set) var sockets: [FakeSocket] = []
-    private(set) var attempts = 0
+final class FakeConnector: HubConnecting {
+    private struct State: Sendable {
+        var failNext: Error?
+        var sockets: [FakeSocket] = []
+        var attempts = 0
+    }
+
+    private let state = Locked(State())
+
+    var failNext: Error? {
+        get { state.withLock { $0.failNext } }
+        set { state.withLock { $0.failNext = newValue } }
+    }
+
+    var sockets: [FakeSocket] { state.withLock { $0.sockets } }
 
     func connect(baseUrl: String, apiKey: String) async throws -> HubSocket {
-        try lock.withLock {
-            attempts += 1
-            if let failNext { throw failNext }
+        try state.withLock { state in
+            state.attempts += 1
+            if let failNext = state.failNext { throw failNext }
             let socket = FakeSocket()
-            sockets.append(socket)
+            state.sockets.append(socket)
             return socket
         }
     }
 
-    var last: FakeSocket { lock.withLock { sockets[sockets.count - 1] } }
-    var count: Int { lock.withLock { attempts } }
+    var last: FakeSocket { state.withLock { $0.sockets[$0.sockets.count - 1] } }
+    var count: Int { state.withLock { $0.attempts } }
 }
 
 /// Polls until `condition` holds; the hub does its work on tasks of its own.

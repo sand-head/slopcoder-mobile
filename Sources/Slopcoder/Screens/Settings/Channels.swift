@@ -104,7 +104,7 @@ private struct ChannelDraftTarget: Identifiable {
 private struct ChannelCard: View {
     let channel: ChannelSummary
     let busy: Bool
-    let onToggle: (Bool) -> Void
+    let onToggle: @MainActor (Bool) -> Void
     let onTest: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void

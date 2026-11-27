@@ -141,14 +141,15 @@ public enum RoutineEditor {
     /// The facet a new routine runs as, which is the cockpit's default too.
     public static let defaultFacet = "execute"
 
-    private static let keyLock = NSLock()
-    private static var nextKey = 1
+    /// The next card's number. Cards are made wherever a form is, so the
+    /// counter is shared.
+    private static let nextKey = Locked(1)
 
     /// A fresh card with nothing picked.
     public static func newCard(_ slot: TriggerSlot = .none) -> TriggerCard {
-        let key: Int = keyLock.withLock {
-            defer { nextKey += 1 }
-            return nextKey
+        let key: Int = nextKey.withLock { next in
+            defer { next += 1 }
+            return next
         }
         return TriggerCard(
             key: "card-\(key)", triggerId: emptyGuid, slot: slot, enabled: true, channelId: nil,

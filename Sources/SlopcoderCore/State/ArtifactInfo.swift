@@ -49,11 +49,11 @@ public actor ArtifactInfoCache {
             await self.enter()
             do {
                 let detail = try await self.fetch(id)
-                await self.leave()
+                self.leave()
                 // Keep the summary only: a text body has no business in this cache.
                 return detail.map { .summary($0.artifact) } ?? .gone
             } catch {
-                await self.leave()
+                self.leave()
                 throw error
             }
         }
