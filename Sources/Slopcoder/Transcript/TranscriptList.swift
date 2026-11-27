@@ -671,30 +671,48 @@ private struct LiveThinking: View {
 
 /// A cell is only a frame for a row's hosted view, which it borrows while the
 /// row is on screen.
+///
+/// It reports no safe area, and nor does the frame it holds the row in. Hosted
+/// SwiftUI lays itself out inside whatever safe area its view inherits, and
+/// `.ignoresSafeArea()` on the content does not undo that: a row passing over
+/// the home indicator had its content pushed up inside its cell by half of the
+/// part it overlapped, so it slid against the rows above as it scrolled
+/// toward the composer. The list keeps rows clear of the bars and the composer
+/// itself, with its insets; nothing in a row needs a safe area of its own.
 private final class HostCell: UICollectionViewCell {
     private weak var held: UIView?
+    private let frameForRow = NoSafeArea()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundConfiguration = .clear()
+        frameForRow.frame = contentView.bounds
+        frameForRow.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        contentView.addSubview(frameForRow)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
+    override var safeAreaInsets: UIEdgeInsets { .zero }
+
     func hold(_ host: UIView, parking: UIView) {
         if let held, held !== host { release(to: parking) }
         held = host
-        host.frame = contentView.bounds
+        host.frame = frameForRow.bounds
         host.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        contentView.addSubview(host)
+        frameForRow.addSubview(host)
     }
 
     func release(to parking: UIView) {
         // The row may already be in another cell, or gone from the list.
-        if let held, held.superview === contentView { parking.addSubview(held) }
+        if let held, held.superview === frameForRow { parking.addSubview(held) }
         held = nil
     }
+}
+
+private final class NoSafeArea: UIView {
+    override var safeAreaInsets: UIEdgeInsets { .zero }
 }
 
 /// Rows top to bottom at the heights they were measured at, in the reading
