@@ -132,6 +132,9 @@ The script also takes an `https://` URL, or a `darwin.xtoolsdk` (what `xtool sdk
 unpacks from the `.xip` — larger than it, 3.3 GB against 2.0 GB). CI needs none of this;
 see [CI](#ci).
 
+The UI tests (`App/UITests`, run in CI on a Mac) cannot be built here, but
+`scripts/typecheck-ui-tests.sh` type-checks them against the installed SDK's XCTest.
+
 To run it on a phone plugged into the machine:
 
 ```bash
