@@ -188,8 +188,9 @@ while the app is running. The rules the code follows, which are Apple's
   tab bar that minimises on scroll, soft scroll edges under the composer, and the system's
   confirm and cancel buttons in sheets.
 
-None of this has been seen on a device. It compiles against the iOS 27.2 SDK, and CI's
-`simulator` job launches the app on a simulated iPhone and iPhone Duo and keeps screenshots.
+It compiles against the iOS 27.2 SDK and has been used on a real iPhone Duo. CI does not
+exercise the Duo layouts: the Duo simulator is too slow on a hosted runner to be worth
+the wait.
 
 ### Design notes
 
@@ -239,9 +240,6 @@ further and runs a Linux VM on a Mac to mount Xcode directly.
   `main` to GitHub, so this runs after a change merges, not on its branch:
   - `test` — builds the package and runs the tests on Linux. No SDK.
   - `ios` — builds the unsigned `.ipa` and a simulator build with xtool, on Linux.
-  - `simulator` — on a Mac runner, opens the Linux-built app on a simulated iPhone and a
-    simulated iPhone Duo, fails if it exits within 15 seconds on either, and keeps a
-    screenshot of each as an artifact.
   - `xcode` — builds the release's Xcode project unsigned, so a change that breaks a
     release is found when it reaches `main`, not on release day.
   - `ui-tests` — on a Mac runner, runs the XCUITests in `App/UITests` on a simulated
@@ -249,8 +247,12 @@ further and runs a Linux VM on a Mac to mount Xcode directly.
     coming back, the session panel, and a settings page. The app runs in its stub mode
     (below), so no account or network is involved. Failed tests get three goes; the
     result bundle and a screenshot of every step are kept as artifacts. A simulator that
-    never boots is a warning, not a failure; anything after the boot is. Where the runner
-    has an iPhone Duo simulator the same tests run there for pictures only.
+    never boots is a warning, not a failure; anything after the boot is. The job is
+    capped at twenty minutes. It does not use the iPhone Duo simulator, which ran these
+    same four tests for over forty minutes on a hosted runner without finishing.
+  - `simulator` — **only when a run is started by hand.** Opens the app as xtool built it
+    on a simulated iPhone and iPhone Duo, fails if it exits within 15 seconds, and keeps
+    a screenshot of each display. About a quarter of an hour, most of it simulator boots.
 
 **Stub mode.** A debug build launched with `-SlopcoderStub 1` signs in from memory and
 talks to a canned server in process (`Sources/SlopcoderCore/Stub`) through the same

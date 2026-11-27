@@ -93,6 +93,11 @@ jobs:
   # does not stay up on either; and keeps a screenshot of what each showed —
   # the sign-in screen, since nothing here has an account.
   simulator:
+    # Only when a run is started by hand. It takes about a quarter of an hour,
+    # most of it waiting on simulators, and the `ui-tests` job already shows on
+    # every push that the app launches and works. What this adds is the app as
+    # xtool built it, and a look at both displays of an iPhone Duo.
+    if: github.event_name == 'workflow_dispatch'
     needs: ios
     runs-on: xcode-27
     timeout-minutes: 30
@@ -266,7 +271,9 @@ jobs:
   # a broken one fails all three.
   ui-tests:
     runs-on: xcode-27
-    timeout-minutes: 60
+    # About ten minutes when healthy. Past twenty the simulator is stuck, and a
+    # stuck simulator should cost twenty minutes, not an hour.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: maxim-lobanov/setup-xcode@v1
@@ -280,22 +287,22 @@ jobs:
       - name: Boot a simulated iPhone
         id: boot
         run: |
-          # The newest available device whose name matches: "duo" for an iPhone
-          # Duo, "plain" for any other iPhone.
+          # The newest available iPhone that is not an iPhone Duo. The Duo's
+          # simulator is not used here: on a hosted runner the same four tests
+          # ran for over forty minutes on it without finishing.
           pick() {
             xcrun simctl list devices available -j | python3 -c "
           import json, sys
-          want = sys.argv[1]
           devices = json.load(sys.stdin)['devices']
           for runtime in sorted(devices, reverse=True):
               if 'iOS' not in runtime:
                   continue
               for device in devices[runtime]:
                   name = device['name']
-                  if name.startswith('iPhone') and (('Duo' in name) == (want == 'duo')):
+                  if name.startswith('iPhone') and 'Duo' not in name:
                       print(device['udid'])
                       sys.exit()
-          " "$1"
+          "
           }
 
           # Boots the device and waits until it is up; three goes, starting it
@@ -311,7 +318,7 @@ jobs:
             return 1
           }
 
-          iphone="$(pick plain)"
+          iphone="$(pick)"
           if [ -z "$iphone" ]; then
             echo "::warning::No iPhone simulator on this runner; the UI tests did not run."
             echo "The UI tests did not run: no iPhone simulator on this runner." >> "$GITHUB_STEP_SUMMARY"
@@ -323,7 +330,6 @@ jobs:
             echo "The UI tests did not run: the iPhone simulator never booted (three goes)." >> "$GITHUB_STEP_SUMMARY"
             echo "iphone=" >> "$GITHUB_OUTPUT"
           fi
-          echo "duo=$(pick duo)" >> "$GITHUB_OUTPUT"
       # Signed ad hoc, as the simulator wants and as needs no Apple account.
       # Debug, because only a debug build has the stub mode the tests use.
       - name: UI tests on the iPhone
@@ -334,25 +340,6 @@ jobs:
             -scheme SlopcoderUITests -configuration Debug \
             -destination "id=${{ steps.boot.outputs.iphone }}" \
             -resultBundlePath build/ui-iphone.xcresult \
-            -retry-tests-on-failure -test-iterations 3 \
-            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER=
-      # The same tests on the iPhone Duo, for pictures of the layout with the
-      # toolbar standing on its side. Its simulator is the less steady of the
-      # two on a hosted runner, so nothing here can fail the job.
-      - name: UI tests on the iPhone Duo
-        if: always() && steps.boot.outputs.duo != ''
-        continue-on-error: true
-        run: |
-          duo="${{ steps.boot.outputs.duo }}"
-          if ! xcrun simctl bootstatus "$duo" -b; then
-            echo "::warning::The iPhone Duo simulator did not boot; no Duo screenshots this time."
-            exit 0
-          fi
-          xcodebuild test \
-            -project Slopcoder.xcodeproj \
-            -scheme SlopcoderUITests -configuration Debug \
-            -destination "id=$duo" \
-            -resultBundlePath build/ui-duo.xcresult \
             -retry-tests-on-failure -test-iterations 3 \
             CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER=
       # The screenshots, out of the result bundles and under the names the
