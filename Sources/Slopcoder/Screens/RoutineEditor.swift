@@ -19,26 +19,20 @@ struct RoutineEditorScreen: View {
     var addTrigger = false
 
     @Environment(AppModel.self) private var app
-    /// The form's data and work, made when the sheet first appears and gone
+    /// The form's data and work, made when the sheet is first drawn and gone
     /// with it.
-    @State private var editor: RoutineEditorModel?
+    @State private var kept = Kept<RoutineEditorModel>()
 
     var body: some View {
-        Group {
-            if let editor {
-                RoutineEditorView(editor: editor)
-            } else {
-                Palette.background.ignoresSafeArea()
-            }
-        }
-        .onAppear {
-            guard editor == nil else { return }
-            let app = self.app
-            editor = RoutineEditorModel(
+        let app = self.app
+        let routineId = self.routineId
+        let addTrigger = self.addTrigger
+        RoutineEditorView(editor: kept.model {
+            RoutineEditorModel(
                 routineId: routineId, addTrigger: addTrigger,
                 seam: { app.seam }, router: app.router, feedback: .haptics
             )
-        }
+        })
     }
 }
 

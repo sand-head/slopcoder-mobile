@@ -11,31 +11,24 @@ struct SessionScreen: View {
     let sessionId: String
 
     @Environment(AppModel.self) private var app
-    /// The screen's data and work. Made the first time the screen appears and
+    /// The screen's data and work: made the first time the screen is drawn and
     /// kept for as long as SwiftUI keeps this view — one session, since a
     /// route's screen is identified by its route. Its live store is opened on
-    /// each appearance and stopped on each disappearance, below.
-    @State private var screen: SessionModel?
+    /// each appearance and stopped on each disappearance; see `SessionView`.
+    @State private var kept = Kept<SessionModel>()
 
     var body: some View {
-        Group {
-            if let screen {
-                SessionView(sessionId: sessionId, screen: screen)
-            } else {
-                Color.clear.pageBackground()
-            }
-        }
-        .onAppear {
-            guard screen == nil else { return }
-            let app = self.app
-            screen = SessionModel(
+        let app = self.app
+        let sessionId = self.sessionId
+        SessionView(sessionId: sessionId, screen: kept.model {
+            SessionModel(
                 sessionId: sessionId,
                 seam: { app.seam },
                 hub: { app.hub },
                 isActive: { UIApplication.shared.applicationState == .active },
                 feedback: .haptics
             )
-        }
+        })
     }
 }
 

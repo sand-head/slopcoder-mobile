@@ -11,23 +11,15 @@ import SwiftUI
 /// Each row's `…` opens a native menu for rename and delete.
 struct SessionsScreen: View {
     @Environment(AppModel.self) private var app
-    /// The page's data and work, made the first time the tab's list appears and
-    /// kept for as long as the list is. It listens for the registry while the
-    /// page is on screen; see `SessionsView`.
-    @State private var screen: SessionsModel?
+    /// The page's data and work, made the first time the tab's list is drawn
+    /// and kept for as long as the list is. It listens for the registry while
+    /// the page is on screen; see `SessionsView`.
+    @State private var kept = Kept<SessionsModel>()
 
     var body: some View {
-        Group {
-            if let screen {
-                SessionsView(screen: screen)
-            } else {
-                Color.clear.pageBackground()
-            }
-        }
-        .onAppear {
-            guard screen == nil else { return }
-            let app = self.app
-            screen = SessionsModel(
+        let app = self.app
+        SessionsView(screen: kept.model {
+            SessionsModel(
                 seam: { app.seam },
                 hub: { app.hub },
                 router: app.router,
@@ -38,7 +30,7 @@ struct SessionsScreen: View {
                 },
                 animate: { change in withAnimation { change() } }
             )
-        }
+        })
     }
 }
 
