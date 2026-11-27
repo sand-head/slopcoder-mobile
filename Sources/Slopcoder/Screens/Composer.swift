@@ -331,38 +331,6 @@ struct Composer: View {
     }
 }
 
-/// What a turn's dials say, worked out once for whoever shows them: the
-/// composer on the sessions page, and a session's own panel.
-struct TurnDials {
-    let options: TurnOptions
-    let models: [ModelCandidate]
-    /// The model an Auto session last routed to, whose dial this one follows.
-    var routed: (connectionId: String?, modelId: String?)?
-
-    var current: ModelCandidate? {
-        options.selection.auto ? nil : findCandidate(models, connectionId: options.selection.connectionId, modelId: options.selection.modelId)
-    }
-
-    var caps: ThinkingCaps? {
-        let candidate = options.selection.auto
-            ? findCandidate(models, connectionId: routed?.connectionId, modelId: routed?.modelId)
-            : current
-        return candidate.map(ThinkingCaps.init)
-    }
-
-    var modelLabel: String {
-        options.selection.auto ? "Auto" : current?.modelDisplayName ?? "Model"
-    }
-
-    /// A stale pick is shown as what it runs as, not as what was picked.
-    var shownThinking: ThinkingLevel? {
-        options.thinking.map { runsAs($0, caps) }
-    }
-
-    var thinkingLabel: String { shownThinking.map { levelLabel($0, caps) } ?? "Auto" }
-    var approvalLabel: String { ApprovalChoice.label(for: options.approval) }
-}
-
 /// Auto, then every model on every connection.
 struct ModelPicker: View {
     @Binding var options: TurnOptions
