@@ -107,9 +107,15 @@ asks for a fresh seed. Backgrounding a phone produces both constantly.
 
 ## Developing
 
-Open the folder in the dev container (`.devcontainer/`): Swift 6.4, xtool, and the
-libimobiledevice tools. Or install [Swift 6.4](https://www.swift.org/install/linux/) and run
-`scripts/install-xtool.sh` yourself.
+Open the folder in the dev container (`.devcontainer/`): the `swift:6.4.2-noble` image, plus
+a setup script that adds xtool and the libimobiledevice tools. Or install
+[Swift 6.4](https://www.swift.org/install/linux/) and run `scripts/install-xtool.sh` yourself.
+
+The container is an image and a script rather than a Dockerfile on purpose: that is the
+subset of Dev Containers slopcoder's own sandbox accepts, so an agent session on this
+repository gets the same toolchain an editor does. Because a container is thrown away and
+made again, the script also installs the iOS SDK whenever it finds `Xcode_*.xip` in the
+directory that holds the repository (or in an `xcode*` folder there), which outlives it.
 
 ```bash
 swift build          # the core, and a parse of everything else
@@ -143,9 +149,9 @@ xtool dev run                   # builds, signs for development, installs, launc
 ```
 
 A free Apple ID can sign an app for your own phone, but not this one as it stands: push
-notifications and the App Group both need a paid Developer Program membership. Inside the
-dev container the phone is only visible if the host's `usbmuxd` socket is shared
-with it; `devcontainer.json` has the line to uncomment.
+notifications and the App Group both need a paid Developer Program membership. Inside a
+container the phone is only visible if the host's `usbmuxd` socket is shared with it
+(`-v /var/run/usbmuxd:/var/run/usbmuxd`), which is yours to add when running it locally.
 
 ### What xtool cannot do (yet), and what that costs
 

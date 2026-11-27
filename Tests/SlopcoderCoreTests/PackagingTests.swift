@@ -181,4 +181,27 @@ import Testing
             #expect(try !text(file).lowercased().contains("stub"), "\(file)")
         }
     }
+
+    /// slopcoder provisions its own sandbox from this file and refuses it — the
+    /// whole session, not just the property — if it asks for anything beyond a
+    /// literal image and the lifecycle hooks: a Dockerfile build, mounts,
+    /// `remoteUser`, Features. This holds the file to what it accepts.
+    @Test func theDevContainerStaysWithinWhatTheSandboxAccepts() throws {
+        let raw = try text(".devcontainer/devcontainer.json")
+        #expect(raw.utf8.count <= 32 * 1024)
+        // Comments are allowed there; strip whole-line ones to parse it here.
+        let stripped = raw.split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .joined(separator: "\n")
+        let object = try #require(try JSONSerialization.jsonObject(with: Data(stripped.utf8)) as? [String: Any])
+        let accepted: Set<String> = [
+            "name", "image", "customizations", "$schema", "onCreateCommand", "updateContentCommand", "postCreateCommand",
+        ]
+        #expect(Set(object.keys).subtracting(accepted).isEmpty, "unsupported: \(Set(object.keys).subtracting(accepted))")
+        let image = try #require(object["image"] as? String)
+        #expect(image.range(of: #"^[A-Za-z0-9][A-Za-z0-9._:/@-]*$"#, options: .regularExpression) != nil)
+        let hook = try #require(object["onCreateCommand"] as? String)
+        #expect(hook == "bash .devcontainer/setup.sh")
+        #expect(FileManager.default.fileExists(atPath: PackagingTests.root.appendingPathComponent(".devcontainer/setup.sh").path))
+    }
 }
