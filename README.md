@@ -114,8 +114,8 @@ a setup script that adds xtool and the libimobiledevice tools. Or install
 The container is an image and a script rather than a Dockerfile on purpose: that is the
 subset of Dev Containers slopcoder's own sandbox accepts, so an agent session on this
 repository gets the same toolchain an editor does. Because a container is thrown away and
-made again, the script also installs the iOS SDK whenever it finds `Xcode_*.xip` in the
-directory that holds the repository (or in an `xcode*` folder there), which outlives it.
+made again, the script also installs the iOS SDK from the owner's shared copy of Xcode
+(see below), which outlives it.
 
 ```bash
 swift build          # the core, and a parse of everything else
@@ -125,21 +125,32 @@ swift test           # 209 tests; needs no SDK and no network
 ### Building the app
 
 The app compiles against Apple's iOS SDK, which Apple does not let anyone redistribute — so
-it is the one thing you bring. Download Xcode (`Xcode_*.xip`) from
-[developer.apple.com](https://developer.apple.com/download/all/) with your own account, then:
+it is the one thing you bring, and it is never committed. Download Xcode (`Xcode_*.xip`)
+from [developer.apple.com](https://developer.apple.com/download/all/) with your own account,
+then:
 
 ```bash
-scripts/install-darwin-sdk.sh ~/Downloads/Xcode_27.2.xip   # once; about a minute
-xtool dev build                 # → xtool/Slopcoder.app, unsigned
-xtool dev build --ipa           # → xtool/Slopcoder.ipa
+scripts/install-darwin-sdk.sh ~/Downloads/Xcode_27.2.xip   # once per machine or container
+scripts/build-app.sh                 # → xtool/Slopcoder.app, unsigned
+scripts/build-app.sh --ipa           # → xtool/Slopcoder.ipa
 ```
 
-The script also takes an `https://` URL, or a `darwin.xtoolsdk` (what `xtool sdk build`
-unpacks from the `.xip` — larger than it, 3.3 GB against 2.0 GB). CI needs none of this;
-see [CI](#ci).
+`scripts/build-app.sh` is `xtool dev build` with one check in front: that an SDK is
+installed. Without one, xtool asks for the path to Xcode.xip on standard input, and in a
+shell with no terminal (an agent's, CI's) it aborts with `epoll_ctl … Operation not
+permitted`, which looks like a sandbox problem and is not.
 
-The UI tests (`App/UITests`, run in CI on a Mac) cannot be built here, but
-`scripts/typecheck-ui-tests.sh` type-checks them against the installed SDK's XCTest.
+**Where the archive is kept.** In slopcoder, every session of the same owner shares one
+directory, `./home`, beside the repositories. The archive lives there, at
+`../home/xcode/Xcode_<version>.xip`: outside the repository, and outliving the containers
+that the SDK itself is installed into. `scripts/install-darwin-sdk.sh` with no argument
+installs from that copy, the build script does so when the SDK is missing, and the dev
+container's setup script does so when a container is created. `AGENTS.md` tells agent
+sessions the same.
+
+The install script also takes an `https://` URL, or a `darwin.xtoolsdk` (what `xtool sdk
+build` unpacks from the `.xip` — larger than it, 3.3 GB against 2.0 GB). CI needs none of
+this; see [CI](#ci).
 
 To run it on a phone plugged into the machine:
 

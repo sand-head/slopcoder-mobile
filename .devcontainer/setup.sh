@@ -29,18 +29,16 @@ if ! command -v xtool > /dev/null; then
 fi
 
 # Apple's SDK is not in the image and cannot be: it is not ours to distribute.
-# A container is thrown away and made again, though, and installing the SDK by
-# hand each time is tedious. So if a copy of Xcode has been left in the
-# directory that holds this repository — which outlives the container — it is
-# installed from there.
-if command -v xtool > /dev/null && ! xtool sdk status 2> /dev/null | grep -q "is installed"; then
-  xip="$(ls ../Xcode*.xip ../xcode*/Xcode*.xip ../xcode*/*/Xcode*.xip 2> /dev/null | head -1)"
-  if [ -n "$xip" ]; then
-    echo "Installing the iOS SDK from $xip"
-    xtool sdk install --slim "$xip" || missing+=("the iOS SDK (xtool sdk install --slim $xip)")
+# A container is thrown away and made again, though, and the SDK lives in the
+# container. So the Xcode archive is kept in the owner's shared directory
+# beside the repository (../home/xcode), which outlives every container, and
+# the SDK is installed from there whenever a container is made.
+if command -v xtool > /dev/null && ! xtool sdk status 2> /dev/null < /dev/null | grep -q "is installed"; then
+  if bash scripts/install-darwin-sdk.sh; then
+    :
   else
-    echo "No iOS SDK: \`swift build\` and \`swift test\` work; \`xtool dev build\` needs one."
-    echo "Put Xcode_*.xip beside this repository and run: scripts/install-darwin-sdk.sh <path>"
+    echo "No iOS SDK: \`swift build\` and \`swift test\` work; building the app needs one."
+    echo "Put Xcode_*.xip in ../home/xcode and run: scripts/install-darwin-sdk.sh"
   fi
 fi
 
