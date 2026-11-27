@@ -9,6 +9,7 @@ struct SettingsScreen: View {
     @State private var counts: [SettingsPage: String] = [:]
     @State private var serverVersion: String?
     @State private var confirmation: Confirmation?
+    @AppStorage(Night.oledKey) private var oledBlack = false
 
     private static let pages: [(page: SettingsPage, label: String)] = [
         (.connections, "Connections"), (.mcp, "MCP servers"), (.nodes, "Remote nodes"), (.terminal, "Terminal"),
@@ -34,6 +35,15 @@ struct SettingsScreen: View {
                         }
                         .openBeside(model.router.selection(on: .settings) == .settings(entry.page))
                     }
+                }
+                VStack(alignment: .leading, spacing: 0) {
+                    SectionLabel("appearance")
+                    SwitchRow(
+                        label: "OLED black",
+                        detail: "In dark mode, true-black backgrounds that switch an OLED screen’s pixels off.",
+                        isOn: $oledBlack
+                    )
+                    .topBorder()
                 }
                 VStack(alignment: .leading, spacing: 0) {
                     SectionLabel("session")

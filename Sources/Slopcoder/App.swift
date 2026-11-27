@@ -59,6 +59,10 @@ enum Appearance {
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(AuthStore.self) private var auth
+    /// Palette colours read this as they resolve; a change rebuilds the tree
+    /// under it, so the ones already drawn resolve again. Where you were is the
+    /// router's, so it survives.
+    @AppStorage(Night.oledKey) private var oledBlack = false
 
     var body: some View {
         Group {
@@ -69,9 +73,9 @@ struct RootView: View {
                 // flash of the window's own colour.
                 Palette.background.ignoresSafeArea()
             } else if auth.credential != nil {
-                MainTabs()
+                MainTabs().id(oledBlack)
             } else {
-                LoginScreen()
+                LoginScreen().id(oledBlack)
             }
         }
         .task { model.launch() }

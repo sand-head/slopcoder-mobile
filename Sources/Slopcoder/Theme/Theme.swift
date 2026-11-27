@@ -44,11 +44,30 @@ extension UIColor {
         self.init(white: 0, alpha: 0)
     }
 
-    static func dynamic(_ light: String, _ dark: String) -> UIColor {
+    /// `oled` is the night colour on true black, when OLED black is on; a colour
+    /// without one is the same either way.
+    static func dynamic(_ light: String, _ dark: String, oled: String? = nil) -> UIColor {
         let lightColor = UIColor(css: light)
         let darkColor = UIColor(css: dark)
-        return UIColor { traits in traits.userInterfaceStyle == .dark ? darkColor : lightColor }
+        let oledColor = oled.map { UIColor(css: $0) }
+        return UIColor { traits in
+            guard traits.userInterfaceStyle == .dark else { return lightColor }
+            if let oledColor, Night.oledBlack { return oledColor }
+            return darkColor
+        }
     }
+}
+
+/// OLED black: in dark mode, the grounds go to true black, so an OLED screen
+/// switches those pixels off. Light mode is untouched.
+///
+/// Read inside every dynamic colour rather than carried as a trait, so a colour
+/// resolved anywhere — a sheet, a UIKit cell, a bar — agrees. The root view is
+/// rebuilt when it changes (see `RootView`), which is what makes colours
+/// already on screen resolve again.
+enum Night {
+    static let oledKey = "appearance.oledBlack"
+    static var oledBlack: Bool { UserDefaults.standard.bool(forKey: oledKey) }
 }
 
 extension Color {
@@ -56,30 +75,30 @@ extension Color {
         self.init(uiColor: UIColor(css: css))
     }
 
-    static func dynamic(_ light: String, _ dark: String) -> Color {
-        Color(uiColor: .dynamic(light, dark))
+    static func dynamic(_ light: String, _ dark: String, oled: String? = nil) -> Color {
+        Color(uiColor: .dynamic(light, dark, oled: oled))
     }
 }
 
 enum Palette {
-    static let background = Color.dynamic("#ffffff", "#17171d")
+    static let background = Color.dynamic("#ffffff", "#17171d", oled: "#000000")
     static let foreground = Color.dynamic("#24232d", "#eeebf3")
-    static let card = Color.dynamic("#ffffff", "#222229")
+    static let card = Color.dynamic("#ffffff", "#222229", oled: "#111114")
     static let primary = Color.dynamic("#007a55", "#00bc7d")
     static let primaryForeground = Color.dynamic("#ecfdf5", "#061d15")
-    static let secondary = Color.dynamic("#f0eef3", "#29272e")
-    static let userBubble = Color.dynamic("#f0eef3", "#29272e")
-    static let muted = Color.dynamic("#f0eef3", "#29272e")
+    static let secondary = Color.dynamic("#f0eef3", "#29272e", oled: "#1a191e")
+    static let userBubble = Color.dynamic("#f0eef3", "#29272e", oled: "#1a191e")
+    static let muted = Color.dynamic("#f0eef3", "#29272e", oled: "#1a191e")
     static let mutedForeground = Color.dynamic("#625e6e", "#b9b3c5")
-    static let accent = Color.dynamic("#f0eef3", "#29272e")
+    static let accent = Color.dynamic("#f0eef3", "#29272e", oled: "#1a191e")
     static let destructive = Color.dynamic("#e7000b", "#ff6467")
     static let warning = Color.dynamic("#a04b00", "#ffb900")
     static let border = Color.dynamic("#e3e7e8", "rgba(255, 255, 255, 0.1)")
     static let input = Color.dynamic("#e3e7e8", "rgba(255, 255, 255, 0.12)")
     static let ring = Color.dynamic("#9ca8ab", "#a69d91")
-    static let sidebar = Color.dynamic("#f9fbfb", "#1c1c22")
+    static let sidebar = Color.dynamic("#f9fbfb", "#1c1c22", oled: "#000000")
 
-    static let uiBackground = UIColor.dynamic("#ffffff", "#17171d")
+    static let uiBackground = UIColor.dynamic("#ffffff", "#17171d", oled: "#000000")
     static let uiForeground = UIColor.dynamic("#24232d", "#eeebf3")
     static let uiPrimary = UIColor.dynamic("#007a55", "#00bc7d")
 }
