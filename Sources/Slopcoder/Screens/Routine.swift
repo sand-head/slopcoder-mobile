@@ -589,10 +589,13 @@ private struct RunPanel: View {
 struct SecretSheet: View {
     let secrets: [AutomationWebhookSecret]
     let server: String?
+    /// Something else that happened, said above the secret so it is not lost behind it.
+    var notice: String?
     let onContinue: () -> Void
 
     var body: some View {
         AppSheet(title: "Copy this now", detents: [.large]) {
+            if let notice { ErrorText(notice) }
             Hint("The secret is stored hashed and can never be shown again.")
             ForEach(secrets, id: \.triggerId) { hook in
                 let url = server.map { RoutineEditor.hookUrl(server: $0, automationId: hook.automationId, triggerId: hook.triggerId, secret: hook.secret) } ?? hook.secret

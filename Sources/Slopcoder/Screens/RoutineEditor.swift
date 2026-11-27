@@ -107,7 +107,7 @@ private struct RoutineEditorView: View {
             case .attach: AttachSheet(attachments: attachments, nodeDescription: "runs shell there, unattended")
             case .trigger: triggerSheet
             case .secret:
-                SecretSheet(secrets: editor.minted, server: app.auth.credential?.server) { leave() }
+                SecretSheet(secrets: editor.minted, server: app.auth.credential?.server, notice: editor.runProblem) { leave() }
             }
         }
     }

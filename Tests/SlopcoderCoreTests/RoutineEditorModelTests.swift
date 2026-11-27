@@ -249,6 +249,45 @@ private func filled(_ server: EditorServer) async -> RoutineEditorModel {
         #expect(model.error == "The routine is paused.")
     }
 
+    /// A minted secret can be read once. A run that fails after the save must
+    /// not stand between the person and the secret, nor be lost behind it.
+    @Test func aSecretMintedBeforeAFailedRunIsStillShownAndSoIsTheFailure() async {
+        let server = EditorServer()
+        server.answer = { request in
+            if request.url.hasSuffix("automations/r1") && request.method == "PUT" {
+                return (200, #"{"webhooks":[{"automationId":"r1","triggerId":"t1","secret":"s3cret"}]}"#)
+            }
+            if request.url.hasSuffix("automations/r1/run") { return (200, #"{"value":"The routine is paused."}"#) }
+            return nil
+        }
+        let model = server.model("r1")
+        _ = await model.load()
+        await model.readStoredSchedule()
+        #expect(await model.save(thenRun: true) == .showSecrets)
+        #expect(model.minted.map(\.secret) == ["s3cret"])
+        #expect(model.runProblem == "Saved, but it did not run: The routine is paused.")
+        #expect(model.error == "The routine is paused.")
+        #expect(model.dirty == false)
+        #expect(server.felt.names.last == "error")
+    }
+
+    @Test func aSaveThatRanHasNoRunProblem() async {
+        let server = EditorServer()
+        server.answer = { request in
+            if request.url.hasSuffix("automations/r1") && request.method == "PUT" {
+                return (200, #"{"webhooks":[{"automationId":"r1","triggerId":"t1","secret":"s3cret"}]}"#)
+            }
+            if request.url.hasSuffix("automations/r1/run") { return (200, #"{"value":null}"#) }
+            return nil
+        }
+        let model = server.model("r1")
+        _ = await model.load()
+        await model.readStoredSchedule()
+        #expect(await model.save(thenRun: true) == .showSecrets)
+        #expect(model.runProblem == nil)
+        #expect(model.error == nil)
+    }
+
     @Test func aDraftFillsOnlyWhatWasNotTyped() async {
         let server = EditorServer()
         server.answer = { request in

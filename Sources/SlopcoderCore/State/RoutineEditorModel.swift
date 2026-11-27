@@ -70,6 +70,9 @@ public final class RoutineEditorModel {
     public private(set) var error: String?
     public private(set) var minted: [AutomationWebhookSecret] = []
     public private(set) var savedId: String?
+    /// The run that should have followed a save which minted a secret, and did
+    /// not. Said beside the secret, which cannot wait for it.
+    public private(set) var runProblem: String?
 
     @ObservationIgnored private var parses: [String: Task<Void, Never>] = [:]
     /// A stored schedule to read back as English once the form is on screen.
@@ -422,15 +425,22 @@ public final class RoutineEditorModel {
     /// sent; `error` says why.
     public func save(thenRun: Bool) async -> Saved? {
         guard let target = await persist() else { return nil }
+        runProblem = nil
+        savedId = target.isEmpty ? nil : target
         if thenRun, !target.isEmpty, let seam = seam() {
             if let why = try? await seam.runRoutineNow(target) {
                 feedback.error()
                 error = why
+                // The save stands. A secret it minted can be read only now, so
+                // it is shown regardless, with the run's failure beside it.
+                guard minted.isEmpty else {
+                    runProblem = "Saved, but it did not run: \(why)"
+                    return .showSecrets
+                }
                 return nil
             }
         }
         feedback.confirm()
-        savedId = target.isEmpty ? nil : target
         return minted.isEmpty ? .done : .showSecrets
     }
 
