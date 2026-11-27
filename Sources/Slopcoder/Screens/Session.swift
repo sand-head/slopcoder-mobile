@@ -195,6 +195,7 @@ private struct SessionView: View {
             } else {
                 if let sendError = screen.sendError { ErrorText(sendError) }
                 if let jumpNotice = screen.jumpNotice { BodyText(jumpNotice, size: 13, color: Palette.mutedForeground) }
+                if let photosHeld = screen.photosHeld { BodyText(photosHeld, size: 13, color: Palette.mutedForeground) }
                 Composer(
                     text: $screen.draft,
                     placeholder: screen.composerPlaceholder,

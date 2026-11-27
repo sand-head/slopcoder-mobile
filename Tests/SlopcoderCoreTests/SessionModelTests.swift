@@ -157,8 +157,44 @@ private func image(_ key: String) -> PendingImage {
 
         #expect(server.body("/steer")["prompt"] == "also the docs")
         #expect(server.calls("/start").isEmpty)
-        // Steering carries no photos; they stay for the next turn.
+        // Steering carries no photos; they stay for the next turn, and the
+        // composer says so rather than leaving them sitting there unexplained.
         #expect(model.pendingImages.map(\.key) == ["a"])
+        #expect(model.photosHeld == "Steering sends text only, so the photo stays here for your next message.")
+        server.finish(model)
+    }
+
+    @Test func thePhotoNoteCountsAndGoesWhenThePhotosDo() async throws {
+        let server = SessionServer()
+        server.status = 1
+        let model = try await server.model()
+        model.addImages([image("a"), image("b")], problem: nil)
+        model.draft = "and this"
+        await model.send()
+        #expect(model.photosHeld == "Steering sends text only, so the 2 photos stay here for your next message.")
+        model.removeImage("a")
+        #expect(model.photosHeld != nil)
+        model.removeImage("b")
+        #expect(model.photosHeld == nil)
+
+        // A steer with nothing attached has nothing to say.
+        model.draft = "once more"
+        await model.send()
+        #expect(model.photosHeld == nil)
+        server.finish(model)
+    }
+
+    @Test func thePhotoNoteGoesWithThePhotosOnTheNextTurn() async throws {
+        let server = SessionServer()
+        server.status = 1
+        server.answers = [("/steer", 404, "")]
+        let model = try await server.model()
+        model.addImages([image("a")], problem: nil)
+        model.draft = "now"
+        // The turn ended in between: this starts one, and the photo goes with it.
+        await model.send()
+        #expect(server.body("/start")["images"].array?.count == 1)
+        #expect(model.photosHeld == nil)
         server.finish(model)
     }
 

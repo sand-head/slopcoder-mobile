@@ -50,6 +50,8 @@ public final class SessionModel {
     public private(set) var sending = false
     public private(set) var sendError: String?
     public var jumpNotice: String?
+    /// Photos that a steer could not carry, and are waiting for the next turn.
+    public private(set) var photosHeld: String?
     public private(set) var jumpSearching = false
     public private(set) var models: [ModelCandidate] = []
     public private(set) var facets: [FacetOption] = []
@@ -173,6 +175,7 @@ public final class SessionModel {
 
     public func removeImage(_ key: String) {
         pendingImages.removeAll { $0.key == key }
+        if pendingImages.isEmpty { photosHeld = nil }
     }
 
     /// The slash menu's commands, the first time a slash is typed.
@@ -205,6 +208,7 @@ public final class SessionModel {
         if typed.isEmpty { return }
         sending = true
         sendError = nil
+        photosHeld = nil
         defer { sending = false }
         do {
             draft = ""
@@ -216,7 +220,13 @@ public final class SessionModel {
                 prompt = expanded
             }
             // Steering is refused when the turn has just ended; start one instead.
-            if running, try await seam.steer(sessionId, SteerRequest(prompt: prompt)) { return }
+            if running, try await seam.steer(sessionId, SteerRequest(prompt: prompt)) {
+                // A steer is text only (SteerRequest has no images), so the
+                // photos wait for the next turn — said, so they are not a
+                // silent no-op.
+                photosHeld = Self.photosHeld(pendingImages.count)
+                return
+            }
             let sent = pendingImages
             let started = try await seam.start(sessionId, StartSessionRequest(
                 prompt: prompt,
@@ -232,6 +242,14 @@ public final class SessionModel {
             draft = draft.isEmpty ? typed : "\(typed)\n\n\(draft)"
             sendError = describe(error)
             feedback.error()
+        }
+    }
+
+    static func photosHeld(_ count: Int) -> String? {
+        switch count {
+        case 0: return nil
+        case 1: return "Steering sends text only, so the photo stays here for your next message."
+        default: return "Steering sends text only, so the \(count) photos stay here for your next message."
         }
     }
 
