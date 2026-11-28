@@ -113,7 +113,7 @@ public final class SessionsModel {
     }
 
     public var visible: [SessionSummary] {
-        searched.filter { filter == .all || $0.status == .running }
+        searched.filter { filter == .all || SessionActivity.busy($0) }
     }
 
     public var listState: ListState {

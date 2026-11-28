@@ -239,6 +239,11 @@ public struct SessionSummary: Codable, Hashable, Sendable {
     public var workspaceConnected: Bool?
     /// Bounded repository display labels; absent on older servers.
     public var repoNames: [String]?
+    /// This session or one of its sub-sessions is stopped on an approval or a
+    /// question. Absent on older servers.
+    public var waitingOnUser: Bool?
+    /// Sub-sessions mid-turn, which keep an idle parent busy. Absent on older servers.
+    public var runningSubSessions: Int?
 
     public init(
         id: String = "",
@@ -250,7 +255,9 @@ public struct SessionSummary: Codable, Hashable, Sendable {
         updatedAt: String = "",
         clientWorkspace: ClientWorkspace? = nil,
         workspaceConnected: Bool? = nil,
-        repoNames: [String]? = nil
+        repoNames: [String]? = nil,
+        waitingOnUser: Bool? = nil,
+        runningSubSessions: Int? = nil
     ) {
         self.id = id
         self.title = title
@@ -262,6 +269,8 @@ public struct SessionSummary: Codable, Hashable, Sendable {
         self.clientWorkspace = clientWorkspace
         self.workspaceConnected = workspaceConnected
         self.repoNames = repoNames
+        self.waitingOnUser = waitingOnUser
+        self.runningSubSessions = runningSubSessions
     }
 
     public init(from decoder: Decoder) throws {
@@ -276,6 +285,8 @@ public struct SessionSummary: Codable, Hashable, Sendable {
         clientWorkspace = c.lenient(.clientWorkspace)
         workspaceConnected = c.lenient(.workspaceConnected)
         repoNames = c.lenient(.repoNames)
+        waitingOnUser = c.lenient(.waitingOnUser)
+        runningSubSessions = c.lenient(.runningSubSessions)
     }
 }
 

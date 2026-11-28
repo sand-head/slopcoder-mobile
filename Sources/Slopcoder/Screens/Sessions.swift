@@ -259,29 +259,29 @@ private struct SessionRow: View {
     let onDelete: () -> Void
 
     var body: some View {
-        let running = session.status == .running
-        let offline = session.clientWorkspace != nil && session.workspaceConnected == false
+        let activity = SessionActivity(session)
         let meta = [Captions.workspaceLabel(session), Captions.ago(session.updatedAt)].compactMap { $0 }.joined(separator: " · ")
         HStack(alignment: .top, spacing: 10) {
             Button(action: onOpen) {
-                HStack(alignment: .top, spacing: 10) {
-                    GlyphMark(glyph: .sessions, size: 20)
-                        .padding(.top, 2)
+                HStack(alignment: .top, spacing: 12) {
+                    ActivityDot(activity: activity)
+                        // Centred on the title's first line (13pt).
+                        .padding(.top, 5)
+                        .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(session.title).font(AppFont.sansMedium(13)).foregroundStyle(Palette.foreground).lineLimit(1)
                         Text(meta).font(AppFont.sans(11)).foregroundStyle(Palette.mutedForeground).lineLimit(1)
-                        if offline { Meta("workspace offline", color: Palette.destructive) }
+                        // Said even when the dot is busy saying something else.
+                        if session.clientWorkspace != nil, session.workspaceConnected == false {
+                            Meta("workspace offline", color: Palette.destructive)
+                        }
                     }
                     Spacer(minLength: 8)
-                    Text(running ? "Running" : "Idle")
-                        .font(AppFont.sans(11))
-                        .foregroundStyle(running ? Status.running : Palette.mutedForeground)
-                        .frame(maxHeight: .infinity, alignment: .center)
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("\(session.title), \(running ? "running" : "idle")")
+            .accessibilityLabel("\(session.title), \(activity.label.lowercased())")
             .accessibilityHint("Opens the session.")
 
             Menu {
@@ -299,6 +299,24 @@ private struct SessionRow: View {
         .padding(.vertical, 16)
         .frame(minHeight: 44)
         .overlay(alignment: .top) { if !first { Palette.border.frame(height: 1) } }
+    }
+}
+
+/// A session row's dot, one colour per state so the list reads at a glance:
+/// amber when it needs the user (its own approval or question, or a
+/// sub-session's), red when its workspace has dropped off, emerald and pulsing
+/// while it or any sub-session is working (as `StatusDot` is everywhere else),
+/// and a quiet grey at rest.
+private struct ActivityDot: View {
+    let activity: SessionActivity
+
+    var body: some View {
+        switch activity {
+        case .working: StatusDot(running: true)
+        case .waiting: Dot(color: Status.running, size: 8)
+        case .offline: Dot(color: Palette.destructive, size: 8)
+        case .idle: Dot(color: Palette.mutedForeground.opacity(0.55), size: 8)
+        }
     }
 }
 
